@@ -1,0 +1,29 @@
+from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Runtime configuration loaded from ATHENA-prefixed environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="ATHENA_",
+        extra="ignore",
+    )
+
+    env: str = "development"
+    database_url: str = Field(
+        default="postgresql+psycopg://athena:athena@localhost:5432/athena",
+        min_length=1,
+    )
+    keycloak_url: str = "http://localhost:8080"
+    keycloak_realm: str = "athena"
+    opa_url: str = "http://localhost:8181"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

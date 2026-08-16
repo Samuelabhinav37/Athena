@@ -74,10 +74,11 @@ Create a Python environment and run the API:
 ```bash
 python -m venv .venv
 python -m pip install -e ".[dev]"
+alembic upgrade head
 uvicorn athena.main:app --reload --app-dir apps/api/src
 ```
 
-Then visit `http://localhost:8000/health`.
+Then visit `http://localhost:8000/health`, `http://localhost:8000/ready`, or the interactive API documentation at `http://localhost:8000/docs`.
 
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 
