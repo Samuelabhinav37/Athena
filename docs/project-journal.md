@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Milestone 4 — deterministic security
+**Active milestone:** Milestone 5 — risk analytics
 
 **Completed:**
 
@@ -40,8 +40,11 @@ The governing safety rule is:
 - Append-only audit events protected by PostgreSQL
 - Deterministic OPA decisions with structured policy violations
 - Immutable, versioned policy evaluation evidence
+- GitHub Actions security gate with immutable action pins
+- Executable allow/deny fixtures and security evidence artifacts
+- Initial NIST AC-2, AC-5, and AC-6 continuous-control mappings
 
-**Next outcome:** Every policy change is tested in CI and the security gate reports deterministic pass/fail evidence before merge.
+**Next outcome:** Athena detects Alice's role drift and calculates an explainable access-decay score from deterministic risk factors.
 
 ## Roadmap
 
@@ -51,8 +54,8 @@ The governing safety rule is:
 | 1. Controlled identity lab | Version-controlled Keycloak realm with known ground truth | Complete |
 | 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Complete |
 | 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
-| 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | In progress |
-| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Planned |
+| 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Complete |
+| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Next |
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
 
 ## Work completed
@@ -197,6 +200,32 @@ Alice's two non-privileged entitlements pass. Production Database Read fails for
 Published commit:
 
 - `def83b2` — Add deterministic OPA policy enforcement
+
+### CI security gate and NIST mappings
+
+Added the merge-time enforcement and evidence layer:
+
+- GitHub Actions workflow for Python linting and tests, Compose validation, live PostgreSQL migrations, Alembic drift detection, Rego tests, and the deterministic security gate;
+- read-only workflow permissions and concurrency cancellation;
+- official GitHub actions pinned to immutable commits corresponding to checkout v7.0.1, setup-python v7.0.0, and upload-artifact v7.0.1;
+- four executable fixtures covering governed access, ungoverned production access, developer Payroll access, and requester/approver conflict;
+- exact matching of expected allow/deny decisions and violation codes;
+- deterministic JSON and Markdown evidence reports;
+- artifact upload and GitHub job-summary publication even when the gate fails;
+- machine-readable partial mappings for NIST AC-2, AC-5, and AC-6;
+- validation that referenced tests, fixtures, and Rego rules still exist; and
+- documented branch-protection recommendations.
+
+The first hosted GitHub Actions run completed successfully:
+
+- Run ID: `31977841305`
+- Commit: `09ec648981ddfa42918944b1acc4d8b977f157f3`
+- Result: success
+- URL: `https://github.com/Samuelabhinav37/Athena-/actions/runs/31977841305`
+
+Published commit:
+
+- `09ec648` — Add CI security gate and NIST mappings
 
 ## Architecture decisions
 
@@ -366,6 +395,20 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 **Resolution:** Effective entitlements now keep stable identity/grant keys and transition between active and inactive states. Rematerialization rebuilds current provenance edges while preserving the entitlement ID and all historical evaluation evidence.
 
+### OPA treated fixture JSON files as conflicting bundle data
+
+**Symptom:** `opa test /policies` reported merge errors for three fixture files even though the Python gate passed.
+
+**Cause:** OPA loads JSON beneath a policy directory as data documents. The fixtures intentionally share top-level fields such as `id`, `input`, and `expected`, which conflict when merged into one OPA data tree.
+
+**Resolution:** OPA now loads and tests only the executable `policies/iam` and `policies/system` paths. Athena's gate reads `policies/fixtures` independently. This cleanly separates policy/data bundles from test scenario documents.
+
+### PowerShell continued after a failed native OPA command
+
+**Symptom:** An early combined local check returned an overall success status even though OPA had printed merge errors, because later commands succeeded.
+
+**Resolution:** The final local CI-equivalent validation checks `$LASTEXITCODE` after every native command and exits immediately on failure. GitHub Actions uses Bash's step failure behavior, where a failing command also fails the step.
+
 ## Verification record
 
 ### Repository foundation
@@ -446,6 +489,24 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Direct PostgreSQL evaluation mutation attempt: blocked by trigger
 - Docker Compose validation: passed
 
+### CI security gate and continuous controls
+
+- Automated Python tests: 25 passed
+- Rego policy tests: 5 passed
+- Deterministic fixtures: 4 passed, 0 failed
+- Required denial fixtures: 3 correctly denied
+- NIST mappings: 3 valid, 0 failed
+- AC-2 automated evidence references: 2
+- AC-5 automated evidence references: 2
+- AC-6 automated evidence references: 3
+- JSON control and fixture parsing: passed
+- GitHub Actions YAML parsing: passed
+- Docker Compose validation: passed
+- Alembic model/schema drift check: no new upgrade operations
+- Generated JSON and Markdown evidence reports: passed
+- Unsafe allow-all regression test: gate failed 3 denial fixtures as required
+- Hosted GitHub Actions run `31977841305`: success
+
 ## Current local environment
 
 - Repository: `C:\Users\samue\Athena`
@@ -459,19 +520,19 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: CI security gate
+## Next work: identity drift and access-decay analytics
 
 The next slice should:
 
-1. add GitHub Actions for Python tests, linting, migration validation, and Rego tests;
-2. validate policy syntax and unit tests on every pull request;
-3. add deterministic policy fixtures for allowed and denied IAM changes;
-4. produce a concise security-gate summary as a build artifact;
-5. fail CI on policy parse errors, test failures, migration drift, or unsafe fixture decisions;
-6. map initial rules and evidence to NIST AC-2, AC-5, and AC-6;
-7. keep secrets out of workflow logs and fixtures;
-8. document branch-protection recommendations; and
-9. prove the ungoverned Alice production fixture blocks the gate while governed access passes.
+1. represent Alice's role transfer from Engineering Developer to Security Analyst as an auditable event;
+2. preserve old access long enough for Athena to detect retained entitlements;
+3. define deterministic privilege, sensitivity, time-since-use, peer-deviation, policy, and authentication risk factors;
+4. calculate an explainable normalized access-decay score;
+5. establish peer groups by department and role;
+6. identify access outside Alice's current peer baseline;
+7. store versioned risk assessments and factor evidence;
+8. expose drift findings and risk factors through the API; and
+9. prove Alice's retained production and developer access produces a reproducible high-risk result.
 
 ## Journal update checklist
 
