@@ -605,6 +605,8 @@ OPA or the deterministic risk engine:
 - Synthetic peer anomalies: 5 of 100, matching the configured contamination baseline
 - ORM anomaly-result mutation attempt: blocked
 - Direct PostgreSQL anomaly-result mutation attempt: blocked by trigger
+- Hosted GitHub Actions run `31980019943`: success
+- Implementation commit: `c70d369`
 - Known upstream warning: Starlette TestClient still recommends migration from `httpx` to `httpx2`
 
 ### Failure and resolution
