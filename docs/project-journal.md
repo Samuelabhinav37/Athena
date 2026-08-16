@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Milestone 3 — authorization provenance
+**Active milestone:** Milestone 4 — deterministic security
 
 **Completed:**
 
@@ -38,8 +38,10 @@ The governing safety rule is:
 - Canonical resources, permissions, grants, and effective entitlements
 - Ordered authorization provenance and governance-gap detection
 - Append-only audit events protected by PostgreSQL
+- Deterministic OPA decisions with structured policy violations
+- Immutable, versioned policy evaluation evidence
 
-**Next outcome:** OPA evaluates deterministic privileged-access and separation-of-duties rules against the provenance-backed access model.
+**Next outcome:** Every policy change is tested in CI and the security gate reports deterministic pass/fail evidence before merge.
 
 ## Roadmap
 
@@ -49,7 +51,7 @@ The governing safety rule is:
 | 1. Controlled identity lab | Version-controlled Keycloak realm with known ground truth | Complete |
 | 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Complete |
 | 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
-| 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Planned |
+| 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | In progress |
 | 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Planned |
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
 
@@ -173,6 +175,28 @@ Alice's controlled scenario contains governed GitHub Write and Development Datab
 Published commit:
 
 - `fbcecec` — Add authorization provenance foundation
+
+### Deterministic OPA policy enforcement
+
+Added the first policy decision and evidence loop:
+
+- versioned policy-input schema for identity, resource, permission, governance, authentication, and provenance;
+- Rego rules for ungoverned privileged access, phishing-resistant privileged MFA, developer Payroll restrictions, and requester/approver separation of duties;
+- five Rego unit tests covering pass and failure cases;
+- OPA client with explicit timeouts and strict response validation;
+- fail-closed behavior that stores `POLICY_ENGINE_UNAVAILABLE` rather than implicitly passing;
+- SHA-256 policy-bundle versioning over enforceable Rego files;
+- immutable policy evaluation records containing input snapshots and structured violations;
+- stable active/inactive entitlement lifecycle so evaluation history survives rematerialization;
+- PostgreSQL trigger and ORM protection against evaluation mutation;
+- `python -m athena.cli evaluate-policies --username alice`; and
+- `GET /v1/identities/{identity_id}/policy-evaluations`.
+
+Alice's two non-privileged entitlements pass. Production Database Read fails for missing governance evidence and missing phishing-resistant authentication context. OPA returns decisions only and has no remediation credentials.
+
+Published commit:
+
+- `def83b2` — Add deterministic OPA policy enforcement
 
 ## Architecture decisions
 
@@ -320,6 +344,28 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 **Resolution:** The read-only assertion was rerun with a single-quoted Python program and simple string concatenation. The API assertion then passed without code changes.
 
+### All initial Rego tests were undefined
+
+**Symptom:** OPA loaded the policy bundle, but all five tests failed where they imported and called `evaluate`.
+
+**Cause:** The public policy rule was named `decision` while the test and planned API contract used `evaluate`.
+
+**Resolution:** The public rule was standardized as `data.athena.authorization.evaluate`. All five tests then passed without rule-logic changes.
+
+### OPA was unreachable through its published Docker port
+
+**Symptom:** The OPA container started, but `http://localhost:8181/health` remained unreachable.
+
+**Cause:** OPA bound to `localhost:8181` inside its container, so Docker's port mapping could not reach the listener.
+
+**Resolution:** Compose now starts OPA with `--addr=0.0.0.0:8181`. The recreated service passed its health check and live policy requests.
+
+### Evaluation evidence required stable entitlement identities
+
+**Issue:** Provenance rematerialization originally deleted and recreated effective entitlement rows. Immutable evaluations could not safely reference records that disappear.
+
+**Resolution:** Effective entitlements now keep stable identity/grant keys and transition between active and inactive states. Rematerialization rebuilds current provenance edges while preserving the entitlement ID and all historical evaluation evidence.
+
 ## Verification record
 
 ### Repository foundation
@@ -382,6 +428,24 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - ORM audit-event update attempt: blocked
 - Direct PostgreSQL audit-event update attempt: blocked by trigger
 
+### Deterministic policy enforcement
+
+- Ruff linting: passed
+- Automated Python tests: 23 passed
+- Rego policy tests: 5 passed
+- Three-migration offline SQL generation: passed
+- Live migration `20260816_03`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- OPA health endpoint: passed after explicit container binding
+- Live Alice evaluation: 2 pass, 1 fail, 0 errors
+- Failed entitlement violations: `PRIVILEGED_MFA_REQUIRED`, `UNGOVERNED_PRIVILEGED_ACCESS`
+- Persisted policy version: `cc7b9472d6e689bf56f2084ab142672af3c747a998bfcb0f3bd93a95058ba466`
+- Provenance rematerialization preserved all 3 evaluation records
+- Evaluation API returned the stored decision, input, version, and violations
+- ORM evaluation mutation attempt: blocked
+- Direct PostgreSQL evaluation mutation attempt: blocked by trigger
+- Docker Compose validation: passed
+
 ## Current local environment
 
 - Repository: `C:\Users\samue\Athena`
@@ -390,23 +454,24 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Python environment: `.venv`
 - Docker Desktop: installed and started during Milestone 1 validation
 - Keycloak: started through Docker Compose on port `8080`
-- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_02` applied
+- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_03` applied
+- OPA: started through Docker Compose on port `8181`
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: deterministic policy enforcement
+## Next work: CI security gate
 
 The next slice should:
 
-1. define a stable authorization-policy input contract;
-2. add Rego rules for privileged access, developer restrictions, and separation of duties;
-3. require approval, justification, and expiration for privileged grants;
-4. prohibit developer access to Payroll;
-5. require phishing-resistant MFA for production administrators;
-6. evaluate policies through OPA with explicit timeouts and fail-safe behavior;
-7. persist versioned policy evaluation results and input evidence;
-8. expose violations through the API without allowing OPA to mutate access; and
-9. prove the security gate flags Alice's ungoverned production access deterministically.
+1. add GitHub Actions for Python tests, linting, migration validation, and Rego tests;
+2. validate policy syntax and unit tests on every pull request;
+3. add deterministic policy fixtures for allowed and denied IAM changes;
+4. produce a concise security-gate summary as a build artifact;
+5. fail CI on policy parse errors, test failures, migration drift, or unsafe fixture decisions;
+6. map initial rules and evidence to NIST AC-2, AC-5, and AC-6;
+7. keep secrets out of workflow logs and fixtures;
+8. document branch-protection recommendations; and
+9. prove the ungoverned Alice production fixture blocks the gate while governed access passes.
 
 ## Journal update checklist
 
