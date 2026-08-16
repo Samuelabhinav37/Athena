@@ -507,6 +507,52 @@ class RiskFinding(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
 
 
+class AnomalyModelRun(Base):
+    __tablename__ = "anomaly_model_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    algorithm: Mapped[str] = mapped_column(String(64), nullable=False)
+    library_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    trained_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    random_seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    contamination: Mapped[float] = mapped_column(Float, nullable=False)
+    feature_schema: Mapped[list] = mapped_column(json_type, nullable=False)
+    training_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    peer_definition: Mapped[dict] = mapped_column(json_type, nullable=False)
+    summary: Mapped[dict] = mapped_column(json_type, nullable=False)
+
+    results: Mapped[list["AnomalyResult"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class AnomalyResult(Base):
+    __tablename__ = "anomaly_results"
+    __table_args__ = (UniqueConstraint("run_id", "subject_key", name="uq_anomaly_result_subject"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("anomaly_model_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    identity_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("identities.id", ondelete="RESTRICT"), index=True
+    )
+    subject_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    score_samples: Mapped[float] = mapped_column(Float, nullable=False)
+    decision_score: Mapped[float] = mapped_column(Float, nullable=False)
+    is_anomaly: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    features: Mapped[dict] = mapped_column(json_type, nullable=False)
+    explanation: Mapped[dict] = mapped_column(json_type, nullable=False)
+
+    run: Mapped[AnomalyModelRun] = relationship(back_populates="results")
+    identity: Mapped[Identity | None] = relationship()
+
+
 @event.listens_for(AuditEvent, "before_update")
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
@@ -529,3 +575,11 @@ def prevent_role_transition_mutation(*_: object) -> None:
 @event.listens_for(RiskAssessment, "before_delete")
 def prevent_risk_assessment_mutation(*_: object) -> None:
     raise ValueError("Risk assessments are immutable")
+
+
+@event.listens_for(AnomalyModelRun, "before_update")
+@event.listens_for(AnomalyModelRun, "before_delete")
+@event.listens_for(AnomalyResult, "before_update")
+@event.listens_for(AnomalyResult, "before_delete")
+def prevent_anomaly_evidence_mutation(*_: object) -> None:
+    raise ValueError("Anomaly evidence is immutable")

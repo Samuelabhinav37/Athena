@@ -568,24 +568,61 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Python environment: `.venv`
 - Docker Desktop: installed and started during Milestone 1 validation
 - Keycloak: started through Docker Compose on port `8080`
-- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_04` applied
+- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_05` applied
 - OPA: started through Docker Compose on port `8181`
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: interpretable peer anomaly analytics
+## Milestone 5: interpretable peer anomaly analytics
 
-The next slice should:
+Delivered an advisory machine-learning layer without transferring decision authority away from
+OPA or the deterministic risk engine:
 
-1. generate a reproducible synthetic identity and entitlement cohort large enough for model training;
-2. define a versioned feature vector without protected personal characteristics;
-3. establish role and department peer cohorts with minimum-size safeguards;
-4. train an Isolation Forest baseline with a fixed seed;
-5. store model version, training-data fingerprint, features, and anomaly scores;
-6. compare the model result with deterministic peer-deviation findings;
-7. treat anomaly output as a review recommendation, never an authorization decision;
-8. expose model evidence and limitations through the API; and
-9. prove Alice is reproducibly anomalous while ordinary peers remain within the baseline.
+- deterministic 100-person synthetic Security cohort using seed `20260816`;
+- seven versioned access-behavior features with no protected personal characteristics;
+- scikit-learn 1.9 Isolation Forest with 200 trees and 5% contamination;
+- immutable model-run and per-subject result evidence in migration `20260816_05`;
+- SHA-256 training-cohort fingerprint and native model scores for reproducibility;
+- top-three absolute feature deviations from cohort means for interpretation;
+- CLI command `python -m athena.cli run-peer-anomaly --username alice`;
+- API endpoint `GET /v1/identities/{identity_id}/anomaly-assessments`; and
+- AC-6 automated evidence and explicit operational limitations.
+
+### Validation evidence
+
+- Ruff linting: passed
+- Automated Python tests: 32 passed
+- Rego policy tests: 5 passed
+- Deterministic security fixtures: 4 passed, 0 failed
+- NIST control mappings: 3 valid, 0 failed
+- Live migration `20260816_05`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- Synthetic training sample size: 100
+- Persisted results per run: 101 (100 peers plus Alice)
+- Training fingerprint: `4e6de0760f2a808c59f2a15c00c5d19632b67ae8d782cd16815ccea396a9c59b`
+- Two live Alice runs had identical fingerprint and decision score
+- Alice decision score: `-0.015415065023722807`, anomalous in both runs
+- Synthetic peer anomalies: 5 of 100, matching the configured contamination baseline
+- ORM anomaly-result mutation attempt: blocked
+- Direct PostgreSQL anomaly-result mutation attempt: blocked by trigger
+- Known upstream warning: Starlette TestClient still recommends migration from `httpx` to `httpx2`
+
+### Failure and resolution
+
+The first test run rejected initial model evidence creation because the parent model run was
+flushed before its result relationship was populated. SQLAlchemy marked the relationship as dirty,
+and the strict immutability listener blocked the apparent update. The evidence graph is now built
+in memory and committed atomically in one flush, preserving append-only semantics.
+
+During validation, a repository-wide formatter invocation also touched existing files outside the
+milestone. Those whitespace-only diffs were identified and reversed before publication; only the
+scoped anomaly changes remain.
+
+## Next work: governed cohort calibration
+
+The next slice should replace or calibrate the synthetic baseline with governed telemetry, enforce
+minimum cohort sizes and fallback cohorts, measure false-positive rates, document model lifecycle
+and approval controls, and add drift monitoring. Anomaly output must remain advisory.
 
 ## Journal update checklist
 

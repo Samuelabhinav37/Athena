@@ -23,9 +23,15 @@
       "type": "pytest",
       "reference": "tests/test_risk_analytics.py",
       "evidence": "Retained, stale, peer-deviating, and policy-failing access produces explainable risk factors."
+    },
+    {
+      "type": "pytest",
+      "reference": "tests/test_peer_anomaly.py",
+      "evidence": "A reproducible advisory peer model detects unusual entitlement profiles without protected characteristics."
     }
   ],
   "limitations": [
-    "Unused-access and peer-deviation analytics are not implemented yet."
+    "The synthetic peer cohort must be replaced or calibrated with governed production telemetry before operational use.",
+    "Anomaly classification is advisory and cannot authorize, deny, or revoke access."
   ]
 }

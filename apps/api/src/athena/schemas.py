@@ -137,3 +137,32 @@ class RiskAssessmentResponse(BaseModel):
     peer_definition: dict
     summary: dict
     findings: list[RiskFindingResponse]
+
+
+class AnomalyModelRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    algorithm: str
+    library_version: str
+    model_version: str
+    trained_at: datetime
+    random_seed: int
+    contamination: float
+    feature_schema: list[str]
+    training_fingerprint: str
+    sample_size: int
+    peer_definition: dict
+    summary: dict
+
+
+class AnomalyResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    identity_id: uuid.UUID
+    subject_key: str
+    score_samples: float
+    decision_score: float
+    is_anomaly: bool
+    features: dict
+    explanation: dict
+    run: AnomalyModelRunResponse

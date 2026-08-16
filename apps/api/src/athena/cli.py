@@ -15,6 +15,7 @@ from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
 from athena.services.identity_sync import IdentitySyncService
+from athena.services.peer_anomaly import PeerAnomalyService
 from athena.services.policy_evaluation import PolicyEvaluationService
 from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
@@ -135,6 +136,34 @@ def assess_risk(username: str) -> int:
     return 0
 
 
+def run_peer_anomaly(username: str) -> int:
+    try:
+        with get_session_factory()() as session:
+            identity = session.scalar(select(Identity).where(Identity.username == username))
+            if identity is None:
+                print(f"Peer anomaly failed: identity {username} was not found", file=sys.stderr)
+                return 1
+            result = PeerAnomalyService(session).run(identity)
+    except (SQLAlchemyError, ValueError) as error:
+        print(f"Peer anomaly failed: {error}", file=sys.stderr)
+        return 1
+    print(
+        json.dumps(
+            {
+                "run_id": str(result.run_id),
+                "result_id": str(result.result_id),
+                "is_anomaly": result.is_anomaly,
+                "decision_score": result.decision_score,
+                "training_fingerprint": result.training_fingerprint,
+                "peer_anomaly_count": result.peer_anomaly_count,
+                "advisory_only": True,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -157,6 +186,10 @@ def main() -> int:
         "assess-risk", help="Calculate an explainable access-decay assessment"
     )
     risk_parser.add_argument("--username", default="alice")
+    anomaly_parser = subcommands.add_parser(
+        "run-peer-anomaly", help="Run advisory Isolation Forest peer analysis"
+    )
+    anomaly_parser.add_argument("--username", default="alice")
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -171,6 +204,8 @@ def main() -> int:
         return apply_drift_demo()
     if arguments.command == "assess-risk":
         return assess_risk(arguments.username)
+    if arguments.command == "run-peer-anomaly":
+        return run_peer_anomaly(arguments.username)
     return 2
 
 

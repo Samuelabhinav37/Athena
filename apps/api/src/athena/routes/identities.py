@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from athena.database import get_db_session
 from athena.repositories import IdentityRepository
 from athena.schemas import (
+    AnomalyResultResponse,
     EntitlementResponse,
     GrantGovernanceResponse,
     IdentityResponse,
@@ -16,6 +17,7 @@ from athena.schemas import (
     RiskAssessmentResponse,
     RiskFindingResponse,
 )
+from athena.services.peer_anomaly import load_anomaly_results
 from athena.services.policy_evaluation import load_policy_evaluations
 from athena.services.provenance import governance_gaps, load_identity_entitlements
 from athena.services.risk_analytics import load_risk_assessments
@@ -127,3 +129,12 @@ def list_identity_risk_assessments(
             )
         )
     return responses
+
+
+@router.get("/{identity_id}/anomaly-assessments", response_model=list[AnomalyResultResponse])
+def list_identity_anomaly_assessments(
+    identity_id: uuid.UUID, session: DatabaseSession
+) -> list[AnomalyResultResponse]:
+    if IdentityRepository(session).get(identity_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
+    return list(load_anomaly_results(session, identity_id))
