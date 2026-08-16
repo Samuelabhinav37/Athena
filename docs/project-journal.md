@@ -43,8 +43,10 @@ The governing safety rule is:
 - GitHub Actions security gate with immutable action pins
 - Executable allow/deny fixtures and security evidence artifacts
 - Initial NIST AC-2, AC-5, and AC-6 continuous-control mappings
+- Immutable identity role-transition history and access observations
+- Explainable access-decay scoring with Security peer comparison
 
-**Next outcome:** Athena detects Alice's role drift and calculates an explainable access-decay score from deterministic risk factors.
+**Next outcome:** Athena establishes a reproducible entitlement-anomaly baseline and compares Alice with a meaningful synthetic peer cohort using Isolation Forest.
 
 ## Roadmap
 
@@ -55,7 +57,7 @@ The governing safety rule is:
 | 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Complete |
 | 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
 | 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Complete |
-| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Next |
+| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | In progress |
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
 
 ## Work completed
@@ -226,6 +228,29 @@ The first hosted GitHub Actions run completed successfully:
 Published commit:
 
 - `09ec648` — Add CI security gate and NIST mappings
+
+### Identity drift and access-decay analytics
+
+Added the first explainable risk-assessment path:
+
+- immutable Engineering-to-Security role-transition records;
+- append-only audit evidence containing before-and-after identity state;
+- idempotent last-use observations for each retained entitlement;
+- stable retained downstream access while the authoritative identity role changes;
+- current-department peer selection with explicit peer membership;
+- deterministic weighted factors for retained access, privilege, resource sensitivity, time since use, peer deviation, policy risk, and authentication risk;
+- normalized 0–100 entitlement scores with database range constraints;
+- low, medium, high, and critical risk levels;
+- immutable, versioned identity assessments and per-entitlement findings;
+- `python -m athena.cli apply-drift-demo`;
+- `python -m athena.cli assess-risk --username alice`; and
+- `GET /v1/identities/{identity_id}/risk-assessments`.
+
+Alice transfers to Security while three downstream entitlements remain active. Charlie is her current Security peer. None of Alice's retained permissions appear in Charlie's baseline, and Production Database Read reaches 100/100 because every factor is maximized. The identity assessment is therefore `critical`.
+
+Published commit:
+
+- `aa33d59` — Add identity drift and access-decay analytics
 
 ## Architecture decisions
 
@@ -409,6 +434,12 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 **Resolution:** The final local CI-equivalent validation checks `$LASTEXITCODE` after every native command and exits immediately on failure. GitHub Actions uses Bash's step failure behavior, where a failing command also fails the step.
 
+### Applied risk migration needed unpublished constraint refinement
+
+**Issue:** Migration `20260816_04` had already been exercised against the local database when explicit 0–100 score constraints were added. Because the migration was not yet published, the file and live schema temporarily differed.
+
+**Resolution:** Only the disposable migration-04 risk tables were rolled back. The corrected migration was reapplied, Alice's authoritative baseline was restored from Keycloak, and the drift scenario was rerun. Identities, provenance grants, policy evidence, and audit history from earlier migrations were preserved. Alembic then reported zero drift.
+
 ## Verification record
 
 ### Repository foundation
@@ -496,9 +527,9 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Deterministic fixtures: 4 passed, 0 failed
 - Required denial fixtures: 3 correctly denied
 - NIST mappings: 3 valid, 0 failed
-- AC-2 automated evidence references: 2
+- AC-2 automated evidence references: 3
 - AC-5 automated evidence references: 2
-- AC-6 automated evidence references: 3
+- AC-6 automated evidence references: 4
 - JSON control and fixture parsing: passed
 - GitHub Actions YAML parsing: passed
 - Docker Compose validation: passed
@@ -506,6 +537,28 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Generated JSON and Markdown evidence reports: passed
 - Unsafe allow-all regression test: gate failed 3 denial fixtures as required
 - Hosted GitHub Actions run `31977841305`: success
+
+### Identity drift and access decay
+
+- Ruff linting: passed
+- Automated Python tests: 29 passed
+- Four-migration offline SQL generation: passed
+- Live migration `20260816_04`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- First transfer run: 1 transition and 3 observations created
+- Second transfer run: 0 transitions and 0 observations created
+- Retained active entitlements after transfer: 3
+- Peer group: Security department, 1 peer, Charlie
+- Peer-deviating entitlements: 3
+- High-risk entitlements: 1
+- Alice overall score: 100/100, `critical`
+- Production factor values: all seven factors at 1.0
+- Risk model version: `access-decay-v1`
+- Risk API factor assertion: passed
+- ORM assessment mutation attempt: blocked
+- Direct PostgreSQL assessment mutation attempt: blocked by trigger
+- Direct PostgreSQL role-transition mutation attempt: blocked by trigger
+- CI-equivalent security gate after AC-2/AC-6 updates: passed
 
 ## Current local environment
 
@@ -515,24 +568,24 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Python environment: `.venv`
 - Docker Desktop: installed and started during Milestone 1 validation
 - Keycloak: started through Docker Compose on port `8080`
-- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_03` applied
+- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_04` applied
 - OPA: started through Docker Compose on port `8181`
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: identity drift and access-decay analytics
+## Next work: interpretable peer anomaly analytics
 
 The next slice should:
 
-1. represent Alice's role transfer from Engineering Developer to Security Analyst as an auditable event;
-2. preserve old access long enough for Athena to detect retained entitlements;
-3. define deterministic privilege, sensitivity, time-since-use, peer-deviation, policy, and authentication risk factors;
-4. calculate an explainable normalized access-decay score;
-5. establish peer groups by department and role;
-6. identify access outside Alice's current peer baseline;
-7. store versioned risk assessments and factor evidence;
-8. expose drift findings and risk factors through the API; and
-9. prove Alice's retained production and developer access produces a reproducible high-risk result.
+1. generate a reproducible synthetic identity and entitlement cohort large enough for model training;
+2. define a versioned feature vector without protected personal characteristics;
+3. establish role and department peer cohorts with minimum-size safeguards;
+4. train an Isolation Forest baseline with a fixed seed;
+5. store model version, training-data fingerprint, features, and anomaly scores;
+6. compare the model result with deterministic peer-deviation findings;
+7. treat anomaly output as a review recommendation, never an authorization decision;
+8. expose model evidence and limitations through the API; and
+9. prove Alice is reproducibly anomalous while ordinary peers remain within the baseline.
 
 ## Journal update checklist
 
