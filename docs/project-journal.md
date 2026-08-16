@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Milestone 2 — canonical identity model and persistence
+**Active milestone:** Milestone 3 — authorization provenance
 
 **Completed:**
 
@@ -35,8 +35,11 @@ The governing safety rule is:
 - Initial Alembic migration and identity read API
 - Dedicated Keycloak collector service account
 - Idempotent Keycloak-to-PostgreSQL identity synchronization
+- Canonical resources, permissions, grants, and effective entitlements
+- Ordered authorization provenance and governance-gap detection
+- Append-only audit events protected by PostgreSQL
 
-**Next outcome:** Athena models resources, entitlements, grants, provenance edges, and audit events so every effective permission can be traced to its source.
+**Next outcome:** OPA evaluates deterministic privileged-access and separation-of-duties rules against the provenance-backed access model.
 
 ## Roadmap
 
@@ -44,8 +47,8 @@ The governing safety rule is:
 |---|---|---|
 | 0. Repository foundation | Reproducible project structure, standards, and documentation | Complete |
 | 1. Controlled identity lab | Version-controlled Keycloak realm with known ground truth | Complete |
-| 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | In progress |
-| 3. Authorization provenance | Trace every effective entitlement to its source | Planned |
+| 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Complete |
+| 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
 | 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Planned |
 | 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Planned |
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
@@ -148,6 +151,28 @@ Added an end-to-end identity-source path from the controlled realm into PostgreS
 Published commit:
 
 - `3f601b0` — Add idempotent Keycloak identity ingestion
+
+### Authorization provenance foundation
+
+Added the first complete access explanation path:
+
+- canonical resources with type and sensitivity;
+- resource-scoped permissions with privileged-access classification;
+- direct identity, inherited group, and inherited role grants;
+- a database constraint requiring exactly one subject per grant;
+- requester, approver, business reason, policy, grant, expiration, and revocation fields;
+- derived effective entitlements separated from assigned grants;
+- deterministic ordered provenance edges;
+- governance-gap detection for missing justification, approval, and privileged expiration;
+- an entitlement API at `GET /v1/identities/{identity_id}/entitlements`;
+- append-only audit events protected by ORM listeners and a PostgreSQL trigger; and
+- an idempotent `python -m athena.cli seed-provenance-demo` scenario command.
+
+Alice's controlled scenario contains governed GitHub Write and Development Database Read access inherited through Developer, plus direct Production Database Read access. Production access is deliberately ungoverned because its business reason and expiration are missing.
+
+Published commit:
+
+- `fbcecec` — Add authorization provenance foundation
 
 ## Architecture decisions
 
@@ -279,6 +304,22 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 **Resolution:** Full scope was enabled only for the dedicated collector client. This includes all roles assigned to that service account in its token but grants no additional roles; the account still has only `query-groups`, `query-users`, `view-realm`, and `view-users`. After recreating the disposable realm, the collector succeeded.
 
+### Provenance model failed to import because of a namespace collision
+
+**Symptom:** Test collection and Alembic loading failed with `TypeError: 'MappedColumn' object is not callable`.
+
+**Cause:** The `ProvenanceEdge.relationship` column shadowed SQLAlchemy's imported `relationship()` function inside the class body.
+
+**Resolution:** The Python attribute became `relationship_type` while remaining mapped to the database column `relationship`. The API uses a validation alias so clients continue to receive the natural field name `relationship`.
+
+### Inline live API assertion was misparsed by PowerShell
+
+**Symptom:** The provenance seed and database counts passed, but a follow-up inline Python API assertion failed before execution with a PowerShell `ScriptBlock` parsing error.
+
+**Cause:** Nested double quotes and an f-string were not shell-safe in the PowerShell command argument.
+
+**Resolution:** The read-only assertion was rerun with a single-quoted Python program and simple string concatenation. The API assertion then passed without code changes.
+
 ## Verification record
 
 ### Repository foundation
@@ -324,6 +365,23 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Alembic model/schema drift check: no new upgrade operations
 - Failed 403 attempts wrote zero records, preserving transaction safety
 
+### Authorization provenance
+
+- Ruff linting: passed
+- Automated tests: 18 passed
+- Two-migration offline SQL generation: passed
+- Live migration `20260816_02`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- Scenario first run: 3 grants created and 3 entitlements materialized
+- Scenario second run: 0 grants created and 3 entitlements materialized
+- Stable provenance state: 3 grants, 3 entitlements, 8 ordered edges, 1 audit event
+- Live API: Production Database Read reported `ungoverned`
+- Reported gaps: `missing_business_reason`, `missing_expiration`
+- Production path: `direct_grant` → `applies_to`
+- Governed role path: `assigned_role` → `grants` → `applies_to`
+- ORM audit-event update attempt: blocked
+- Direct PostgreSQL audit-event update attempt: blocked by trigger
+
 ## Current local environment
 
 - Repository: `C:\Users\samue\Athena`
@@ -332,23 +390,23 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Python environment: `.venv`
 - Docker Desktop: installed and started during Milestone 1 validation
 - Keycloak: started through Docker Compose on port `8080`
-- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_01` applied
+- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_02` applied
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: authorization provenance foundation
+## Next work: deterministic policy enforcement
 
 The next slice should:
 
-1. define canonical resources and permissions;
-2. represent direct and inherited grants separately from effective entitlements;
-3. model ordered provenance edges from identity through group/role to permission and resource;
-4. store business justification, requester, approver, grant time, and expiration;
-5. flag privileged access missing required governance attributes;
-6. introduce append-only audit events for ingestion and state transitions;
-7. seed Alice's initial GitHub and development access;
-8. return a human-readable provenance chain through the API; and
-9. prove that an auditor can reconstruct why Alice has one selected permission.
+1. define a stable authorization-policy input contract;
+2. add Rego rules for privileged access, developer restrictions, and separation of duties;
+3. require approval, justification, and expiration for privileged grants;
+4. prohibit developer access to Payroll;
+5. require phishing-resistant MFA for production administrators;
+6. evaluate policies through OPA with explicit timeouts and fail-safe behavior;
+7. persist versioned policy evaluation results and input evidence;
+8. expose violations through the API without allowing OPA to mutate access; and
+9. prove the security gate flags Alice's ungoverned production access deterministically.
 
 ## Journal update checklist
 
