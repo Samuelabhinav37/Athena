@@ -18,6 +18,11 @@
       "type": "policy_fixture",
       "reference": "policies/fixtures/ungoverned-production-access.json",
       "evidence": "Alice's ungoverned production access is a required denial fixture."
+    },
+    {
+      "type": "pytest",
+      "reference": "tests/test_risk_analytics.py",
+      "evidence": "Retained, stale, peer-deviating, and policy-failing access produces explainable risk factors."
     }
   ],
   "limitations": [

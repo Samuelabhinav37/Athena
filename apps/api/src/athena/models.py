@@ -71,6 +71,20 @@ class PolicyDecision(StrEnum):
     ERROR = "error"
 
 
+class RiskLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class RiskFindingType(StrEnum):
+    RETAINED_ACCESS = "retained_access"
+    PEER_DEVIATION = "peer_deviation"
+    STALE_ACCESS = "stale_access"
+    POLICY_VIOLATION = "policy_violation"
+
+
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
@@ -384,6 +398,115 @@ class PolicyEvaluation(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
 
 
+class RoleTransition(Base):
+    __tablename__ = "role_transitions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identity_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("identities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_department: Mapped[str | None] = mapped_column(String(128))
+    to_department: Mapped[str | None] = mapped_column(String(128))
+    from_roles: Mapped[list] = mapped_column(json_type, nullable=False)
+    to_roles: Mapped[list] = mapped_column(json_type, nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    actor_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+    identity: Mapped[Identity] = relationship()
+
+
+class AccessObservation(Base):
+    __tablename__ = "access_observations"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_access_observation_source_external"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("effective_entitlements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_metadata: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+
+    entitlement: Mapped[EffectiveEntitlement] = relationship()
+
+
+class RiskAssessment(Base):
+    __tablename__ = "risk_assessments"
+    __table_args__ = (
+        CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_assessment_score_range"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identity_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("identities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    level: Mapped[RiskLevel] = mapped_column(
+        Enum(
+            RiskLevel,
+            name="risk_level",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+    )
+    peer_definition: Mapped[dict] = mapped_column(json_type, nullable=False)
+    summary: Mapped[dict] = mapped_column(json_type, nullable=False)
+
+    identity: Mapped[Identity] = relationship()
+    findings: Mapped[list["RiskFinding"]] = relationship(
+        back_populates="assessment",
+        cascade="all, delete-orphan",
+        order_by="RiskFinding.score.desc()",
+        lazy="selectin",
+    )
+
+
+class RiskFinding(Base):
+    __tablename__ = "risk_findings"
+    __table_args__ = (
+        CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_finding_score_range"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("risk_assessments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("effective_entitlements.id", ondelete="RESTRICT"), nullable=False
+    )
+    finding_type: Mapped[RiskFindingType] = mapped_column(
+        Enum(
+            RiskFindingType,
+            name="risk_finding_type",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+    )
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    factors: Mapped[dict] = mapped_column(json_type, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+
+    assessment: Mapped[RiskAssessment] = relationship(back_populates="findings")
+    entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
+
+
 @event.listens_for(AuditEvent, "before_update")
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
@@ -394,3 +517,15 @@ def prevent_audit_event_mutation(*_: object) -> None:
 @event.listens_for(PolicyEvaluation, "before_delete")
 def prevent_policy_evaluation_mutation(*_: object) -> None:
     raise ValueError("Policy evaluations are immutable")
+
+
+@event.listens_for(RoleTransition, "before_update")
+@event.listens_for(RoleTransition, "before_delete")
+def prevent_role_transition_mutation(*_: object) -> None:
+    raise ValueError("Role transitions are immutable")
+
+
+@event.listens_for(RiskAssessment, "before_update")
+@event.listens_for(RiskAssessment, "before_delete")
+def prevent_risk_assessment_mutation(*_: object) -> None:
+    raise ValueError("Risk assessments are immutable")

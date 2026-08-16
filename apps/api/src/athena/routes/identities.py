@@ -13,9 +13,12 @@ from athena.schemas import (
     PermissionSummary,
     PolicyEvaluationResponse,
     ProvenanceEdgeResponse,
+    RiskAssessmentResponse,
+    RiskFindingResponse,
 )
 from athena.services.policy_evaluation import load_policy_evaluations
 from athena.services.provenance import governance_gaps, load_identity_entitlements
+from athena.services.risk_analytics import load_risk_assessments
 
 router = APIRouter(prefix="/v1/identities", tags=["identities"])
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
@@ -85,3 +88,42 @@ def list_identity_policy_evaluations(
     if IdentityRepository(session).get(identity_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     return list(load_policy_evaluations(session, identity_id))
+
+
+@router.get(
+    "/{identity_id}/risk-assessments",
+    response_model=list[RiskAssessmentResponse],
+)
+def list_identity_risk_assessments(
+    identity_id: uuid.UUID, session: DatabaseSession
+) -> list[RiskAssessmentResponse]:
+    if IdentityRepository(session).get(identity_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
+    responses = []
+    for assessment in load_risk_assessments(session, identity_id):
+        responses.append(
+            RiskAssessmentResponse(
+                id=assessment.id,
+                identity_id=assessment.identity_id,
+                evaluated_at=assessment.evaluated_at,
+                model_version=assessment.model_version,
+                score=assessment.score,
+                level=assessment.level,
+                peer_definition=assessment.peer_definition,
+                summary=assessment.summary,
+                findings=[
+                    RiskFindingResponse(
+                        id=finding.id,
+                        entitlement_id=finding.entitlement_id,
+                        finding_type=finding.finding_type,
+                        score=finding.score,
+                        permission=finding.entitlement.permission.name,
+                        resource=finding.entitlement.permission.resource.name,
+                        factors=finding.factors,
+                        explanation=finding.explanation,
+                    )
+                    for finding in assessment.findings
+                ],
+            )
+        )
+    return responses

@@ -8,6 +8,7 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
 
     assert set(Base.metadata.tables) == {
         "access_grants",
+        "access_observations",
         "audit_events",
         "effective_entitlements",
         "groups",
@@ -18,5 +19,8 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
         "policy_evaluations",
         "provenance_edges",
         "resources",
+        "risk_assessments",
+        "risk_findings",
+        "role_transitions",
         "roles",
     }

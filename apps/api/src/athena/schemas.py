@@ -8,6 +8,8 @@ from athena.models import (
     IdentityType,
     PolicyDecision,
     ResourceType,
+    RiskFindingType,
+    RiskLevel,
     Sensitivity,
 )
 
@@ -112,3 +114,26 @@ class PolicyEvaluationResponse(BaseModel):
     decision: PolicyDecision
     input_snapshot: dict
     violations: list[dict]
+
+
+class RiskFindingResponse(BaseModel):
+    id: uuid.UUID
+    entitlement_id: uuid.UUID
+    finding_type: RiskFindingType
+    score: float
+    permission: str
+    resource: str
+    factors: dict
+    explanation: str
+
+
+class RiskAssessmentResponse(BaseModel):
+    id: uuid.UUID
+    identity_id: uuid.UUID
+    evaluated_at: datetime
+    model_version: str
+    score: float
+    level: RiskLevel
+    peer_definition: dict
+    summary: dict
+    findings: list[RiskFindingResponse]

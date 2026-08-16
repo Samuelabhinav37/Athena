@@ -13,8 +13,10 @@ from athena.database import get_session_factory
 from athena.models import Identity
 from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
+from athena.services.drift_scenario import DriftScenarioService
 from athena.services.identity_sync import IdentitySyncService
 from athena.services.policy_evaluation import PolicyEvaluationService
+from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
 
 
@@ -96,6 +98,43 @@ def run_security_gate(output_directory: str) -> int:
     return 0 if result.passed else 1
 
 
+def apply_drift_demo() -> int:
+    try:
+        with get_session_factory()() as session:
+            result = DriftScenarioService(session).apply()
+    except (DemoScenarioError, SQLAlchemyError, ValueError) as error:
+        print(f"Drift demo failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+def assess_risk(username: str) -> int:
+    try:
+        with get_session_factory()() as session:
+            identity = session.scalar(select(Identity).where(Identity.username == username))
+            if identity is None:
+                print(f"Risk assessment failed: identity {username} was not found", file=sys.stderr)
+                return 1
+            result = RiskAnalyticsService(session).assess(identity)
+    except (SQLAlchemyError, ValueError) as error:
+        print(f"Risk assessment failed: {error}", file=sys.stderr)
+        return 1
+    print(
+        json.dumps(
+            {
+                "assessment_id": str(result.assessment_id),
+                "score": result.score,
+                "level": result.level.value,
+                "findings": result.findings,
+                "model_version": result.model_version,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -111,6 +150,13 @@ def main() -> int:
         "security-gate", help="Run deterministic policy fixtures and control validation"
     )
     gate_parser.add_argument("--output-directory", default="artifacts/security-gate")
+    subcommands.add_parser(
+        "apply-drift-demo", help="Apply Alice's controlled Engineering-to-Security transfer"
+    )
+    risk_parser = subcommands.add_parser(
+        "assess-risk", help="Calculate an explainable access-decay assessment"
+    )
+    risk_parser.add_argument("--username", default="alice")
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -121,6 +167,10 @@ def main() -> int:
         return evaluate_policies(arguments.username)
     if arguments.command == "security-gate":
         return run_security_gate(arguments.output_directory)
+    if arguments.command == "apply-drift-demo":
+        return apply_drift_demo()
+    if arguments.command == "assess-risk":
+        return assess_risk(arguments.username)
     return 2
 
 

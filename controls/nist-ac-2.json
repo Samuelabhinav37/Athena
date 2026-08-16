@@ -13,6 +13,11 @@
       "type": "database",
       "reference": "identities.active",
       "evidence": "Normalized account state is retained for continuous evaluation."
+    },
+    {
+      "type": "pytest",
+      "reference": "tests/test_risk_analytics.py",
+      "evidence": "Role transfers are recorded immutably with before-and-after identity state."
     }
   ],
   "limitations": [
