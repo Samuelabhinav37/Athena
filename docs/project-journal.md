@@ -30,8 +30,11 @@ The governing safety rule is:
 - Local Docker Compose foundation
 - Controlled Keycloak Acme Corp identity lab
 - Automated structural validation for the seeded realm
+- Validated application settings and PostgreSQL session management
+- Canonical identity, group, and role persistence models
+- Initial Alembic migration and identity read API
 
-**Next outcome:** Athena can ingest and store normalized identities, groups, roles, entitlements, provenance, and audit events in PostgreSQL.
+**Next outcome:** Athena idempotently ingests Alice and her group and role relationships from Keycloak into the canonical PostgreSQL model.
 
 ## Roadmap
 
@@ -39,7 +42,7 @@ The governing safety rule is:
 |---|---|---|
 | 0. Repository foundation | Reproducible project structure, standards, and documentation | Complete |
 | 1. Controlled identity lab | Version-controlled Keycloak realm with known ground truth | Complete |
-| 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Next |
+| 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | In progress |
 | 3. Authorization provenance | Trace every effective entitlement to its source | Planned |
 | 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Planned |
 | 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Planned |
@@ -99,6 +102,29 @@ Docker Compose imports the realm automatically the first time Keycloak starts. T
 Published commit:
 
 - `5bf392a` — Add controlled Keycloak identity lab
+
+### Canonical identity persistence — first vertical slice
+
+Added the stable foundation that later ingestion and provenance records will use:
+
+- validated `ATHENA_` environment settings;
+- cached SQLAlchemy engine and request-scoped sessions;
+- canonical `Identity`, `Group`, and `Role` models;
+- many-to-many identity/group and identity/role relationships;
+- stable UUID primary keys and source/external-ID uniqueness constraints;
+- portable JSON metadata with PostgreSQL JSONB storage;
+- explicit human, service-account, application, workload, API-client, and agent identity types;
+- Alembic configuration and migration `20260816_01`;
+- `/ready` database readiness endpoint;
+- paginated `GET /v1/identities` endpoint;
+- `GET /v1/identities/{identity_id}` detail endpoint; and
+- isolated API and model tests using the same SQLAlchemy metadata.
+
+This slice intentionally stops before Keycloak ingestion and entitlement modeling. It establishes and verifies stable identity keys first, reducing migration churn in the relationships that will reference them.
+
+Published commit:
+
+- `6e36038` — Add canonical identity persistence layer
 
 ## Architecture decisions
 
@@ -194,6 +220,26 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 **Planned resolution:** Revisit the test client when FastAPI's supported dependency path stabilizes. Do not suppress the warning without understanding the migration path.
 
+### SQLite serialized a timestamp without a UTC suffix
+
+**Symptom:** The first identity API test failed because the in-memory SQLite test database returned a timezone-naive timestamp while PostgreSQL preserves timezone-aware values.
+
+**Resolution:** The test now verifies that a non-empty serialized observation time is present without asserting a dialect-specific suffix. PostgreSQL remains the authoritative production behavior and was validated separately.
+
+### Migration drift detected an inconsistent enum constraint
+
+**Symptom:** `alembic check` reported that the live database contained an identity-type check constraint absent from ORM metadata.
+
+**Cause:** SQLAlchemy's non-native Enum constraint behavior differed between the explicit migration and the model metadata used by Alembic comparison.
+
+**Resolution:** The allowed identity types are now represented by the same explicit, named check constraint in both the ORM model and migration. The empty development schema was rolled back and rebuilt, after which `alembic check` reported no upgrade operations.
+
+### New migration files triggered Windows line-ending warnings
+
+**Symptom:** Git warned about CRLF conversion for Alembic `.ini` and `.mako` files.
+
+**Resolution:** `.gitattributes` now explicitly keeps both file types at LF, matching the rest of Athena's source and configuration.
+
 ## Verification record
 
 ### Repository foundation
@@ -214,6 +260,17 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Admin API user check: Alice, Bob, Charlie, David, Emma, and Frank confirmed
 - Alice baseline `developer` role: confirmed
 
+### Canonical identity persistence
+
+- Ruff linting: passed
+- Automated tests: 10 passed
+- Offline migration SQL generation: passed
+- Live PostgreSQL migration `20260816_01`: applied
+- Created tables: `groups`, `identities`, `identity_groups`, `identity_roles`, and `roles`
+- Alembic model/schema drift check: no new upgrade operations
+- API database readiness result: `{"status": "ready", "database": "available"}`
+- Git whitespace validation: passed
+
 ## Current local environment
 
 - Repository: `C:\Users\samue\Athena`
@@ -222,24 +279,25 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - Python environment: `.venv`
 - Docker Desktop: installed and started during Milestone 1 validation
 - Keycloak: started through Docker Compose on port `8080`
+- PostgreSQL: started through Docker Compose on port `5432`, migration `20260816_01` applied
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: canonical identity backbone
+## Next work: Keycloak ingestion vertical slice
 
-Milestone 2 should deliver:
+The next slice should:
 
-1. application settings with validated environment configuration;
-2. SQLAlchemy models for identities, groups, roles, resources, entitlements, grants, provenance edges, and audit events;
-3. Alembic migrations;
-4. PostgreSQL connectivity and readiness checks;
-5. Pydantic API contracts;
-6. a Keycloak collector with normalized output;
-7. idempotent ingestion behavior;
-8. API endpoints for listing and inspecting identities; and
-9. integration tests against the controlled lab.
+1. add a Keycloak Admin API client with explicit timeouts and safe error handling;
+2. normalize Keycloak users, groups, roles, and attributes into source-neutral contracts;
+3. implement transactional, idempotent upserts keyed by source and external ID;
+4. synchronize group and role memberships without creating duplicates;
+5. record ingestion counts and failures without logging credentials or tokens;
+6. expose an internal/manual synchronization command or endpoint;
+7. ingest Alice from the live controlled realm;
+8. return Alice and her relationships through `GET /v1/identities/{identity_id}`; and
+9. prove that running the same synchronization twice produces the same stored state.
 
-The first vertical slice should ingest Alice from Keycloak, persist her canonical identity and group/role relationships, and return them through the API without yet calculating risk.
+Resources, entitlements, grants, provenance edges, and audit events follow after this identity-source path is reliable.
 
 ## Journal update checklist
 
