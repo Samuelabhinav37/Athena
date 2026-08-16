@@ -1,0 +1,254 @@
+# Athena project journal
+
+This document is Athena's living engineering record. Update it whenever a milestone changes the architecture, introduces a decision, encounters a meaningful problem, or produces new validation evidence.
+
+Last updated: August 16, 2026
+
+## Project objective
+
+Athena is an open-source identity-governance platform for continuous authorization provenance and compliance evidence. For every identity, the system should answer:
+
+1. Who are you?
+2. What can you access?
+3. Why can you access it?
+4. Are you still supposed to have that access?
+5. Can the decision and its history be proven to an auditor?
+
+The governing safety rule is:
+
+> The LLM explains. ML recommends. The policy engine decides. A human approves destructive actions.
+
+## Current status
+
+**Active milestone:** Milestone 2 — canonical identity model and persistence
+
+**Completed:**
+
+- GitHub repository and local working directory
+- Initial project structure and documentation
+- FastAPI health endpoint
+- Local Docker Compose foundation
+- Controlled Keycloak Acme Corp identity lab
+- Automated structural validation for the seeded realm
+
+**Next outcome:** Athena can ingest and store normalized identities, groups, roles, entitlements, provenance, and audit events in PostgreSQL.
+
+## Roadmap
+
+| Milestone | Outcome | Status |
+|---|---|---|
+| 0. Repository foundation | Reproducible project structure, standards, and documentation | Complete |
+| 1. Controlled identity lab | Version-controlled Keycloak realm with known ground truth | Complete |
+| 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Next |
+| 3. Authorization provenance | Trace every effective entitlement to its source | Planned |
+| 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Planned |
+| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Planned |
+| 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
+
+## Work completed
+
+### Repository foundation
+
+The GitHub repository is [Samuelabhinav37/Athena-](https://github.com/Samuelabhinav37/Athena-), cloned locally at `C:\Users\samue\Athena`.
+
+Added:
+
+- `README.md` with the product description, MVP, architecture, and local setup;
+- `docs/architecture.md` with trust boundaries, canonical concepts, and acceptance criteria;
+- `CONTRIBUTING.md` and `SECURITY.md`;
+- Apache 2.0 licensing;
+- `.gitignore`, `.editorconfig`, `.gitattributes`, and `.env.example`;
+- Python packaging and development dependencies in `pyproject.toml`;
+- the initial FastAPI application and `/health` endpoint;
+- PostgreSQL, Keycloak, and OPA services in `compose.yaml`; and
+- initial API, web, infrastructure, policy, and test directories.
+
+Published commits:
+
+- `3779679` — Initialize Athena project foundation
+- `ed9d88e` — Define repository line endings
+
+### Controlled identity lab
+
+Added a version-controlled Keycloak realm at `infra/keycloak/realm-athena.json`.
+
+The Acme Corp baseline contains:
+
+| Identity | Department | Initial access context |
+|---|---|---|
+| Alice | Engineering | Developer |
+| Bob | DevOps | DevOps and Cloud Admin |
+| Charlie | Security | Security Analyst |
+| David | Finance | Finance Analyst |
+| Emma | HR | HR Specialist |
+| Frank | IT | Athena Administrator, DB Admin, and Cloud Admin |
+
+The realm also includes:
+
+- departmental groups for Engineering, Finance, HR, Security, DevOps, and IT;
+- nine business and administrative roles;
+- a bearer-only `athena-api` OIDC client;
+- a public `athena-web` client using Authorization Code flow with PKCE;
+- department, manager, and group token claims;
+- temporary credentials restricted to the disposable local lab;
+- disabled public registration and password grants; and
+- Keycloak brute-force protection.
+
+Docker Compose imports the realm automatically the first time Keycloak starts. Tests verify the expected identities, departments, governance attributes, temporary credentials, and secure client configuration.
+
+Published commit:
+
+- `5bf392a` — Add controlled Keycloak identity lab
+
+## Architecture decisions
+
+### PostgreSQL is authoritative for the MVP
+
+The original architecture includes PostgreSQL and Neo4j. The MVP will use PostgreSQL as its system of record and represent provenance relationally. Neo4j will be introduced through an adapter when attack-path queries justify the additional operational complexity.
+
+### The initial role-change scenario begins from clean ground truth
+
+Alice is seeded as an Engineering developer. Her later transfer to Security will be represented as a separate event. This makes retained access detectable and keeps the seed data from silently containing the condition Athena is supposed to discover.
+
+### Deterministic systems retain authority
+
+OPA/Rego will make policy decisions. Analytics will provide explainable risk recommendations. Ollama will translate structured results into human-readable explanations. Neither ML nor the LLM may change access or override policy.
+
+### Destructive remediation remains human-controlled
+
+Version 0.1 records recommendations and reviewer decisions. It does not remove privileges without explicit, auditable human approval.
+
+### The repository uses HTTPS for Git operations
+
+The supplied SSH remote could not authenticate on this machine. The local repository therefore uses the equivalent HTTPS remote. This does not change repository ownership or content.
+
+## Problems encountered and resolutions
+
+### Downloads file reads stalled inside the restricted shell
+
+**Symptom:** Reading the original architecture plan from `Downloads` repeatedly stalled.
+
+**Cause:** The restricted execution path could not complete the read reliably.
+
+**Resolution:** The read was retried with explicit filesystem approval and completed successfully.
+
+**Lesson:** If a user-provided file outside the active repository stalls under the restricted runner, verify the exact path and request narrowly scoped read access instead of moving or duplicating the file.
+
+### GitHub CLI was unavailable
+
+**Symptom:** `gh auth status` failed because `gh` was not installed.
+
+**Resolution:** Standard Git commands were used for repository access, commits, and publishing. No GitHub CLI dependency was added to the project.
+
+### SSH authentication failed
+
+**Symptom:** The supplied remote returned `Permission denied (publickey)`.
+
+**Cause:** This machine did not have a GitHub-authorized SSH key available.
+
+**Resolution:** The repository was cloned and configured using HTTPS:
+
+```text
+https://github.com/Samuelabhinav37/Athena-.git
+```
+
+### Git author identity was missing
+
+**Symptom:** Git had no configured author name or email.
+
+**Resolution:** A repository-local identity was configured rather than modifying the global Git configuration:
+
+```text
+Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
+```
+
+### Windows line-ending warnings appeared
+
+**Symptom:** Git warned that LF content could be replaced with CRLF in the working copy.
+
+**Resolution:** `.gitattributes` now defines LF endings for source code, policies, configuration, and documentation. `.editorconfig` provides matching editor guidance.
+
+### Docker Desktop was installed but stopped
+
+**Symptom:** Docker commands could not connect to `dockerDesktopLinuxEngine`.
+
+**Resolution:** Docker Desktop was started in the background. The engine became available with server version `29.7.2`, after which Keycloak could be pulled and launched.
+
+### Pytest was not installed
+
+**Symptom:** The system Python reported `No module named pytest`.
+
+**Resolution:** A repository-local `.venv` was created and the declared `.[dev]` dependencies were installed. The virtual environment is excluded from Git.
+
+### Ruff found import-order violations
+
+**Symptom:** Linting reported two `I001` findings in test modules.
+
+**Resolution:** Ruff applied its deterministic import sorting, after which the entire lint suite passed.
+
+### FastAPI test tooling emits an upstream warning
+
+**Symptom:** Tests emit a `StarletteDeprecationWarning` explaining that the current `TestClient` integration with `httpx` is deprecated in favor of `httpx2`.
+
+**Status:** Open, non-blocking. All tests pass. This comes from the installed FastAPI/Starlette dependency stack rather than Athena code.
+
+**Planned resolution:** Revisit the test client when FastAPI's supported dependency path stabilizes. Do not suppress the warning without understanding the migration path.
+
+## Verification record
+
+### Repository foundation
+
+- Python source compilation: passed
+- Docker Compose configuration parsing: passed
+- Git whitespace validation: passed
+- Initial branch pushed and synchronized with `origin/main`
+
+### Controlled identity lab
+
+- JSON syntax validation: passed
+- Ruff linting: passed
+- Automated tests: 6 passed
+- Docker Compose configuration parsing: passed
+- Live Keycloak realm import: passed
+- OIDC discovery endpoint: `http://localhost:8080/realms/athena/.well-known/openid-configuration`
+- Admin API user check: Alice, Bob, Charlie, David, Emma, and Frank confirmed
+- Alice baseline `developer` role: confirmed
+
+## Current local environment
+
+- Repository: `C:\Users\samue\Athena`
+- Branch: `main`
+- Remote: `origin` over HTTPS
+- Python environment: `.venv`
+- Docker Desktop: installed and started during Milestone 1 validation
+- Keycloak: started through Docker Compose on port `8080`
+
+Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
+
+## Next work: canonical identity backbone
+
+Milestone 2 should deliver:
+
+1. application settings with validated environment configuration;
+2. SQLAlchemy models for identities, groups, roles, resources, entitlements, grants, provenance edges, and audit events;
+3. Alembic migrations;
+4. PostgreSQL connectivity and readiness checks;
+5. Pydantic API contracts;
+6. a Keycloak collector with normalized output;
+7. idempotent ingestion behavior;
+8. API endpoints for listing and inspecting identities; and
+9. integration tests against the controlled lab.
+
+The first vertical slice should ingest Alice from Keycloak, persist her canonical identity and group/role relationships, and return them through the API without yet calculating risk.
+
+## Journal update checklist
+
+At the end of each meaningful change:
+
+- update the current milestone and roadmap status;
+- record delivered behavior and relevant commit identifiers;
+- document architectural decisions and why they were made;
+- record meaningful failures, root causes, and resolutions;
+- add exact validation evidence;
+- list known warnings or incomplete checks; and
+- define the next smallest end-to-end outcome.

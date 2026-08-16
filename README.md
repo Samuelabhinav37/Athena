@@ -40,6 +40,8 @@ Neo4j, workload-identity governance, attack-path analysis, and autonomous low-ri
 
 See [docs/architecture.md](docs/architecture.md) for boundaries, the build sequence, and acceptance criteria.
 
+For the complete chronological record—including completed work, decisions, errors, resolutions, validation evidence, and next steps—see the [project journal](docs/project-journal.md).
+
 ## Repository layout
 
 ```text
