@@ -88,6 +88,14 @@ python -m athena.cli sync-keycloak
 
 The command uses a dedicated read-only Keycloak service account and prints only synchronization counts; it never prints tokens or credentials.
 
+Seed and materialize the controlled authorization-provenance scenario:
+
+```bash
+python -m athena.cli seed-provenance-demo
+```
+
+After starting the API, retrieve an identity's effective access and ordered provenance chains from `GET /v1/identities/{identity_id}/entitlements`.
+
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 
 ## Current status

@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from athena.models import IdentityType
+from athena.models import GrantSubjectType, IdentityType, ResourceType, Sensitivity
 
 
 class GroupSummary(BaseModel):
@@ -39,3 +39,56 @@ class IdentityResponse(BaseModel):
     observed_at: datetime
     groups: list[GroupSummary]
     roles: list[RoleSummary]
+
+
+class ResourceSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    resource_type: ResourceType
+    sensitivity: Sensitivity
+
+
+class PermissionSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    action: str
+    name: str
+    privileged: bool
+    resource: ResourceSummary
+
+
+class ProvenanceEdgeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sequence: int
+    from_type: str
+    from_id: uuid.UUID
+    from_label: str
+    relationship: str = Field(validation_alias="relationship_type")
+    to_type: str
+    to_id: uuid.UUID
+    to_label: str
+
+
+class GrantGovernanceResponse(BaseModel):
+    status: str
+    gaps: list[str]
+    business_reason: str | None
+    approved_by: str | None
+    policy_reference: str | None
+    granted_at: datetime
+    expires_at: datetime | None
+
+
+class EntitlementResponse(BaseModel):
+    id: uuid.UUID
+    identity_id: uuid.UUID
+    permission: PermissionSummary
+    grant_id: uuid.UUID
+    subject_type: GrantSubjectType
+    governance: GrantGovernanceResponse
+    provenance: list[ProvenanceEdgeResponse]
+    computed_at: datetime
