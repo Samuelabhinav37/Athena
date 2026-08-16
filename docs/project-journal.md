@@ -33,8 +33,10 @@ The governing safety rule is:
 - Validated application settings and PostgreSQL session management
 - Canonical identity, group, and role persistence models
 - Initial Alembic migration and identity read API
+- Dedicated Keycloak collector service account
+- Idempotent Keycloak-to-PostgreSQL identity synchronization
 
-**Next outcome:** Athena idempotently ingests Alice and her group and role relationships from Keycloak into the canonical PostgreSQL model.
+**Next outcome:** Athena models resources, entitlements, grants, provenance edges, and audit events so every effective permission can be traced to its source.
 
 ## Roadmap
 
@@ -125,6 +127,27 @@ This slice intentionally stops before Keycloak ingestion and entitlement modelin
 Published commit:
 
 - `6e36038` — Add canonical identity persistence layer
+
+### Keycloak ingestion vertical slice
+
+Added an end-to-end identity-source path from the controlled realm into PostgreSQL:
+
+- dedicated `athena-collector` client-credentials service account;
+- four explicit Keycloak view/query management roles and no mutation roles;
+- secret-backed collector configuration that does not expose credentials in output;
+- Keycloak Admin API client with timeouts, pagination, and safe error translation;
+- source-neutral normalized identity, group, and role contracts;
+- filtering of service-account users and Keycloak internal roles from the human baseline;
+- transactional upserts keyed by source and external ID;
+- exact replacement of current group and role relationships;
+- transaction-local membership caches that prevent duplicate shared groups and roles;
+- manual `python -m athena.cli sync-keycloak` command;
+- concise operational failures without credential or token output; and
+- automated collector, synchronization, CLI, realm, model, and API tests.
+
+Published commit:
+
+- `3f601b0` — Add idempotent Keycloak identity ingestion
 
 ## Architecture decisions
 
@@ -240,6 +263,22 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 **Resolution:** `.gitattributes` now explicitly keeps both file types at LF, matching the rest of Athena's source and configuration.
 
+### Keycloak cold start exceeded the first readiness window
+
+**Symptom:** The recreated Keycloak container did not publish the realm within the first 60 seconds.
+
+**Cause:** First-start Quarkus augmentation and Keycloak database-schema initialization took longer than the original readiness window. Logs showed normal initialization rather than an import failure.
+
+**Resolution:** The existing container was left running and checked for another bounded interval. The realm became ready without configuration changes. Future live checks allow up to 120 seconds for a cold start.
+
+### Collector service account received HTTP 403
+
+**Symptom:** Client-credentials authentication succeeded, but `GET /admin/realms/athena/users` returned `403 Forbidden`. No records were written to PostgreSQL.
+
+**Cause:** The service account had the four correct `realm-management` roles, but `fullScopeAllowed: false` kept those assigned roles out of its access token because separate role scope mappings were not configured.
+
+**Resolution:** Full scope was enabled only for the dedicated collector client. This includes all roles assigned to that service account in its token but grants no additional roles; the account still has only `query-groups`, `query-users`, `view-realm`, and `view-users`. After recreating the disposable realm, the collector succeeded.
+
 ## Verification record
 
 ### Repository foundation
@@ -271,6 +310,20 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 - API database readiness result: `{"status": "ready", "database": "available"}`
 - Git whitespace validation: passed
 
+### Keycloak identity ingestion
+
+- Ruff linting: passed
+- Automated tests: 14 passed
+- Realm JSON validation: passed
+- Dedicated service-account authentication: passed
+- First live synchronization: 6 created, 0 updated
+- Second live synchronization: 0 created, 6 updated
+- Stable database counts: 6 identities, 6 groups, 8 assigned roles
+- Stable relationship counts: 6 identity/group and 9 identity/role memberships
+- Live API assertion: Alice is human, belongs to Engineering, and holds Developer
+- Alembic model/schema drift check: no new upgrade operations
+- Failed 403 attempts wrote zero records, preserving transaction safety
+
 ## Current local environment
 
 - Repository: `C:\Users\samue\Athena`
@@ -283,21 +336,19 @@ Samuelabhinav37 <Samuelabhinav37@users.noreply.github.com>
 
 Local runtime state is not source-controlled and may differ between development sessions. Use commands such as `git status`, `docker compose ps`, and the automated test suite to confirm current state rather than relying only on this snapshot.
 
-## Next work: Keycloak ingestion vertical slice
+## Next work: authorization provenance foundation
 
 The next slice should:
 
-1. add a Keycloak Admin API client with explicit timeouts and safe error handling;
-2. normalize Keycloak users, groups, roles, and attributes into source-neutral contracts;
-3. implement transactional, idempotent upserts keyed by source and external ID;
-4. synchronize group and role memberships without creating duplicates;
-5. record ingestion counts and failures without logging credentials or tokens;
-6. expose an internal/manual synchronization command or endpoint;
-7. ingest Alice from the live controlled realm;
-8. return Alice and her relationships through `GET /v1/identities/{identity_id}`; and
-9. prove that running the same synchronization twice produces the same stored state.
-
-Resources, entitlements, grants, provenance edges, and audit events follow after this identity-source path is reliable.
+1. define canonical resources and permissions;
+2. represent direct and inherited grants separately from effective entitlements;
+3. model ordered provenance edges from identity through group/role to permission and resource;
+4. store business justification, requester, approver, grant time, and expiration;
+5. flag privileged access missing required governance attributes;
+6. introduce append-only audit events for ingestion and state transitions;
+7. seed Alice's initial GitHub and development access;
+8. return a human-readable provenance chain through the API; and
+9. prove that an auditor can reconstruct why Alice has one selected permission.
 
 ## Journal update checklist
 
