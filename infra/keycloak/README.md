@@ -15,6 +15,8 @@
 
 The shared initial user password is `AthenaLab1!` and is marked temporary. These credentials are deliberately limited to the disposable local lab and must never be reused in another environment.
 
+Athena collects identities with the dedicated `athena-collector` service account. It has only the Keycloak `realm-management` view/query roles needed to read users, groups, roles, and memberships. Full scope is enabled on this dedicated client so its assigned management roles are included in client-credentials tokens; it does not receive any unassigned management roles. Its committed secret is also local-lab-only and must be replaced outside this disposable environment.
+
 ## Start the lab
 
 From the repository root:

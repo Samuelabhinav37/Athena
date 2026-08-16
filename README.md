@@ -80,6 +80,14 @@ uvicorn athena.main:app --reload --app-dir apps/api/src
 
 Then visit `http://localhost:8000/health`, `http://localhost:8000/ready`, or the interactive API documentation at `http://localhost:8000/docs`.
 
+Synchronize the controlled Keycloak identities into PostgreSQL:
+
+```bash
+python -m athena.cli sync-keycloak
+```
+
+The command uses a dedicated read-only Keycloak service account and prints only synchronization counts; it never prints tokens or credentials.
+
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 
 ## Current status

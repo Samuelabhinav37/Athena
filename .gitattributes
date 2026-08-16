@@ -9,4 +9,5 @@
 *.json text eol=lf
 *.ini text eol=lf
 *.mako text eol=lf
+*.example text eol=lf
 *.sh text eol=lf

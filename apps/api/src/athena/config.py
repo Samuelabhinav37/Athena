@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     )
     keycloak_url: str = "http://localhost:8080"
     keycloak_realm: str = "athena"
+    keycloak_client_id: str = "athena-collector"
+    keycloak_client_secret: SecretStr = SecretStr("athena-local-collector-secret")
     opa_url: str = "http://localhost:8181"
 
 

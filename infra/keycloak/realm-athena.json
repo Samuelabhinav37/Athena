@@ -73,6 +73,20 @@
   ],
   "clients": [
     {
+      "clientId": "athena-collector",
+      "name": "Athena Identity Collector",
+      "description": "Service account used by the local Athena collector",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "secret": "athena-local-collector-secret"
+    },
+    {
       "clientId": "athena-api",
       "name": "Athena API",
       "description": "Bearer-only client for the Athena backend",
@@ -153,6 +167,19 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-athena-collector",
+      "enabled": true,
+      "serviceAccountClientId": "athena-collector",
+      "clientRoles": {
+        "realm-management": [
+          "query-groups",
+          "query-users",
+          "view-realm",
+          "view-users"
+        ]
+      }
+    },
     {
       "username": "alice",
       "enabled": true,
