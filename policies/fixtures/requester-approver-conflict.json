@@ -1,0 +1,39 @@
+{
+  "id": "requester-approver-conflict",
+  "description": "Self-approved access is blocked",
+  "input": {
+    "schema_version": "1.0",
+    "identity": {
+      "username": "alice",
+      "department": "engineering",
+      "roles": ["developer"],
+      "groups": ["/departments/engineering"]
+    },
+    "resource": {
+      "external_id": "github",
+      "name": "GitHub",
+      "type": "repository",
+      "sensitivity": "moderate"
+    },
+    "permission": {
+      "action": "write",
+      "name": "GitHub Repository Write",
+      "privileged": false
+    },
+    "governance": {
+      "gaps": [],
+      "requested_by": "alice",
+      "approved_by": "alice",
+      "business_reason": "Application development",
+      "policy_reference": "POL-IAM-DEV-001"
+    },
+    "authentication": {
+      "method": "webauthn",
+      "phishing_resistant": true
+    }
+  },
+  "expected": {
+    "allow": false,
+    "violation_codes": ["REQUESTER_APPROVER_CONFLICT"]
+  }
+}

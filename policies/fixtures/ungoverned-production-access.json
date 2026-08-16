@@ -1,0 +1,42 @@
+{
+  "id": "ungoverned-production-access",
+  "description": "Ungoverned privileged production access is blocked",
+  "input": {
+    "schema_version": "1.0",
+    "identity": {
+      "username": "alice",
+      "department": "engineering",
+      "roles": ["developer"],
+      "groups": ["/departments/engineering"]
+    },
+    "resource": {
+      "external_id": "production-database",
+      "name": "Production Database",
+      "type": "database",
+      "sensitivity": "critical"
+    },
+    "permission": {
+      "action": "read",
+      "name": "Production Database Read",
+      "privileged": true
+    },
+    "governance": {
+      "gaps": ["missing_business_reason", "missing_expiration"],
+      "requested_by": "alice",
+      "approved_by": "bob",
+      "business_reason": null,
+      "policy_reference": "POL-IAM-023"
+    },
+    "authentication": {
+      "method": "unknown",
+      "phishing_resistant": false
+    }
+  },
+  "expected": {
+    "allow": false,
+    "violation_codes": [
+      "PRIVILEGED_MFA_REQUIRED",
+      "UNGOVERNED_PRIVILEGED_ACCESS"
+    ]
+  }
+}

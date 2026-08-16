@@ -1,0 +1,39 @@
+{
+  "id": "developer-payroll-access",
+  "description": "Developer access to Payroll is blocked",
+  "input": {
+    "schema_version": "1.0",
+    "identity": {
+      "username": "alice",
+      "department": "engineering",
+      "roles": ["developer"],
+      "groups": ["/departments/engineering"]
+    },
+    "resource": {
+      "external_id": "payroll",
+      "name": "Payroll",
+      "type": "application",
+      "sensitivity": "high"
+    },
+    "permission": {
+      "action": "read",
+      "name": "Payroll Read",
+      "privileged": false
+    },
+    "governance": {
+      "gaps": [],
+      "requested_by": "alice",
+      "approved_by": "bob",
+      "business_reason": "Invalid test fixture",
+      "policy_reference": "POL-IAM-PAY-001"
+    },
+    "authentication": {
+      "method": "webauthn",
+      "phishing_resistant": true
+    }
+  },
+  "expected": {
+    "allow": false,
+    "violation_codes": ["DEVELOPER_PAYROLL_ACCESS"]
+  }
+}

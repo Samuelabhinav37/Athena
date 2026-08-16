@@ -105,6 +105,14 @@ python -m athena.cli evaluate-policies --username alice
 
 Versioned evaluation evidence is available from `GET /v1/identities/{identity_id}/policy-evaluations`.
 
+Run the same deterministic security gate used by CI:
+
+```bash
+python -m athena.cli security-gate --output-directory artifacts/security-gate
+```
+
+The gate validates expected allow/deny fixtures and NIST AC-2, AC-5, and AC-6 evidence mappings, then writes JSON and Markdown reports. See [branch protection recommendations](docs/branch-protection.md) before accepting changes directly into `main`.
+
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 
 ## Current status

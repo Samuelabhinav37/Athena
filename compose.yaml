@@ -28,7 +28,13 @@ services:
 
   opa:
     image: openpolicyagent/opa:1.4.2
-    command: ["run", "--server", "--addr=0.0.0.0:8181", "--log-level=info", "/policies"]
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --log-level=info
+      - /policies/iam
+      - /policies/system
     ports:
       - "8181:8181"
     volumes:

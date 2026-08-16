@@ -1,0 +1,22 @@
+{
+  "control_id": "NIST-SP-800-53-AC-2",
+  "title": "Account Management",
+  "status": "partial",
+  "objective": "Manage identity accounts and detect invalid lifecycle state.",
+  "automated_checks": [
+    {
+      "type": "pytest",
+      "reference": "tests/test_keycloak_realm.py",
+      "evidence": "Seed identities are enabled, attributed, and use temporary lab credentials."
+    },
+    {
+      "type": "database",
+      "reference": "identities.active",
+      "evidence": "Normalized account state is retained for continuous evaluation."
+    }
+  ],
+  "limitations": [
+    "Termination and dormancy rules are not implemented yet.",
+    "The controlled realm is test evidence, not production certification."
+  ]
+}

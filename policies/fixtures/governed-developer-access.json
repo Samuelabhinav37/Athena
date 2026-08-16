@@ -1,0 +1,39 @@
+{
+  "id": "governed-developer-access",
+  "description": "Governed developer access to a source-code repository is allowed",
+  "input": {
+    "schema_version": "1.0",
+    "identity": {
+      "username": "alice",
+      "department": "engineering",
+      "roles": ["developer"],
+      "groups": ["/departments/engineering"]
+    },
+    "resource": {
+      "external_id": "github",
+      "name": "GitHub",
+      "type": "repository",
+      "sensitivity": "moderate"
+    },
+    "permission": {
+      "action": "write",
+      "name": "GitHub Repository Write",
+      "privileged": false
+    },
+    "governance": {
+      "gaps": [],
+      "requested_by": "alice",
+      "approved_by": "bob",
+      "business_reason": "Application development",
+      "policy_reference": "POL-IAM-DEV-001"
+    },
+    "authentication": {
+      "method": "webauthn",
+      "phishing_resistant": true
+    }
+  },
+  "expected": {
+    "allow": true,
+    "violation_codes": []
+  }
+}

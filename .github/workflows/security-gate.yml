@@ -1,0 +1,99 @@
+name: Athena Security Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-gate:
+    name: security-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ATHENA_DATABASE_URL: postgresql+psycopg://athena:athena@localhost:5432/athena
+      ATHENA_POLICY_DIRECTORY: policies
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: athena
+          POSTGRES_USER: athena
+          POSTGRES_PASSWORD: athena
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U athena -d athena"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Lint Python
+        run: ruff check .
+
+      - name: Run Python tests
+        run: pytest -q
+
+      - name: Validate Compose
+        run: docker compose config --quiet
+
+      - name: Apply and check migrations
+        run: |
+          alembic upgrade head
+          alembic check
+
+      - name: Test Rego policies
+        run: docker compose run --rm opa test /policies/iam /policies/system -v
+
+      - name: Start OPA
+        run: |
+          docker compose up -d opa
+          for attempt in {1..20}; do
+            if curl --fail --silent http://localhost:8181/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs opa
+          exit 1
+
+      - name: Run deterministic security gate
+        run: python -m athena.cli security-gate --output-directory artifacts/security-gate
+
+      - name: Add gate report to job summary
+        if: always()
+        run: |
+          if test -f artifacts/security-gate/security-gate-report.md; then
+            cat artifacts/security-gate/security-gate-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload security-gate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: athena-security-gate-${{ github.run_id }}
+          path: artifacts/security-gate/
+          if-no-files-found: warn
+          retention-days: 30

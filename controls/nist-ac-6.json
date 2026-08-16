@@ -1,0 +1,26 @@
+{
+  "control_id": "NIST-SP-800-53-AC-6",
+  "title": "Least Privilege",
+  "status": "partial",
+  "objective": "Detect excessive, ungoverned, or role-inappropriate access.",
+  "automated_checks": [
+    {
+      "type": "rego_rule",
+      "reference": "privileged_access_requires_governance",
+      "evidence": "Privileged grants missing required lineage are denied."
+    },
+    {
+      "type": "rego_rule",
+      "reference": "developers_cannot_access_payroll",
+      "evidence": "Developer access to Payroll is denied."
+    },
+    {
+      "type": "policy_fixture",
+      "reference": "policies/fixtures/ungoverned-production-access.json",
+      "evidence": "Alice's ungoverned production access is a required denial fixture."
+    }
+  ],
+  "limitations": [
+    "Unused-access and peer-deviation analytics are not implemented yet."
+  ]
+}

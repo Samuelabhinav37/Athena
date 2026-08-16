@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,10 +11,11 @@ from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollecto
 from athena.config import get_settings
 from athena.database import get_session_factory
 from athena.models import Identity
-from athena.policy.opa import OpaClient
+from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.identity_sync import IdentitySyncService
 from athena.services.policy_evaluation import PolicyEvaluationService
+from athena.services.security_gate import SecurityGateError, SecurityGateService
 
 
 def sync_keycloak() -> int:
@@ -63,6 +65,37 @@ def evaluate_policies(username: str) -> int:
     return 0 if result.errors == 0 else 1
 
 
+def run_security_gate(output_directory: str) -> int:
+    settings = get_settings()
+    try:
+        with OpaClient(settings.opa_url) as engine:
+            result = SecurityGateService(
+                engine=engine,
+                policy_directory=settings.policy_directory,
+                control_directory=Path("controls"),
+                output_directory=Path(output_directory),
+            ).run()
+    except (OpaEvaluationError, OSError, SecurityGateError, ValueError) as error:
+        print(f"Security gate failed: {error}", file=sys.stderr)
+        return 1
+    print(
+        json.dumps(
+            {
+                "status": "pass" if result.passed else "fail",
+                "fixtures": result.fixture_count,
+                "fixture_failures": result.fixture_failures,
+                "controls": result.control_count,
+                "control_failures": result.control_failures,
+                "policy_version": result.policy_version,
+                "report_json": str(result.report_json),
+                "report_markdown": str(result.report_markdown),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if result.passed else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -74,6 +107,10 @@ def main() -> int:
         "evaluate-policies", help="Evaluate active entitlements through OPA"
     )
     evaluate_parser.add_argument("--username", default="alice")
+    gate_parser = subcommands.add_parser(
+        "security-gate", help="Run deterministic policy fixtures and control validation"
+    )
+    gate_parser.add_argument("--output-directory", default="artifacts/security-gate")
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -82,6 +119,8 @@ def main() -> int:
         return seed_provenance_demo()
     if arguments.command == "evaluate-policies":
         return evaluate_policies(arguments.username)
+    if arguments.command == "security-gate":
+        return run_security_gate(arguments.output_directory)
     return 2
 
 

@@ -1,0 +1,21 @@
+{
+  "control_id": "NIST-SP-800-53-AC-5",
+  "title": "Separation of Duties",
+  "status": "partial",
+  "objective": "Prevent conflicting request and approval responsibilities.",
+  "automated_checks": [
+    {
+      "type": "rego_rule",
+      "reference": "requester_cannot_approve_own_access",
+      "evidence": "Self-approved access produces REQUESTER_APPROVER_CONFLICT."
+    },
+    {
+      "type": "policy_fixture",
+      "reference": "policies/fixtures/requester-approver-conflict.json",
+      "evidence": "The deterministic denial fixture is executed by the security gate."
+    }
+  ],
+  "limitations": [
+    "Broader toxic combinations and finance creator/approver roles are planned."
+  ]
+}
