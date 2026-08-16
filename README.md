@@ -65,6 +65,8 @@ Start the controlled identity infrastructure:
 docker compose up -d postgres keycloak opa
 ```
 
+The version-controlled Acme Corp realm is imported automatically on first start. See [infra/keycloak/README.md](infra/keycloak/README.md) for seeded identities, local credentials, and reset behavior.
+
 Create a Python environment and run the API:
 
 ```bash

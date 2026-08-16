@@ -17,12 +17,14 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-change-me}
     ports:
       - "8080:8080"
+    volumes:
+      - ./infra/keycloak/realm-athena.json:/opt/keycloak/data/import/realm-athena.json:ro
 
   opa:
     image: openpolicyagent/opa:1.4.2

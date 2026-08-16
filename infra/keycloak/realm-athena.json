@@ -1,0 +1,270 @@
+{
+  "realm": "athena",
+  "displayName": "Athena — Acme Corp Identity Lab",
+  "enabled": true,
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "roles": {
+    "realm": [
+      {
+        "name": "developer",
+        "description": "Application developer"
+      },
+      {
+        "name": "senior-developer",
+        "description": "Senior application developer"
+      },
+      {
+        "name": "devops",
+        "description": "Development operations engineer"
+      },
+      {
+        "name": "security-analyst",
+        "description": "Security operations analyst"
+      },
+      {
+        "name": "finance-analyst",
+        "description": "Finance analyst"
+      },
+      {
+        "name": "hr-specialist",
+        "description": "Human resources specialist"
+      },
+      {
+        "name": "db-admin",
+        "description": "Database administrator"
+      },
+      {
+        "name": "cloud-admin",
+        "description": "Cloud administrator"
+      },
+      {
+        "name": "athena-administrator",
+        "description": "Administrator of the controlled identity lab"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "departments",
+      "subGroups": [
+        { "name": "engineering" },
+        { "name": "finance" },
+        { "name": "hr" },
+        { "name": "security" },
+        { "name": "devops" },
+        { "name": "it" }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "athena-api",
+      "name": "Athena API",
+      "description": "Bearer-only client for the Athena backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "athena-web",
+      "name": "Athena Web",
+      "description": "Public OIDC client for the local Athena dashboard",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "manager",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "manager",
+            "claim.name": "manager",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Johnson",
+      "email": "alice@acme.test",
+      "attributes": {
+        "department": ["engineering"],
+        "job_title": ["Developer"],
+        "manager": ["bob"],
+        "employment_status": ["active"]
+      },
+      "groups": ["/departments/engineering"],
+      "realmRoles": ["developer"],
+      "credentials": [
+        { "type": "password", "value": "AthenaLab1!", "temporary": true }
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Martinez",
+      "email": "bob@acme.test",
+      "attributes": {
+        "department": ["devops"],
+        "job_title": ["DevOps Engineer"],
+        "manager": ["frank"],
+        "employment_status": ["active"]
+      },
+      "groups": ["/departments/devops"],
+      "realmRoles": ["devops", "cloud-admin"],
+      "credentials": [
+        { "type": "password", "value": "AthenaLab1!", "temporary": true }
+      ]
+    },
+    {
+      "username": "charlie",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Charlie",
+      "lastName": "Kim",
+      "email": "charlie@acme.test",
+      "attributes": {
+        "department": ["security"],
+        "job_title": ["Security Analyst"],
+        "manager": ["frank"],
+        "employment_status": ["active"]
+      },
+      "groups": ["/departments/security"],
+      "realmRoles": ["security-analyst"],
+      "credentials": [
+        { "type": "password", "value": "AthenaLab1!", "temporary": true }
+      ]
+    },
+    {
+      "username": "david",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "David",
+      "lastName": "Patel",
+      "email": "david@acme.test",
+      "attributes": {
+        "department": ["finance"],
+        "job_title": ["Finance Analyst"],
+        "manager": ["frank"],
+        "employment_status": ["active"]
+      },
+      "groups": ["/departments/finance"],
+      "realmRoles": ["finance-analyst"],
+      "credentials": [
+        { "type": "password", "value": "AthenaLab1!", "temporary": true }
+      ]
+    },
+    {
+      "username": "emma",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Emma",
+      "lastName": "Wilson",
+      "email": "emma@acme.test",
+      "attributes": {
+        "department": ["hr"],
+        "job_title": ["HR Specialist"],
+        "manager": ["frank"],
+        "employment_status": ["active"]
+      },
+      "groups": ["/departments/hr"],
+      "realmRoles": ["hr-specialist"],
+      "credentials": [
+        { "type": "password", "value": "AthenaLab1!", "temporary": true }
+      ]
+    },
+    {
+      "username": "frank",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Frank",
+      "lastName": "Anderson",
+      "email": "frank@acme.test",
+      "attributes": {
+        "department": ["it"],
+        "job_title": ["Administrator"],
+        "employment_status": ["active"]
+      },
+      "groups": ["/departments/it"],
+      "realmRoles": ["athena-administrator", "db-admin", "cloud-admin"],
+      "credentials": [
+        { "type": "password", "value": "AthenaLab1!", "temporary": true }
+      ]
+    }
+  ]
+}

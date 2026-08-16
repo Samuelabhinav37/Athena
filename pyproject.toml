@@ -27,6 +27,7 @@ packages = ["apps/api/src/athena"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["apps/api/src"]
 
 [tool.ruff]
 line-length = 100
