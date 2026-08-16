@@ -55,35 +55,42 @@ class ProvenanceService:
             ).unique()
         )
 
-        old_entitlement_ids = list(
-            self.session.scalars(
-                select(EffectiveEntitlement.id).where(
+        existing = {
+            entitlement.grant_id: entitlement
+            for entitlement in self.session.scalars(
+                select(EffectiveEntitlement).where(
                     EffectiveEntitlement.identity_id == identity.id
                 )
             )
-        )
-        if old_entitlement_ids:
-            self.session.execute(
-                delete(ProvenanceEdge).where(
-                    ProvenanceEdge.entitlement_id.in_(old_entitlement_ids)
-                )
-            )
-            self.session.execute(
-                delete(EffectiveEntitlement).where(
-                    EffectiveEntitlement.id.in_(old_entitlement_ids)
-                )
-            )
+        }
+        for entitlement in existing.values():
+            entitlement.active = False
+            entitlement.deactivated_at = now
 
         entitlements = []
         for grant in grants:
-            entitlement = EffectiveEntitlement(
-                identity_id=identity.id,
-                permission_id=grant.permission_id,
-                grant_id=grant.id,
-            )
+            entitlement = existing.get(grant.id)
+            if entitlement is None:
+                entitlement = EffectiveEntitlement(
+                    identity_id=identity.id,
+                    permission_id=grant.permission_id,
+                    grant_id=grant.id,
+                )
+                self.session.add(entitlement)
+                self.session.flush()
+            else:
+                self.session.execute(
+                    delete(ProvenanceEdge).where(
+                        ProvenanceEdge.entitlement_id == entitlement.id
+                    )
+                )
+            entitlement.permission_id = grant.permission_id
+            entitlement.computed_at = now
+            entitlement.active = True
+            entitlement.deactivated_at = None
             entitlement.provenance_edges = self._edges(identity, grant)
-            self.session.add(entitlement)
             entitlements.append(entitlement)
+
         self.session.flush()
         return entitlements
 
@@ -163,6 +170,7 @@ def load_identity_entitlements(
                 selectinload(EffectiveEntitlement.grant).selectinload(AccessGrant.approved_by),
             )
             .where(EffectiveEntitlement.identity_id == identity_id)
+            .where(EffectiveEntitlement.active.is_(True))
             .order_by(EffectiveEntitlement.computed_at, EffectiveEntitlement.id)
         ).unique()
     )

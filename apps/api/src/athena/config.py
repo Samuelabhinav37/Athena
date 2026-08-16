@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "athena-collector"
     keycloak_client_secret: SecretStr = SecretStr("athena-local-collector-secret")
     opa_url: str = "http://localhost:8181"
+    policy_directory: Path = Path("policies")
 
 
 @lru_cache

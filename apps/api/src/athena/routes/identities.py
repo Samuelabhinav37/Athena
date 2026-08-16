@@ -11,8 +11,10 @@ from athena.schemas import (
     GrantGovernanceResponse,
     IdentityResponse,
     PermissionSummary,
+    PolicyEvaluationResponse,
     ProvenanceEdgeResponse,
 )
+from athena.services.policy_evaluation import load_policy_evaluations
 from athena.services.provenance import governance_gaps, load_identity_entitlements
 
 router = APIRouter(prefix="/v1/identities", tags=["identities"])
@@ -71,3 +73,15 @@ def list_identity_entitlements(
             )
         )
     return responses
+
+
+@router.get(
+    "/{identity_id}/policy-evaluations",
+    response_model=list[PolicyEvaluationResponse],
+)
+def list_identity_policy_evaluations(
+    identity_id: uuid.UUID, session: DatabaseSession
+) -> list[PolicyEvaluationResponse]:
+    if IdentityRepository(session).get(identity_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
+    return list(load_policy_evaluations(session, identity_id))

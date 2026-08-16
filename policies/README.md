@@ -10,3 +10,11 @@ Planned namespaces:
 - `grc` for machine-readable control mappings.
 
 Policy changes must be reviewed and tested before deployment.
+
+Run the deterministic policy tests with:
+
+```bash
+docker compose run --rm opa test /policies -v
+```
+
+`iam/authorization.rego` evaluates one effective entitlement at a time. Its output contains only an `allow` boolean and structured violations. OPA never receives remediation credentials and cannot modify access.

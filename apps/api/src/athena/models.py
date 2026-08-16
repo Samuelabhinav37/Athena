@@ -65,6 +65,12 @@ class GrantSubjectType(StrEnum):
     ROLE = "role"
 
 
+class PolicyDecision(StrEnum):
+    PASS = "pass"
+    FAIL = "fail"
+    ERROR = "error"
+
+
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
@@ -289,6 +295,8 @@ class EffectiveEntitlement(Base):
         Uuid, ForeignKey("access_grants.id", ondelete="CASCADE"), nullable=False
     )
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     identity: Mapped[Identity] = relationship()
     permission: Mapped[Permission] = relationship(lazy="joined")
@@ -345,7 +353,44 @@ class AuditEvent(Base):
     model_version: Mapped[str | None] = mapped_column(String(255))
 
 
+class PolicyEvaluation(Base):
+    __tablename__ = "policy_evaluations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("effective_entitlements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    engine: Mapped[str] = mapped_column(String(64), nullable=False, default="opa")
+    policy_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    decision: Mapped[PolicyDecision] = mapped_column(
+        Enum(
+            PolicyDecision,
+            name="policy_decision",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+    )
+    input_snapshot: Mapped[dict] = mapped_column(json_type, nullable=False)
+    violations: Mapped[list] = mapped_column(json_type, nullable=False, default=list)
+
+    entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
+
+
 @event.listens_for(AuditEvent, "before_update")
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
     raise ValueError("Audit events are append-only")
+
+
+@event.listens_for(PolicyEvaluation, "before_update")
+@event.listens_for(PolicyEvaluation, "before_delete")
+def prevent_policy_evaluation_mutation(*_: object) -> None:
+    raise ValueError("Policy evaluations are immutable")

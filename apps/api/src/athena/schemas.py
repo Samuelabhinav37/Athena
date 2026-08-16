@@ -3,7 +3,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from athena.models import GrantSubjectType, IdentityType, ResourceType, Sensitivity
+from athena.models import (
+    GrantSubjectType,
+    IdentityType,
+    PolicyDecision,
+    ResourceType,
+    Sensitivity,
+)
 
 
 class GroupSummary(BaseModel):
@@ -92,3 +98,17 @@ class EntitlementResponse(BaseModel):
     governance: GrantGovernanceResponse
     provenance: list[ProvenanceEdgeResponse]
     computed_at: datetime
+
+
+class PolicyEvaluationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entitlement_id: uuid.UUID
+    evaluated_at: datetime
+    engine: str
+    policy_path: str
+    policy_version: str
+    decision: PolicyDecision
+    input_snapshot: dict
+    violations: list[dict]
