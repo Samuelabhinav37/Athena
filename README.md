@@ -121,6 +121,7 @@ python -m athena.cli assess-risk --username alice
 python -m athena.cli run-peer-anomaly --username alice
 python -m athena.cli open-review --username alice --actor athena-risk-engine --due-days 7
 python -m athena.cli monitor-once --username alice --schedule-key manual:demo
+python -m athena.cli sync-github
 ```
 
 Versioned assessment factors and retained-access findings are available from `GET /v1/identities/{identity_id}/risk-assessments`.
@@ -130,6 +131,8 @@ The advisory peer model trains a fixed-seed Isolation Forest using governed coho
 Human remediation cases are available under `/v1/reviews`. Opening, assignment, and decisions are preserved as append-only events. Decisions include `retain`, `revoke`, `extend`, and `exception`. Destructive decisions remain `pending` and do not change entitlements until a separately authorized connector executor is implemented.
 
 Continuous monitoring composes synchronization, provenance, policy evaluation, deterministic risk, peer anomaly analysis, and review creation into one durable run. A unique schedule key makes completed slots idempotent, failed slots retain immutable step evidence for retry, and `/v1/monitoring/runs` exposes run history. `monitor-loop` provides a local fixed-interval scheduler; production schedulers can invoke `monitor-once` with their own stable slot keys.
+
+The read-only GitHub connector collects organization members, teams, team membership, repositories, and GitHub-calculated effective repository permissions. Configure `ATHENA_GITHUB_ORG` and a least-privilege `ATHENA_GITHUB_TOKEN`; never commit the token. Endpoint ETags and cached snapshots support conditional requests, while a content fingerprint skips unchanged database writes. Connector status is available at `GET /v1/connectors` without exposing cached member or permission payloads. GitHub's calculated permission does not identify the exact contributing team, organization, or enterprise grant, so Athena records `reported_effective_permission` and marks that lineage limitation instead of claiming a direct grant.
 
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 

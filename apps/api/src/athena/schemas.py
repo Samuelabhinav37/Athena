@@ -247,3 +247,12 @@ class MonitoringRunResponse(BaseModel):
     error: str | None
     summary: dict
     steps: list[MonitoringStepResponse]
+
+
+class ConnectorCheckpointResponse(BaseModel):
+    id: uuid.UUID
+    connector: str
+    scope: str
+    observed_at: datetime
+    fingerprint: str
+    cached_endpoints: int

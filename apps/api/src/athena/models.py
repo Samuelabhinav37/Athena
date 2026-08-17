@@ -304,6 +304,7 @@ class AccessGrant(TimestampMixin, Base):
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_metadata: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
 
     permission: Mapped[Permission] = relationship(back_populates="grants", lazy="joined")
     identity: Mapped[Identity | None] = relationship(foreign_keys=[identity_id])
@@ -695,6 +696,18 @@ class MonitoringStep(Base):
     error: Mapped[str | None] = mapped_column(Text)
 
     run: Mapped[MonitoringRun] = relationship(back_populates="steps")
+
+
+class ConnectorCheckpoint(Base):
+    __tablename__ = "connector_checkpoints"
+    __table_args__ = (UniqueConstraint("connector", "scope", name="uq_connector_checkpoint"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    connector: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope: Mapped[str] = mapped_column(String(255), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    endpoint_cache: Mapped[dict] = mapped_column(json_type, nullable=False)
 
 
 @event.listens_for(AuditEvent, "before_update")

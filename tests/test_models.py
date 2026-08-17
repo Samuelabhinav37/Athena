@@ -12,6 +12,7 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
         "access_grants",
         "access_observations",
         "audit_events",
+        "connector_checkpoints",
         "effective_entitlements",
         "groups",
         "identities",

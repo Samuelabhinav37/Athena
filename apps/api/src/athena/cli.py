@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from athena.collectors.github import GitHubCollectionError, GitHubCollector
 from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollector
 from athena.config import get_settings
 from athena.database import get_session_factory
@@ -17,6 +18,7 @@ from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
+from athena.services.github_sync import GitHubSyncService
 from athena.services.identity_sync import IdentitySyncService
 from athena.services.monitoring import MonitoringError, MonitoringService
 from athena.services.peer_anomaly import PeerAnomalyService
@@ -36,6 +38,23 @@ def sync_keycloak() -> int:
             result = IdentitySyncService(session).sync(records)
     except (KeycloakCollectionError, SQLAlchemyError) as error:
         print(f"Keycloak synchronization failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(asdict(result), sort_keys=True))
+    return 0
+
+
+def sync_github() -> int:
+    try:
+        settings = get_settings()
+        with get_session_factory()() as session:
+            service = GitHubSyncService(session)
+            checkpoint = service.checkpoint(settings.github_org)
+            cache = checkpoint.endpoint_cache if checkpoint else None
+            with GitHubCollector(settings) as collector:
+                snapshot = collector.collect(cache)
+            result = service.sync(snapshot)
+    except (GitHubCollectionError, SQLAlchemyError, ValueError) as error:
+        print(f"GitHub synchronization failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(asdict(result), sort_keys=True))
     return 0
@@ -244,6 +263,13 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
             def synchronize() -> dict:
                 return asdict(IdentitySyncService(session).sync(collector.collect()))
 
+            def synchronize_github() -> dict:
+                service = GitHubSyncService(session)
+                checkpoint = service.checkpoint(settings.github_org)
+                cache = checkpoint.endpoint_cache if checkpoint else None
+                with GitHubCollector(settings) as github:
+                    return asdict(service.sync(github.collect(cache)))
+
             def provenance() -> dict:
                 entitlements = ProvenanceService(session).materialize_identity(identity())
                 session.commit()
@@ -280,12 +306,13 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
 
             operations = [
                 ("identity_sync", synchronize),
-                ("provenance", provenance),
-                ("policy_evaluation", policies),
-                ("risk_assessment", risk),
-                ("peer_anomaly", anomaly),
-                ("review", review),
             ]
+            if settings.github_org and settings.github_token.get_secret_value():
+                operations.append(("github_sync", synchronize_github))
+            operations.extend([
+                ("provenance", provenance), ("policy_evaluation", policies),
+                ("risk_assessment", risk), ("peer_anomaly", anomaly), ("review", review),
+            ])
             result = MonitoringService(session).run(schedule_key, requested_by, operations)
     except (
         KeycloakCollectionError,
@@ -326,6 +353,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("sync-keycloak", help="Synchronize identities from Keycloak")
+    subcommands.add_parser(
+        "sync-github", help="Synchronize GitHub organization repository permissions"
+    )
     subcommands.add_parser(
         "seed-provenance-demo", help="Seed and materialize Alice's authorization scenario"
     )
@@ -381,6 +411,8 @@ def main() -> int:
 
     if arguments.command == "sync-keycloak":
         return sync_keycloak()
+    if arguments.command == "sync-github":
+        return sync_github()
     if arguments.command == "seed-provenance-demo":
         return seed_provenance_demo()
     if arguments.command == "evaluate-policies":

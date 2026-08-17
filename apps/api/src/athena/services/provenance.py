@@ -100,13 +100,18 @@ class ProvenanceService:
         resource = permission.resource
         edges = []
         if grant.subject_type == GrantSubjectType.IDENTITY:
+            relationship = (
+                "reported_effective_permission"
+                if grant.source_metadata.get("permission_source") == "calculated"
+                else "direct_grant"
+            )
             edges.append(
                 ProvenanceEdge(
                     sequence=0,
                     from_type="identity",
                     from_id=identity.id,
                     from_label=identity.display_name,
-                    relationship_type="direct_grant",
+                    relationship_type=relationship,
                     to_type="permission",
                     to_id=permission.id,
                     to_label=permission.name,

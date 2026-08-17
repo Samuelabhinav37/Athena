@@ -763,11 +763,68 @@ The first live SQL tamper probe had malformed JSON quoting and failed before rea
 It was not counted as evidence. A valid update against the text error column was then rejected by
 the monitoring-step immutability trigger.
 
-## Next work: additional identity and access connectors
+## Milestone 9: GitHub authorization connector
 
-Add the first external authorization connector after Keycloak, beginning with GitHub organization
-membership and repository permissions. Normalize it into Athena's canonical identities, groups,
-roles, grants, and provenance while preserving incremental sync and source evidence.
+Delivered Athena's first authorization connector after Keycloak:
+
+- read-only, versioned GitHub REST requests with bearer-token authentication;
+- organization member, team, team-member, repository, and calculated permission collection;
+- pagination support at the documented 100-item page size;
+- per-endpoint ETag reuse with cached payloads for `304 Not Modified` responses;
+- canonical GitHub identities, organization/team groups, repository resources, permissions, grants,
+  entitlements, and provenance;
+- stable GitHub numeric IDs as external identifiers;
+- privileged classification for repository `admin` and `maintain` roles;
+- revocation and entitlement deactivation when permissions disappear;
+- connector checkpoints containing endpoint cache, observation time, and content fingerprint;
+- unchanged-snapshot detection that performs zero grant writes;
+- optional GitHub synchronization inside continuous monitoring when configured;
+- `sync-github` CLI command and sanitized `GET /v1/connectors` status API; and
+- migration `20260816_08` for checkpoint storage and grant source metadata.
+
+### Provenance decision
+
+GitHub's calculated-permission endpoint returns the highest effective repository role across direct,
+team, organization, and enterprise sources, but not the exact contributing lineage. Athena records
+`reported_effective_permission`, `lineage_complete=false`, and the limitation text rather than
+misrepresenting the result as a direct grant.
+
+### Validation evidence
+
+- Focused connector/schema tests: 5 passed
+- Full automated Python suite: 47 passed
+- Ruff linting: passed
+- Rego policy tests: 5 passed
+- Deterministic security fixtures: 4 passed, 0 failed
+- NIST control mappings: 3 valid, 0 failed
+- Collector authorization and API-version headers: passed
+- Organization team membership normalization: passed
+- Endpoint ETag/304 cached-payload reuse: passed
+- Multi-page endpoints are fully refetched so a first-page ETag cannot hide later-page changes
+- Canonical permission ingestion and provenance: passed
+- Missing-permission revocation and entitlement deactivation: passed
+- Connector status API omits cached payload content: passed
+- Live migration `20260816_08`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- First live deterministic snapshot: 1 identity, 1 private repository, 1 admin permission,
+  1 privileged grant and entitlement
+- Identical second snapshot: unchanged, zero grant writes
+- Live provenance relationship: `reported_effective_permission`
+- Live governance state: ungoverned because upstream approval and justification are unavailable
+
+### Known limitations
+
+- No production GitHub token was supplied, so external collection was verified with deterministic
+  HTTP mocks rather than the user's organization.
+- The effective-permission endpoint scales with member × repository combinations; larger
+  organizations will need GraphQL batching, audit-log enrichment, or another optimized strategy.
+- Fine-grained source lineage remains incomplete until team/repository grant sources are correlated.
+
+## Next work: additional cloud authorization connector
+
+Add AWS IAM inventory next: users, roles, policies, trust relationships, access-key age, and effective
+permissions, with read-only credentials, pagination, incremental checkpoints, and explicit handling
+of indirect role assumption.
 
 ## Journal update checklist
 

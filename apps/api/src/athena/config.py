@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     keycloak_client_secret: SecretStr = SecretStr("athena-local-collector-secret")
     opa_url: str = "http://localhost:8181"
     policy_directory: Path = Path("policies")
+    github_api_url: str = "https://api.github.com"
+    github_api_version: str = "2026-03-10"
+    github_org: str = ""
+    github_token: SecretStr = SecretStr("")
 
 
 @lru_cache
