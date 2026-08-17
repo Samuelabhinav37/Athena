@@ -68,7 +68,8 @@ Every effective entitlement must identify its source. Approval, business justifi
 6. Peer analytics and explainable access-decay scoring
 7. NIST AC-2, AC-5, and AC-6 evidence
 8. Local LLM explanations
-9. React dashboard and complete demonstration
+9. React dashboard with Keycloak PKCE authentication and protected evidence views
+10. Evidence-grounded explanations and complete demonstration
 
 ## MVP acceptance criteria
 

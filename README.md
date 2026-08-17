@@ -255,7 +255,7 @@ Athena treats evidence as a product feature, not an afterthought.
 ```text
 Athena/
 ├── apps/api/              FastAPI backend, collectors, services, and CLI
-├── apps/web/              React dashboard workspace (planned)
+├── apps/web/              Authenticated React evidence dashboard
 ├── controls/              Machine-readable NIST control mappings
 ├── docs/                  Architecture, decisions, and project journal
 ├── infra/keycloak/        Reproducible Acme Corp identity lab
@@ -280,7 +280,7 @@ Athena/
 - [x] Athena OIDC token validation and role-based API authorization
 - [x] Authorized remediation execution framework
 - [ ] GitHub and AWS write adapters for approved remediation
-- [ ] React identity, risk, review, and audit dashboard
+- [x] React identity, risk, review, and audit dashboard
 - [ ] Local Ollama explanations
 - [ ] Neo4j identity attack-path analysis
 
