@@ -668,11 +668,54 @@ Version 0.1 accepts actor and owner identifiers from trusted API/CLI callers bec
 and role-based API authorization are not implemented yet. Production use requires OIDC-authenticated
 actors, authorization policy, and separation-of-duties checks before decisions are accepted.
 
-## Next work: governed cohort calibration
+## Milestone 7: governed cohort calibration
 
-Replace or calibrate the synthetic baseline with governed telemetry, enforce minimum cohort sizes
-and fallback cohorts, measure false-positive rates, document model lifecycle and approval controls,
-and add drift monitoring. Anomaly output must remain advisory.
+Upgraded the advisory model to `peer-isolation-forest-v2` with governed cohort policy
+`governed-cohort-v1`:
+
+- consumes the latest deterministic risk features for real assessed peers;
+- excludes the evaluated identity from training;
+- selects department-and-role, department, then organization cohorts;
+- requires at least 20 eligible identities before using a real cohort;
+- falls back to the deterministic synthetic Security cohort with an explicit reason;
+- records candidate counts, hierarchy, selected source, and policy version;
+- distinguishes peer alert rate from reviewed false-positive rate;
+- labels human `retain` and `exception` outcomes as false positives for calibration;
+- records feature means and normalized feature drift against the prior comparable run;
+- flags drift when maximum feature shift reaches 0.25; and
+- preserves all calibration evidence inside the existing immutable model-run record.
+
+### Validation evidence
+
+- Focused calibration tests: 6 passed
+- Full automated Python suite: 39 passed
+- Ruff linting: passed
+- Rego policy tests: 5 passed
+- Deterministic security fixtures: 4 passed, 0 failed
+- NIST control mappings: 3 valid, 0 failed
+- Real cohort path at configured test threshold: passed with Charlie selected
+- Minimum-size fallback path: passed
+- Human-labeled false-positive calculation: passed
+- Stable-distribution comparison: passed with maximum shift 0.0
+- Shifted-distribution detection: passed above the 0.25 threshold
+- Live cohort source: `synthetic_security`
+- Live fallback reason: fewer than 20 governed assessed peers
+- Live candidate counts: 0 department-and-role, 0 department, 0 organization
+- Live model runs: 2 with identical fingerprint and decision score
+- Live peer alert rate: 0.05, explicitly not represented as a false-positive rate
+- Live reviewed anomalies: 1
+- Live reviewed false-positive labels: 0, rate 0.0
+- Live second-run drift status: stable, maximum feature shift 0.0
+- Alembic model/schema drift check: no new upgrade operations
+
+No migration was needed: cohort and calibration evidence fits the already immutable, versioned
+`peer_definition` and `summary` JSON contracts introduced in migration `20260816_05`.
+
+## Next work: scheduled continuous monitoring
+
+Add a durable scheduler that runs identity synchronization, entitlement materialization, policy
+evaluation, deterministic risk, anomaly calibration, and review creation as an observable,
+idempotent pipeline with retries and run history.
 
 ## Journal update checklist
 

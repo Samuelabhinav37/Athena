@@ -158,6 +158,8 @@ def run_peer_anomaly(username: str) -> int:
                 "decision_score": result.decision_score,
                 "training_fingerprint": result.training_fingerprint,
                 "peer_anomaly_count": result.peer_anomaly_count,
+                "cohort_source": result.cohort_source,
+                "drift_detected": result.drift_detected,
                 "advisory_only": True,
             },
             sort_keys=True,

@@ -124,7 +124,7 @@ python -m athena.cli open-review --username alice --actor athena-risk-engine --d
 
 Versioned assessment factors and retained-access findings are available from `GET /v1/identities/{identity_id}/risk-assessments`.
 
-The advisory peer model trains a fixed-seed Isolation Forest on a deterministic 100-person synthetic Security cohort. Its seven non-protected access features, cohort fingerprint, native model scores, classification, and explanation are preserved as immutable evidence and exposed at `GET /v1/identities/{identity_id}/anomaly-assessments`. It never grants, denies, or revokes access; deterministic policy remains authoritative.
+The advisory peer model trains a fixed-seed Isolation Forest using governed cohort policy `governed-cohort-v1`. It tries department-and-role, department, and organization peers in order, requiring at least 20 identities with current risk assessments; the small local lab falls back to a deterministic 100-person synthetic Security cohort and records that limitation. Its seven non-protected access features, cohort selection, fingerprint, reviewed false-positive labels, feature drift, native scores, classification, and explanation are preserved as immutable evidence and exposed at `GET /v1/identities/{identity_id}/anomaly-assessments`. It never grants, denies, or revokes access; deterministic policy remains authoritative.
 
 Human remediation cases are available under `/v1/reviews`. Opening, assignment, and decisions are preserved as append-only events. Decisions include `retain`, `revoke`, `extend`, and `exception`. Destructive decisions remain `pending` and do not change entitlements until a separately authorized connector executor is implemented.
 
