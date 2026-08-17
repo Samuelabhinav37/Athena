@@ -651,6 +651,8 @@ Delivered the first safe remediation loop:
 - Review events recorded: 3
 - ORM review-event mutation attempt: blocked
 - Direct PostgreSQL review-event update and delete attempts: blocked by trigger
+- Hosted GitHub Actions run `31988655931`: success
+- Implementation commit: `b99d32e`
 - Known upstream warning: Starlette TestClient recommends migration from `httpx` to `httpx2`
 
 ### Failure and resolution
