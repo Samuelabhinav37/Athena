@@ -1079,6 +1079,14 @@ Added repository-scoped operating and enforcement guidance for Codex and other c
 The supplied files contained no credentials or personal secrets. They were placed at their intended
 repository paths without changing their policy content.
 
+Validation evidence:
+
+- downloaded and repository content match after newline normalization;
+- TOML parsing and expected enforcement values: passed;
+- full automated Python suite: 61 passed;
+- hosted GitHub Actions run `32070842912`: success; and
+- implementation commit: `6b8a659`.
+
 ## Journal update checklist
 
 At the end of each meaningful change:
