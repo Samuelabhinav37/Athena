@@ -903,6 +903,9 @@ connector.
 - Unchanged snapshot: zero grant writes
 - Missing policy access revocation and entitlement deactivation: passed
 - Docker Compose configuration validation: passed
+- Implementation commit: `556d074`
+- Hosted security-gate badge for `main`: passing; GitHub's Actions REST endpoint returned repeated
+  `504 Gateway Time-out` responses, so the exact hosted run identifier could not be retrieved
 
 ### Errors and resolutions
 
