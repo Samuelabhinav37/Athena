@@ -99,6 +99,13 @@ class ReviewDecision(StrEnum):
     EXCEPTION = "exception"
 
 
+class MonitoringStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
@@ -641,6 +648,55 @@ class ReviewEvent(Base):
     case: Mapped[ReviewCase] = relationship(back_populates="events")
 
 
+class MonitoringRun(Base):
+    __tablename__ = "monitoring_runs"
+    __table_args__ = (UniqueConstraint("schedule_key", name="uq_monitoring_run_schedule_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    schedule_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[MonitoringStatus] = mapped_column(
+        Enum(MonitoringStatus, name="monitoring_status", native_enum=False,
+             values_callable=lambda members: [member.value for member in members]),
+        nullable=False, default=MonitoringStatus.PENDING,
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+
+    steps: Mapped[list["MonitoringStep"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan",
+        order_by="MonitoringStep.sequence", lazy="selectin"
+    )
+
+
+class MonitoringStep(Base):
+    __tablename__ = "monitoring_steps"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_monitoring_step_sequence"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("monitoring_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[MonitoringStatus] = mapped_column(
+        Enum(MonitoringStatus, name="monitoring_step_status", native_enum=False,
+             values_callable=lambda members: [member.value for member in members]), nullable=False
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    output: Mapped[dict] = mapped_column(json_type, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    run: Mapped[MonitoringRun] = relationship(back_populates="steps")
+
+
 @event.listens_for(AuditEvent, "before_update")
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
@@ -677,3 +733,9 @@ def prevent_anomaly_evidence_mutation(*_: object) -> None:
 @event.listens_for(ReviewEvent, "before_delete")
 def prevent_review_event_mutation(*_: object) -> None:
     raise ValueError("Review events are immutable")
+
+
+@event.listens_for(MonitoringStep, "before_update")
+@event.listens_for(MonitoringStep, "before_delete")
+def prevent_monitoring_step_mutation(*_: object) -> None:
+    raise ValueError("Monitoring steps are immutable")

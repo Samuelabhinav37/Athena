@@ -1,8 +1,10 @@
 import argparse
 import json
 import sys
+import time
 import uuid
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -16,8 +18,10 @@ from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
 from athena.services.identity_sync import IdentitySyncService
+from athena.services.monitoring import MonitoringError, MonitoringService
 from athena.services.peer_anomaly import PeerAnomalyService
 from athena.services.policy_evaluation import PolicyEvaluationService
+from athena.services.provenance import ProvenanceService
 from athena.services.remediation import RemediationService, load_case
 from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
@@ -223,6 +227,101 @@ def decide_review(
     return 0
 
 
+def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> int:
+    settings = get_settings()
+    try:
+        with (
+            get_session_factory()() as session,
+            KeycloakCollector(settings) as collector,
+            OpaClient(settings.opa_url) as engine,
+        ):
+            def identity() -> Identity:
+                record = session.scalar(select(Identity).where(Identity.username == username))
+                if record is None:
+                    raise ValueError(f"identity {username} was not found after synchronization")
+                return record
+
+            def synchronize() -> dict:
+                return asdict(IdentitySyncService(session).sync(collector.collect()))
+
+            def provenance() -> dict:
+                entitlements = ProvenanceService(session).materialize_identity(identity())
+                session.commit()
+                return {"active_entitlements": len(entitlements)}
+
+            def policies() -> dict:
+                service = PolicyEvaluationService(session, engine, settings.policy_directory)
+                return asdict(service.evaluate_identity(identity()))
+
+            def risk() -> dict:
+                result = RiskAnalyticsService(session).assess(identity())
+                return {
+                    "assessment_id": str(result.assessment_id),
+                    "score": result.score,
+                    "level": result.level.value,
+                    "findings": result.findings,
+                    "model_version": result.model_version,
+                }
+
+            def anomaly() -> dict:
+                result = PeerAnomalyService(session).run(identity())
+                return {
+                    "run_id": str(result.run_id),
+                    "is_anomaly": result.is_anomaly,
+                    "cohort_source": result.cohort_source,
+                    "drift_detected": result.drift_detected,
+                }
+
+            def review() -> dict:
+                result = RemediationService(session).open_for_latest_evidence(
+                    identity(), actor="athena-monitoring"
+                )
+                return {"case_id": str(result.case_id), "status": result.status.value}
+
+            operations = [
+                ("identity_sync", synchronize),
+                ("provenance", provenance),
+                ("policy_evaluation", policies),
+                ("risk_assessment", risk),
+                ("peer_anomaly", anomaly),
+                ("review", review),
+            ]
+            result = MonitoringService(session).run(schedule_key, requested_by, operations)
+    except (
+        KeycloakCollectionError,
+        MonitoringError,
+        OpaEvaluationError,
+        SQLAlchemyError,
+        ValueError,
+    ) as error:
+        print(f"Monitoring failed: {error}", file=sys.stderr)
+        return 1
+    payload = {
+        "run_id": str(result.run_id),
+        "schedule_key": result.schedule_key,
+        "status": result.status.value,
+        "attempt": result.attempt,
+        "steps_completed": result.steps_completed,
+        "idempotent_replay": result.idempotent_replay,
+    }
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def monitoring_loop(username: str, interval_seconds: int, requested_by: str) -> int:
+    if interval_seconds < 60:
+        print("Monitoring interval must be at least 60 seconds", file=sys.stderr)
+        return 1
+    while True:
+        now = datetime.now(UTC)
+        slot = int(now.timestamp()) // interval_seconds * interval_seconds
+        schedule_key = f"interval-{interval_seconds}:{slot}"
+        result = run_monitoring_slot(username, schedule_key, requested_by)
+        if result != 0:
+            return result
+        time.sleep(interval_seconds)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -266,6 +365,18 @@ def main() -> int:
     )
     decide_parser.add_argument("--actor", required=True)
     decide_parser.add_argument("--reason", required=True)
+    monitor_parser = subcommands.add_parser(
+        "monitor-once", help="Run one idempotent continuous-monitoring slot"
+    )
+    monitor_parser.add_argument("--username", default="alice")
+    monitor_parser.add_argument("--schedule-key")
+    monitor_parser.add_argument("--requested-by", default="athena-scheduler")
+    loop_parser = subcommands.add_parser(
+        "monitor-loop", help="Run continuous monitoring at a fixed interval"
+    )
+    loop_parser.add_argument("--username", default="alice")
+    loop_parser.add_argument("--interval-seconds", type=int, default=300)
+    loop_parser.add_argument("--requested-by", default="athena-scheduler")
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -289,6 +400,13 @@ def main() -> int:
     if arguments.command == "decide-review":
         return decide_review(
             arguments.case_id, arguments.decision, arguments.actor, arguments.reason
+        )
+    if arguments.command == "monitor-once":
+        schedule_key = arguments.schedule_key or datetime.now(UTC).strftime("manual:%Y%m%dT%H%M")
+        return run_monitoring_slot(arguments.username, schedule_key, arguments.requested_by)
+    if arguments.command == "monitor-loop":
+        return monitoring_loop(
+            arguments.username, arguments.interval_seconds, arguments.requested_by
         )
     return 2
 

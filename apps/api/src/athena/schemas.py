@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from athena.models import (
     GrantSubjectType,
     IdentityType,
+    MonitoringStatus,
     PolicyDecision,
     ResourceType,
     ReviewDecision,
@@ -219,3 +220,30 @@ class DecideReviewRequest(BaseModel):
     decision: ReviewDecision
     actor: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=10, max_length=2000)
+
+
+class MonitoringStepResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    sequence: int
+    attempt: int
+    name: str
+    status: MonitoringStatus
+    started_at: datetime
+    completed_at: datetime
+    output: dict
+    error: str | None
+
+
+class MonitoringRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    schedule_key: str
+    status: MonitoringStatus
+    attempt_count: int
+    requested_by: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    error: str | None
+    summary: dict
+    steps: list[MonitoringStepResponse]

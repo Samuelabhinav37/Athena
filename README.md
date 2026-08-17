@@ -120,6 +120,7 @@ python -m athena.cli apply-drift-demo
 python -m athena.cli assess-risk --username alice
 python -m athena.cli run-peer-anomaly --username alice
 python -m athena.cli open-review --username alice --actor athena-risk-engine --due-days 7
+python -m athena.cli monitor-once --username alice --schedule-key manual:demo
 ```
 
 Versioned assessment factors and retained-access findings are available from `GET /v1/identities/{identity_id}/risk-assessments`.
@@ -127,6 +128,8 @@ Versioned assessment factors and retained-access findings are available from `GE
 The advisory peer model trains a fixed-seed Isolation Forest using governed cohort policy `governed-cohort-v1`. It tries department-and-role, department, and organization peers in order, requiring at least 20 identities with current risk assessments; the small local lab falls back to a deterministic 100-person synthetic Security cohort and records that limitation. Its seven non-protected access features, cohort selection, fingerprint, reviewed false-positive labels, feature drift, native scores, classification, and explanation are preserved as immutable evidence and exposed at `GET /v1/identities/{identity_id}/anomaly-assessments`. It never grants, denies, or revokes access; deterministic policy remains authoritative.
 
 Human remediation cases are available under `/v1/reviews`. Opening, assignment, and decisions are preserved as append-only events. Decisions include `retain`, `revoke`, `extend`, and `exception`. Destructive decisions remain `pending` and do not change entitlements until a separately authorized connector executor is implemented.
+
+Continuous monitoring composes synchronization, provenance, policy evaluation, deterministic risk, peer anomaly analysis, and review creation into one durable run. A unique schedule key makes completed slots idempotent, failed slots retain immutable step evidence for retry, and `/v1/monitoring/runs` exposes run history. `monitor-loop` provides a local fixed-interval scheduler; production schedulers can invoke `monitor-once` with their own stable slot keys.
 
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 

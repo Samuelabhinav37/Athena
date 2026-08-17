@@ -713,11 +713,59 @@ Upgraded the advisory model to `peer-isolation-forest-v2` with governed cohort p
 No migration was needed: cohort and calibration evidence fits the already immutable, versioned
 `peer_definition` and `summary` JSON contracts introduced in migration `20260816_05`.
 
-## Next work: scheduled continuous monitoring
+## Milestone 8: scheduled continuous monitoring
 
-Add a durable scheduler that runs identity synchronization, entitlement materialization, policy
-evaluation, deterministic risk, anomaly calibration, and review creation as an observable,
-idempotent pipeline with retries and run history.
+Delivered a durable, observable monitoring pipeline:
+
+- PostgreSQL-backed monitoring runs keyed by a unique scheduler slot;
+- ordered sync, provenance, policy, risk, anomaly, and review stages;
+- immutable per-step inputs/outputs, timestamps, attempt number, status, and error evidence;
+- completed-slot idempotency with no repeated external or analytical work;
+- failed-slot preservation and retry on the same run with an incremented attempt;
+- concurrent schedule-key claim protection through a database uniqueness constraint;
+- local fixed-interval `monitor-loop` and orchestrator-friendly `monitor-once` commands;
+- run history at `GET /v1/monitoring/runs`; and
+- migration `20260816_07` with a PostgreSQL step-immutability trigger.
+
+### Validation evidence
+
+- Focused monitoring/schema tests: 5 passed
+- Full automated Python suite: 43 passed
+- Ruff linting: passed
+- Rego policy tests: 5 passed
+- Deterministic security fixtures: 4 passed, 0 failed
+- NIST control mappings: 3 valid, 0 failed
+- Live migration `20260816_07`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- Live schedule key: `manual:milestone8-live`
+- Live run: `f1ba3acb-5d65-41ab-b265-0750220a1960`
+- First live execution: completed 6 of 6 ordered stages
+- Exact schedule-key replay: idempotent, attempt remained 1, no new steps
+- Identity sync: 6 updated identities, 6 groups, 8 roles
+- Provenance: 3 active entitlements
+- Policy evaluation: 2 pass, 1 fail, 0 errors
+- Deterministic risk: 100/100 critical, 3 findings
+- Peer anomaly: anomalous, synthetic fallback, no drift
+- Review: one open evidence-backed case
+- Live monitoring API: 200, one run, six ordered steps
+- ORM monitoring-step mutation attempt: blocked
+- Valid direct PostgreSQL monitoring-step update: blocked by trigger
+
+### Failure and resolution
+
+The retry test initially found that a newly persisted step was absent from the already-loaded ORM
+relationship cache, which could under-report the immediate CLI step count. New steps are now attached
+through the run relationship, keeping persisted and returned state consistent.
+
+The first live SQL tamper probe had malformed JSON quoting and failed before reaching the trigger.
+It was not counted as evidence. A valid update against the text error column was then rejected by
+the monitoring-step immutability trigger.
+
+## Next work: additional identity and access connectors
+
+Add the first external authorization connector after Keycloak, beginning with GitHub organization
+membership and repository permissions. Normalize it into Athena's canonical identities, groups,
+roles, grants, and provenance while preserving incremental sync and source evidence.
 
 ## Journal update checklist
 

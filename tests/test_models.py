@@ -17,6 +17,8 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
         "identities",
         "identity_groups",
         "identity_roles",
+        "monitoring_runs",
+        "monitoring_steps",
         "permissions",
         "policy_evaluations",
         "provenance_edges",
