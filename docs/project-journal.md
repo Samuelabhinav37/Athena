@@ -1040,6 +1040,8 @@ outside execution until its decision contract captures that value explicitly.
 - Authenticated administrator recorded as execution requester: passed
 - Viewer execution creation denied with `403`: passed
 - ORM execution-event immutability: passed
+- Implementation commit: `a863b7b`
+- Hosted GitHub Actions run `32052988721`: success
 
 ### Errors and resolutions
 
