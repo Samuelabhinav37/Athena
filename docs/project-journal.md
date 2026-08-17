@@ -811,6 +811,8 @@ misrepresenting the result as a direct grant.
 - Identical second snapshot: unchanged, zero grant writes
 - Live provenance relationship: `reported_effective_permission`
 - Live governance state: ungoverned because upstream approval and justification are unavailable
+- Hosted GitHub Actions run `31993327141`: success
+- Implementation commit: `fe8a051`
 
 ### Known limitations
 
