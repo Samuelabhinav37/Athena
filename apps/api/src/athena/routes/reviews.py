@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from athena.auth import AnalystPrincipal, ReviewerPrincipal, require_viewer
 from athena.database import get_db_session
 from athena.models import Identity
 from athena.schemas import (
@@ -14,7 +15,9 @@ from athena.schemas import (
 )
 from athena.services.remediation import RemediationService, load_case, load_cases
 
-router = APIRouter(prefix="/v1/reviews", tags=["reviews"])
+router = APIRouter(
+    prefix="/v1/reviews", tags=["reviews"], dependencies=[Depends(require_viewer)]
+)
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 
@@ -36,13 +39,15 @@ def get_review(case_id: uuid.UUID, session: DatabaseSession) -> ReviewCaseRespon
 
 
 @router.post("", response_model=ReviewCaseResponse, status_code=status.HTTP_201_CREATED)
-def open_review(request: OpenReviewRequest, session: DatabaseSession) -> ReviewCaseResponse:
+def open_review(
+    request: OpenReviewRequest, session: DatabaseSession, principal: AnalystPrincipal
+) -> ReviewCaseResponse:
     identity = session.get(Identity, request.identity_id)
     if identity is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     try:
         result = RemediationService(session).open_for_latest_evidence(
-            identity, request.actor, request.owner, request.due_days
+            identity, principal.actor, request.owner, request.due_days
         )
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -51,11 +56,14 @@ def open_review(request: OpenReviewRequest, session: DatabaseSession) -> ReviewC
 
 @router.post("/{case_id}/assign", response_model=ReviewCaseResponse)
 def assign_review(
-    case_id: uuid.UUID, request: AssignReviewRequest, session: DatabaseSession
+    case_id: uuid.UUID,
+    request: AssignReviewRequest,
+    session: DatabaseSession,
+    principal: ReviewerPrincipal,
 ) -> ReviewCaseResponse:
     case = _case_or_404(session, case_id)
     try:
-        RemediationService(session).assign(case, request.owner, request.actor, request.reason)
+        RemediationService(session).assign(case, request.owner, principal.actor, request.reason)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return _case_or_404(session, case_id)
@@ -63,11 +71,14 @@ def assign_review(
 
 @router.post("/{case_id}/decide", response_model=ReviewCaseResponse)
 def decide_review(
-    case_id: uuid.UUID, request: DecideReviewRequest, session: DatabaseSession
+    case_id: uuid.UUID,
+    request: DecideReviewRequest,
+    session: DatabaseSession,
+    principal: ReviewerPrincipal,
 ) -> ReviewCaseResponse:
     case = _case_or_404(session, case_id)
     try:
-        RemediationService(session).decide(case, request.decision, request.actor, request.reason)
+        RemediationService(session).decide(case, request.decision, principal.actor, request.reason)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return _case_or_404(session, case_id)

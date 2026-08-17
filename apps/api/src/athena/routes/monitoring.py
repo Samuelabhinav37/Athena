@@ -3,11 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from athena.auth import require_viewer
 from athena.database import get_db_session
 from athena.schemas import MonitoringRunResponse
 from athena.services.monitoring import load_monitoring_runs
 
-router = APIRouter(prefix="/v1/monitoring", tags=["monitoring"])
+router = APIRouter(
+    prefix="/v1/monitoring", tags=["monitoring"], dependencies=[Depends(require_viewer)]
+)
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 

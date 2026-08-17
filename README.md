@@ -114,6 +114,8 @@ Detect → Explain → Recommend → Human reviews → Authorized executor acts
 - Human decisions are append-only evidence.
 - Destructive decisions remain `pending` until a separately authorized connector performs and verifies the change.
 - Collector credentials are read-only and secrets are never returned by status APIs.
+- API access tokens are validated for signature, issuer, audience, expiry, and fixed `RS256` use.
+- Review actors come from the authenticated token and cannot be supplied in request payloads.
 
 ## Quick Start
 
@@ -149,6 +151,9 @@ Open:
 - Health: `http://localhost:8000/health`
 - Readiness: `http://localhost:8000/ready`
 - OpenAPI: `http://localhost:8000/docs`
+
+Health and readiness are public. All `/v1` evidence and workflow endpoints require a Keycloak access
+token for the `athena-api` audience. See [authentication and API roles](docs/authentication.md).
 
 ## End-to-End Demo
 
@@ -232,6 +237,7 @@ minimum collector policy and authorization limitations.
 | `GET /v1/reviews` | Human remediation cases and immutable decision history |
 | `GET /v1/monitoring/runs` | Scheduled pipeline attempts and ordered step evidence |
 | `GET /v1/connectors` | Sanitized connector checkpoints without cached payloads |
+| `GET /v1/auth/me` | Validated caller identity and Athena roles |
 
 ## Evidence-Driven Engineering
 
@@ -269,7 +275,7 @@ Athena/
 - [x] Durable continuous monitoring
 - [x] Incremental GitHub authorization connector
 - [x] Incremental AWS IAM authorization connector
-- [ ] Athena OIDC login and role-based API authorization
+- [x] Athena OIDC token validation and role-based API authorization
 - [ ] React identity, risk, review, and audit dashboard
 - [ ] Local Ollama explanations
 - [ ] Neo4j identity attack-path analysis
@@ -281,6 +287,7 @@ Athena/
 - [Branch protection recommendations](docs/branch-protection.md)
 - [Keycloak identity lab](infra/keycloak/README.md)
 - [AWS IAM connector](docs/aws-iam.md)
+- [OIDC authentication and API roles](docs/authentication.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

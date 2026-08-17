@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     aws_enabled: bool = False
     aws_profile: str = ""
     aws_region: str = "us-east-1"
+    auth_required: bool = True
+    oidc_issuer: str = "http://localhost:8080/realms/athena"
+    oidc_audience: str = "athena-api"
+    oidc_jwks_url: str = ""
 
 
 @lru_cache

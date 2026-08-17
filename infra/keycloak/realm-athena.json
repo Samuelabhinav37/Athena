@@ -53,8 +53,32 @@
         "description": "Cloud administrator"
       },
       {
+        "name": "athena-viewer",
+        "description": "Read Athena identity, authorization, risk, and evidence data"
+      },
+      {
+        "name": "athena-analyst",
+        "description": "Open Athena access reviews",
+        "composite": true,
+        "composites": {
+          "realm": ["athena-viewer"]
+        }
+      },
+      {
+        "name": "athena-reviewer",
+        "description": "Assign and decide Athena access reviews",
+        "composite": true,
+        "composites": {
+          "realm": ["athena-analyst"]
+        }
+      },
+      {
         "name": "athena-administrator",
-        "description": "Administrator of the controlled identity lab"
+        "description": "Administrator of the controlled identity lab",
+        "composite": true,
+        "composites": {
+          "realm": ["athena-reviewer"]
+        }
       }
     ]
   },
@@ -162,6 +186,17 @@
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
           }
+        },
+        {
+          "name": "athena-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "athena-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
         }
       ]
     }
@@ -194,7 +229,7 @@
         "employment_status": ["active"]
       },
       "groups": ["/departments/engineering"],
-      "realmRoles": ["developer"],
+      "realmRoles": ["developer", "athena-viewer"],
       "credentials": [
         { "type": "password", "value": "AthenaLab1!", "temporary": true }
       ]
@@ -213,7 +248,7 @@
         "employment_status": ["active"]
       },
       "groups": ["/departments/devops"],
-      "realmRoles": ["devops", "cloud-admin"],
+      "realmRoles": ["devops", "cloud-admin", "athena-analyst"],
       "credentials": [
         { "type": "password", "value": "AthenaLab1!", "temporary": true }
       ]
@@ -232,7 +267,7 @@
         "employment_status": ["active"]
       },
       "groups": ["/departments/security"],
-      "realmRoles": ["security-analyst"],
+      "realmRoles": ["security-analyst", "athena-reviewer"],
       "credentials": [
         { "type": "password", "value": "AthenaLab1!", "temporary": true }
       ]
@@ -251,7 +286,7 @@
         "employment_status": ["active"]
       },
       "groups": ["/departments/finance"],
-      "realmRoles": ["finance-analyst"],
+      "realmRoles": ["finance-analyst", "athena-viewer"],
       "credentials": [
         { "type": "password", "value": "AthenaLab1!", "temporary": true }
       ]
@@ -270,7 +305,7 @@
         "employment_status": ["active"]
       },
       "groups": ["/departments/hr"],
-      "realmRoles": ["hr-specialist"],
+      "realmRoles": ["hr-specialist", "athena-viewer"],
       "credentials": [
         { "type": "password", "value": "AthenaLab1!", "temporary": true }
       ]

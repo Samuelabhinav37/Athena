@@ -4,11 +4,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from athena.auth import require_viewer
 from athena.database import get_db_session
 from athena.models import ConnectorCheckpoint
 from athena.schemas import ConnectorCheckpointResponse
 
-router = APIRouter(prefix="/v1/connectors", tags=["connectors"])
+router = APIRouter(
+    prefix="/v1/connectors", tags=["connectors"], dependencies=[Depends(require_viewer)]
+)
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 

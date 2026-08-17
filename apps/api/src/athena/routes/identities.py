@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from athena.auth import require_viewer
 from athena.database import get_db_session
 from athena.repositories import IdentityRepository
 from athena.schemas import (
@@ -22,7 +23,9 @@ from athena.services.policy_evaluation import load_policy_evaluations
 from athena.services.provenance import governance_gaps, load_identity_entitlements
 from athena.services.risk_analytics import load_risk_assessments
 
-router = APIRouter(prefix="/v1/identities", tags=["identities"])
+router = APIRouter(
+    prefix="/v1/identities", tags=["identities"], dependencies=[Depends(require_viewer)]
+)
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 

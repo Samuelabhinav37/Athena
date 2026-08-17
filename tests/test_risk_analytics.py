@@ -1,6 +1,7 @@
 from collections.abc import Generator
 
 import pytest
+from athena.auth import Principal, get_current_principal
 from athena.database import get_db_session
 from athena.main import app
 from athena.models import (
@@ -268,19 +269,22 @@ def test_review_api_supports_open_assign_and_decide(risk_session: Session) -> No
         yield risk_session
 
     app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        "user-charlie", "charlie", frozenset({"athena-reviewer"}), {}
+    )
     client = TestClient(app)
     try:
         opened = client.post("/v1/reviews", json={
-            "identity_id": str(alice.id), "actor": "risk-engine", "due_days": 5,
+            "identity_id": str(alice.id), "due_days": 5,
         })
         assert opened.status_code == 201
         case_id = opened.json()["id"]
         assigned = client.post(f"/v1/reviews/{case_id}/assign", json={
-            "owner": "charlie", "actor": "security-queue", "reason": "Assign analyst",
+            "owner": "charlie", "reason": "Assign analyst",
         })
         assert assigned.status_code == 200
         decided = client.post(f"/v1/reviews/{case_id}/decide", json={
-            "decision": "exception", "actor": "charlie",
+            "decision": "exception",
             "reason": "Approved temporary exception with compensating monitoring",
         })
     finally:
@@ -290,6 +294,7 @@ def test_review_api_supports_open_assign_and_decide(risk_session: Session) -> No
     assert payload["status"] == "resolved"
     assert payload["resolution"] == "exception"
     assert len(payload["events"]) == 3
+    assert {event["actor"] for event in payload["events"]} == {"charlie"}
 
 
 def test_review_events_are_immutable(risk_session: Session) -> None:

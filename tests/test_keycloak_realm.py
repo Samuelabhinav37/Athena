@@ -24,7 +24,7 @@ def test_realm_contains_ground_truth_users() -> None:
 
     assert set(users) >= EXPECTED_USERS
     assert users["alice"]["attributes"]["department"] == ["engineering"]
-    assert users["alice"]["realmRoles"] == ["developer"]
+    assert users["alice"]["realmRoles"] == ["developer", "athena-viewer"]
     assert users["alice"]["groups"] == ["/departments/engineering"]
 
 
@@ -60,6 +60,20 @@ def test_client_configuration_does_not_enable_password_grants() -> None:
     assert clients["athena-web"]["publicClient"] is True
     assert clients["athena-web"]["attributes"]["pkce.code.challenge.method"] == "S256"
     assert all(client["directAccessGrantsEnabled"] is False for client in clients.values())
+    audience = next(
+        mapper
+        for mapper in clients["athena-web"]["protocolMappers"]
+        if mapper["name"] == "athena-api-audience"
+    )
+    assert audience["config"]["included.client.audience"] == "athena-api"
+
+
+def test_realm_defines_composite_api_roles() -> None:
+    roles = {role["name"]: role for role in load_realm()["roles"]["realm"]}
+
+    assert roles["athena-analyst"]["composites"]["realm"] == ["athena-viewer"]
+    assert roles["athena-reviewer"]["composites"]["realm"] == ["athena-analyst"]
+    assert roles["athena-administrator"]["composites"]["realm"] == ["athena-reviewer"]
 
 
 def test_collector_uses_a_dedicated_read_only_service_account() -> None:

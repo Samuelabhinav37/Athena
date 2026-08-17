@@ -205,20 +205,17 @@ class ReviewCaseResponse(BaseModel):
 
 class OpenReviewRequest(BaseModel):
     identity_id: uuid.UUID
-    actor: str = Field(min_length=1, max_length=255)
     owner: str | None = Field(default=None, min_length=1, max_length=255)
     due_days: int = Field(default=7, ge=1, le=90)
 
 
 class AssignReviewRequest(BaseModel):
     owner: str = Field(min_length=1, max_length=255)
-    actor: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=1, max_length=2000)
 
 
 class DecideReviewRequest(BaseModel):
     decision: ReviewDecision
-    actor: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=10, max_length=2000)
 
 
@@ -256,3 +253,9 @@ class ConnectorCheckpointResponse(BaseModel):
     observed_at: datetime
     fingerprint: str
     cached_endpoints: int
+
+
+class AuthenticatedPrincipalResponse(BaseModel):
+    subject: str
+    username: str
+    roles: list[str]

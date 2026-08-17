@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** OIDC authentication and role-based API authorization
+**Active milestone:** Authorized remediation executor framework
 
 **Completed:**
 
@@ -50,9 +50,10 @@ The governing safety rule is:
 - Durable continuous monitoring
 - Incremental GitHub authorization connector
 - Incremental AWS IAM authorization connector
+- Keycloak OIDC authentication and role-based API authorization
 
-**Next outcome:** Athena authenticates API callers through Keycloak OIDC and authorizes viewer,
-analyst, reviewer, and administrator operations.
+**Next outcome:** Athena turns an approved destructive review decision into an explicitly authorized,
+idempotent execution request with verification evidence and safe failure recovery.
 
 ## Roadmap
 
@@ -68,7 +69,8 @@ analyst, reviewer, and administrator operations.
 | 7. Remediation and monitoring | Human decisions and durable scheduled evidence | Complete |
 | 8. GitHub connector | Incremental organization authorization evidence | Complete |
 | 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
-| 10. API access control | OIDC authentication and role-based authorization | In progress |
+| 10. API access control | OIDC authentication and role-based authorization | Complete |
+| 11. Authorized execution | Approved remediation execution and verification evidence | In progress |
 
 ## Work completed
 
@@ -925,11 +927,77 @@ were deferred to hosted GitHub Actions.
 - Policy variables, `NotAction`, `NotResource`, and runtime condition context require a later AWS
   evaluation engine.
 
-## Next work: OIDC authentication and API authorization
+## Milestone 11: OIDC authentication and API authorization
 
-Authenticate Athena API callers through Keycloak OIDC, define viewer, analyst, reviewer, and
-administrator permissions, protect sensitive endpoints, and preserve the authenticated actor on
-reviews, decisions, and audit events.
+Delivered Athena's API security boundary:
+
+- Keycloak JWKS signature verification with cached signing-key discovery;
+- a fixed `RS256` algorithm allow-list rather than trusting the token header;
+- issuer, `athena-api` audience, expiration, issued-at, subject, and required-claim validation;
+- consistent `401` responses with `WWW-Authenticate: Bearer` for invalid authentication;
+- hierarchical viewer, analyst, reviewer, and administrator authorization with explicit `403`
+  responses;
+- authentication on every `/v1` route while health and readiness remain public;
+- viewer access to identity, authorization, risk, review, connector, and monitoring evidence;
+- analyst permission to open reviews and reviewer permission to assign and decide them;
+- authenticated review actors derived from the validated username instead of request JSON;
+- `GET /v1/auth/me` for the validated subject, username, and role set;
+- version-controlled composite Keycloak roles and an `athena-api` access-token audience mapper;
+- Acme Corp role assignments for viewer, analyst, reviewer, and administrator demonstrations; and
+- a dedicated authentication and role-matrix guide.
+
+### Security decisions
+
+Athena validates tokens locally instead of calling Keycloak on every request. The verifier pins the
+allowed signing algorithm, requires the configured issuer and audience, and refreshes signing keys
+through JWKS. Realm and `athena-api` client roles are accepted, but application authorization uses a
+single explicit hierarchy.
+
+Review request schemas no longer accept `actor`. The authenticated `preferred_username` becomes the
+append-only review-event actor, and only that authenticated username can decide a case assigned to
+it. This closes the prior caller-impersonation path.
+
+No migration was required because existing review events already preserve actor identity. The API
+contract intentionally changed before external clients exist.
+
+### Validation evidence
+
+- Focused authentication, Keycloak realm, and risk API tests: 21 passed
+- Full automated Python suite: 56 passed
+- Ruff linting: passed
+- Docker Compose configuration validation: passed
+- Valid RS256 signature, issuer, audience, identity, and role extraction: passed
+- Wrong audience, wrong issuer, and expired-token rejection: passed
+- Missing bearer credentials return `401` with a Bearer challenge: passed
+- Higher-role inheritance and insufficient-role `403` behavior: passed
+- Composite realm roles and `athena-api` audience mapper structure: passed
+- Authenticated Charlie owns open, assignment, and decision review events: passed
+- Markdown whitespace validation: passed
+
+### Errors and resolutions
+
+The first review API regression returned `409` because the authenticated-principal override had
+been inserted into an unrelated risk endpoint test. The override was moved to the review workflow,
+which then proved that the assigned owner and authenticated decision actor are the same. An initial
+lint command also included the JSON realm file as Python input; validation was rerun against Python
+sources while realm correctness remained covered by JSON parsing and structural tests.
+
+### Known limitations
+
+- Docker Desktop remains stopped, so a live Keycloak login and key-rotation exercise could not run
+  locally; deterministic RSA tokens and hosted CI cover the verifier and realm structure.
+- The React authorization-code-with-PKCE login flow is not implemented yet.
+- Token revocation takes effect at access-token expiry unless a future denylist or introspection mode
+  is enabled.
+- `ATHENA_AUTH_REQUIRED=false` is available only for isolated development and tests; production must
+  keep authentication enabled.
+
+## Next work: authorized remediation executor
+
+Create an administrator-only, idempotent execution-request framework that accepts only approved
+destructive review decisions, dispatches through source-specific executors, verifies the upstream
+state, and records immutable before/after or failure evidence without granting connector credentials
+to the API process.
 
 ## Journal update checklist
 
