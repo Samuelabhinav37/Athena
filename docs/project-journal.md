@@ -846,6 +846,8 @@ No application behavior changed.
 - Markdown whitespace validation (`git diff --check`): passed
 - All local README documentation and workflow link targets: present
 - Delivered and planned capabilities are visibly separated
+- README redesign commit: `5f1d0f4`
+- Hosted GitHub Actions run `31996341828`: success
 
 ## Next work: additional cloud authorization connector
 
