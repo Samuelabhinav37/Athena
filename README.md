@@ -119,11 +119,14 @@ Apply the controlled role-transfer scenario and calculate Alice's explainable ac
 python -m athena.cli apply-drift-demo
 python -m athena.cli assess-risk --username alice
 python -m athena.cli run-peer-anomaly --username alice
+python -m athena.cli open-review --username alice --actor athena-risk-engine --due-days 7
 ```
 
 Versioned assessment factors and retained-access findings are available from `GET /v1/identities/{identity_id}/risk-assessments`.
 
 The advisory peer model trains a fixed-seed Isolation Forest on a deterministic 100-person synthetic Security cohort. Its seven non-protected access features, cohort fingerprint, native model scores, classification, and explanation are preserved as immutable evidence and exposed at `GET /v1/identities/{identity_id}/anomaly-assessments`. It never grants, denies, or revokes access; deterministic policy remains authoritative.
+
+Human remediation cases are available under `/v1/reviews`. Opening, assignment, and decisions are preserved as append-only events. Decisions include `retain`, `revoke`, `extend`, and `exception`. Destructive decisions remain `pending` and do not change entitlements until a separately authorized connector executor is implemented.
 
 Copy `.env.example` to `.env` before changing the local defaults. Never commit `.env` or production secrets.
 

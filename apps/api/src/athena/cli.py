@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 
@@ -10,13 +11,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollector
 from athena.config import get_settings
 from athena.database import get_session_factory
-from athena.models import Identity
+from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
 from athena.services.identity_sync import IdentitySyncService
 from athena.services.peer_anomaly import PeerAnomalyService
 from athena.services.policy_evaluation import PolicyEvaluationService
+from athena.services.remediation import RemediationService, load_case
 from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
 
@@ -164,6 +166,61 @@ def run_peer_anomaly(username: str) -> int:
     return 0
 
 
+def open_review(username: str, actor: str, owner: str | None, due_days: int) -> int:
+    try:
+        with get_session_factory()() as session:
+            identity = session.scalar(select(Identity).where(Identity.username == username))
+            if identity is None:
+                raise ValueError(f"identity {username} was not found")
+            result = RemediationService(session).open_for_latest_evidence(
+                identity, actor=actor, owner=owner, due_days=due_days
+            )
+    except (SQLAlchemyError, ValueError) as error:
+        print(f"Open review failed: {error}", file=sys.stderr)
+        return 1
+    payload = {"case_id": str(result.case_id), "status": result.status.value}
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def assign_review(case_id: uuid.UUID, owner: str, actor: str, reason: str) -> int:
+    try:
+        with get_session_factory()() as session:
+            case = load_case(session, case_id)
+            if case is None:
+                raise ValueError(f"review {case_id} was not found")
+            result = RemediationService(session).assign(case, owner, actor, reason)
+    except (SQLAlchemyError, ValueError) as error:
+        print(f"Assign review failed: {error}", file=sys.stderr)
+        return 1
+    payload = {"case_id": str(result.case_id), "status": result.status.value}
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def decide_review(
+    case_id: uuid.UUID, decision: ReviewDecision, actor: str, reason: str
+) -> int:
+    try:
+        with get_session_factory()() as session:
+            case = load_case(session, case_id)
+            if case is None:
+                raise ValueError(f"review {case_id} was not found")
+            result = RemediationService(session).decide(case, decision, actor, reason)
+    except (SQLAlchemyError, ValueError) as error:
+        print(f"Decide review failed: {error}", file=sys.stderr)
+        return 1
+    destructive = decision in (ReviewDecision.REVOKE, ReviewDecision.EXTEND)
+    payload = {
+        "case_id": str(result.case_id),
+        "status": result.status.value,
+        "resolution": result.resolution.value if result.resolution else None,
+        "execution_status": "pending" if destructive else "not_required",
+    }
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -190,6 +247,23 @@ def main() -> int:
         "run-peer-anomaly", help="Run advisory Isolation Forest peer analysis"
     )
     anomaly_parser.add_argument("--username", default="alice")
+    open_parser = subcommands.add_parser("open-review", help="Open a human access review")
+    open_parser.add_argument("--username", default="alice")
+    open_parser.add_argument("--actor", required=True)
+    open_parser.add_argument("--owner")
+    open_parser.add_argument("--due-days", type=int, default=7)
+    assign_parser = subcommands.add_parser("assign-review", help="Assign a review owner")
+    assign_parser.add_argument("--case-id", type=uuid.UUID, required=True)
+    assign_parser.add_argument("--owner", required=True)
+    assign_parser.add_argument("--actor", required=True)
+    assign_parser.add_argument("--reason", required=True)
+    decide_parser = subcommands.add_parser("decide-review", help="Record a human review decision")
+    decide_parser.add_argument("--case-id", type=uuid.UUID, required=True)
+    decide_parser.add_argument(
+        "--decision", type=ReviewDecision, choices=list(ReviewDecision), required=True
+    )
+    decide_parser.add_argument("--actor", required=True)
+    decide_parser.add_argument("--reason", required=True)
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -206,6 +280,14 @@ def main() -> int:
         return assess_risk(arguments.username)
     if arguments.command == "run-peer-anomaly":
         return run_peer_anomaly(arguments.username)
+    if arguments.command == "open-review":
+        return open_review(arguments.username, arguments.actor, arguments.owner, arguments.due_days)
+    if arguments.command == "assign-review":
+        return assign_review(arguments.case_id, arguments.owner, arguments.actor, arguments.reason)
+    if arguments.command == "decide-review":
+        return decide_review(
+            arguments.case_id, arguments.decision, arguments.actor, arguments.reason
+        )
     return 2
 
 

@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from athena.database import get_session_factory
 from athena.routes.identities import router as identities_router
+from athena.routes.reviews import router as reviews_router
 
 app = FastAPI(
     title="Athena API",
@@ -12,6 +13,7 @@ app = FastAPI(
 )
 
 app.include_router(identities_router)
+app.include_router(reviews_router)
 
 
 @app.get("/health", tags=["operations"])

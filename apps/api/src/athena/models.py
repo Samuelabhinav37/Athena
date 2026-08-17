@@ -85,6 +85,20 @@ class RiskFindingType(StrEnum):
     POLICY_VIOLATION = "policy_violation"
 
 
+class ReviewStatus(StrEnum):
+    OPEN = "open"
+    IN_REVIEW = "in_review"
+    RESOLVED = "resolved"
+    CANCELLED = "cancelled"
+
+
+class ReviewDecision(StrEnum):
+    RETAIN = "retain"
+    REVOKE = "revoke"
+    EXTEND = "extend"
+    EXCEPTION = "exception"
+
+
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
@@ -553,6 +567,80 @@ class AnomalyResult(Base):
     identity: Mapped[Identity | None] = relationship()
 
 
+class ReviewCase(TimestampMixin, Base):
+    __tablename__ = "review_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "risk_assessment_id IS NOT NULL OR anomaly_result_id IS NOT NULL",
+            name="ck_review_case_has_evidence",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identity_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("identities.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    entitlement_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("effective_entitlements.id", ondelete="RESTRICT"), index=True
+    )
+    risk_assessment_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("risk_assessments.id", ondelete="RESTRICT"), index=True
+    )
+    anomaly_result_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("anomaly_results.id", ondelete="RESTRICT"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[ReviewStatus] = mapped_column(
+        Enum(ReviewStatus, name="review_status", native_enum=False,
+             values_callable=lambda members: [member.value for member in members]),
+        nullable=False, default=ReviewStatus.OPEN,
+    )
+    owner: Mapped[str | None] = mapped_column(String(255), index=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    resolution: Mapped[ReviewDecision | None] = mapped_column(
+        Enum(ReviewDecision, name="review_decision", native_enum=False,
+             values_callable=lambda members: [member.value for member in members])
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    identity: Mapped[Identity] = relationship()
+    events: Mapped[list["ReviewEvent"]] = relationship(
+        back_populates="case", cascade="all, delete-orphan",
+        order_by="ReviewEvent.occurred_at", lazy="selectin"
+    )
+
+
+class ReviewEvent(Base):
+    __tablename__ = "review_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("review_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    actor: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    from_status: Mapped[ReviewStatus | None] = mapped_column(
+        Enum(ReviewStatus, name="review_event_from_status", native_enum=False,
+             values_callable=lambda members: [member.value for member in members])
+    )
+    to_status: Mapped[ReviewStatus] = mapped_column(
+        Enum(ReviewStatus, name="review_event_to_status", native_enum=False,
+             values_callable=lambda members: [member.value for member in members]), nullable=False
+    )
+    decision: Mapped[ReviewDecision | None] = mapped_column(
+        Enum(ReviewDecision, name="review_event_decision", native_enum=False,
+             values_callable=lambda members: [member.value for member in members])
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_snapshot: Mapped[dict] = mapped_column(json_type, nullable=False)
+    execution_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="not_executed"
+    )
+
+    case: Mapped[ReviewCase] = relationship(back_populates="events")
+
+
 @event.listens_for(AuditEvent, "before_update")
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
@@ -583,3 +671,9 @@ def prevent_risk_assessment_mutation(*_: object) -> None:
 @event.listens_for(AnomalyResult, "before_delete")
 def prevent_anomaly_evidence_mutation(*_: object) -> None:
     raise ValueError("Anomaly evidence is immutable")
+
+
+@event.listens_for(ReviewEvent, "before_update")
+@event.listens_for(ReviewEvent, "before_delete")
+def prevent_review_event_mutation(*_: object) -> None:
+    raise ValueError("Review events are immutable")

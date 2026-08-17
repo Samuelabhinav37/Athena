@@ -11,6 +11,9 @@ from athena.models import (
     IdentityType,
     PolicyDecision,
     PolicyEvaluation,
+    ReviewDecision,
+    ReviewEvent,
+    ReviewStatus,
     RiskAssessment,
     RiskLevel,
     Role,
@@ -18,6 +21,7 @@ from athena.models import (
 )
 from athena.services.demo_scenario import DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
+from athena.services.remediation import RemediationService, load_case
 from athena.services.risk_analytics import MODEL_VERSION, RiskAnalyticsService
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
@@ -205,6 +209,98 @@ def test_risk_assessments_are_immutable(risk_session: Session) -> None:
     assert assessment is not None
     assessment.score = 0
 
+    with pytest.raises(ValueError, match="immutable"):
+        risk_session.commit()
+    risk_session.rollback()
+
+
+def test_human_review_records_append_only_decision_without_executing_access(
+    risk_session: Session,
+) -> None:
+    DriftScenarioService(risk_session).apply()
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    assert alice is not None
+    RiskAnalyticsService(risk_session).assess(alice)
+    service = RemediationService(risk_session)
+
+    opened = service.open_for_latest_evidence(alice, actor="athena-risk-engine")
+    case = load_case(risk_session, opened.case_id)
+    assert case is not None
+    assert case.status == ReviewStatus.OPEN
+    assert case.events[0].execution_status == "not_applicable"
+
+    service.assign(case, owner="charlie", actor="security-queue", reason="Queue assignment")
+    decided = service.decide(
+        case, ReviewDecision.REVOKE, actor="charlie",
+        reason="Access is unrelated to Alice's current Security role",
+    )
+    assert decided.status == ReviewStatus.RESOLVED
+    assert decided.resolution == ReviewDecision.REVOKE
+    assert len(case.events) == 3
+    assert case.events[-1].execution_status == "pending"
+    assert all(entitlement.active for entitlement in risk_session.scalars(
+        select(EffectiveEntitlement).where(EffectiveEntitlement.identity_id == alice.id)
+    ))
+
+
+def test_only_assigned_owner_can_decide_review(risk_session: Session) -> None:
+    DriftScenarioService(risk_session).apply()
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    assert alice is not None
+    RiskAnalyticsService(risk_session).assess(alice)
+    service = RemediationService(risk_session)
+    opened = service.open_for_latest_evidence(alice, actor="risk-engine")
+    case = load_case(risk_session, opened.case_id)
+    assert case is not None
+    service.assign(case, owner="charlie", actor="queue", reason="Assign analyst")
+    with pytest.raises(ValueError, match="assigned owner"):
+        service.decide(case, ReviewDecision.RETAIN, actor="frank",
+                       reason="Unauthorized reviewer tried to retain access")
+
+
+def test_review_api_supports_open_assign_and_decide(risk_session: Session) -> None:
+    DriftScenarioService(risk_session).apply()
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    assert alice is not None
+    RiskAnalyticsService(risk_session).assess(alice)
+
+    def override_session() -> Generator[Session]:
+        yield risk_session
+
+    app.dependency_overrides[get_db_session] = override_session
+    client = TestClient(app)
+    try:
+        opened = client.post("/v1/reviews", json={
+            "identity_id": str(alice.id), "actor": "risk-engine", "due_days": 5,
+        })
+        assert opened.status_code == 201
+        case_id = opened.json()["id"]
+        assigned = client.post(f"/v1/reviews/{case_id}/assign", json={
+            "owner": "charlie", "actor": "security-queue", "reason": "Assign analyst",
+        })
+        assert assigned.status_code == 200
+        decided = client.post(f"/v1/reviews/{case_id}/decide", json={
+            "decision": "exception", "actor": "charlie",
+            "reason": "Approved temporary exception with compensating monitoring",
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert decided.status_code == 200
+    payload = decided.json()
+    assert payload["status"] == "resolved"
+    assert payload["resolution"] == "exception"
+    assert len(payload["events"]) == 3
+
+
+def test_review_events_are_immutable(risk_session: Session) -> None:
+    DriftScenarioService(risk_session).apply()
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    assert alice is not None
+    RiskAnalyticsService(risk_session).assess(alice)
+    opened = RemediationService(risk_session).open_for_latest_evidence(alice, actor="risk-engine")
+    event = risk_session.scalar(select(ReviewEvent).where(ReviewEvent.case_id == opened.case_id))
+    assert event is not None
+    event.reason = "tampered"
     with pytest.raises(ValueError, match="immutable"):
         risk_session.commit()
     risk_session.rollback()

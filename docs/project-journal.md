@@ -620,11 +620,57 @@ During validation, a repository-wide formatter invocation also touched existing 
 milestone. Those whitespace-only diffs were identified and reversed before publication; only the
 scoped anomaly changes remain.
 
+## Milestone 6: human remediation workflow
+
+Delivered the first safe remediation loop:
+
+- evidence-backed review cases sourced from the latest deterministic risk and anomaly results;
+- idempotent opening of active identity reviews;
+- explicit ownership, due dates, and `open → in_review → resolved` transitions;
+- human decisions for `retain`, `revoke`, `extend`, and `exception`;
+- append-only event history containing actor, reason, evidence snapshot, and execution state;
+- assigned-owner enforcement for final decisions;
+- REST endpoints under `/v1/reviews` and matching operational CLI commands;
+- PostgreSQL and ORM protection against review-event updates or deletion; and
+- a hard safety boundary: destructive approvals remain `pending` and do not alter entitlements.
+
+### Validation evidence
+
+- Ruff linting: passed
+- Automated Python tests: 36 passed
+- Rego policy tests: 5 passed
+- Deterministic security fixtures: 4 passed, 0 failed
+- NIST control mappings: 3 valid, 0 failed
+- Live migration `20260816_06`: applied
+- Alembic model/schema drift check: no new upgrade operations
+- Live Alice workflow: `open → in_review → resolved`
+- Human reviewer: Charlie
+- Resolution: `revoke`
+- Execution status: `pending`
+- Alice active entitlements after approval: 3 of 3
+- Review events recorded: 3
+- ORM review-event mutation attempt: blocked
+- Direct PostgreSQL review-event update and delete attempts: blocked by trigger
+- Known upstream warning: Starlette TestClient recommends migration from `httpx` to `httpx2`
+
+### Failure and resolution
+
+The first shell-level immutability probe correctly failed when PostgreSQL rejected the deliberate
+event update, but the command surfaced that expected database error as an overall failed check. The
+follow-up probe explicitly treated rejection as success and separately verified case state and
+unchanged entitlements.
+
+### Known limitation
+
+Version 0.1 accepts actor and owner identifiers from trusted API/CLI callers because Athena login
+and role-based API authorization are not implemented yet. Production use requires OIDC-authenticated
+actors, authorization policy, and separation-of-duties checks before decisions are accepted.
+
 ## Next work: governed cohort calibration
 
-The next slice should replace or calibrate the synthetic baseline with governed telemetry, enforce
-minimum cohort sizes and fallback cohorts, measure false-positive rates, document model lifecycle
-and approval controls, and add drift monitoring. Anomaly output must remain advisory.
+Replace or calibrate the synthetic baseline with governed telemetry, enforce minimum cohort sizes
+and fallback cohorts, measure false-positive rates, document model lifecycle and approval controls,
+and add drift monitoring. Anomaly output must remain advisory.
 
 ## Journal update checklist
 

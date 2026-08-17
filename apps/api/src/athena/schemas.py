@@ -8,6 +8,8 @@ from athena.models import (
     IdentityType,
     PolicyDecision,
     ResourceType,
+    ReviewDecision,
+    ReviewStatus,
     RiskFindingType,
     RiskLevel,
     Sensitivity,
@@ -166,3 +168,54 @@ class AnomalyResultResponse(BaseModel):
     features: dict
     explanation: dict
     run: AnomalyModelRunResponse
+
+
+class ReviewEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    occurred_at: datetime
+    actor: str
+    action: str
+    from_status: ReviewStatus | None
+    to_status: ReviewStatus
+    decision: ReviewDecision | None
+    reason: str
+    evidence_snapshot: dict
+    execution_status: str
+
+
+class ReviewCaseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    identity_id: uuid.UUID
+    entitlement_id: uuid.UUID | None
+    risk_assessment_id: uuid.UUID | None
+    anomaly_result_id: uuid.UUID | None
+    title: str
+    status: ReviewStatus
+    owner: str | None
+    due_at: datetime
+    resolution: ReviewDecision | None
+    resolved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    events: list[ReviewEventResponse]
+
+
+class OpenReviewRequest(BaseModel):
+    identity_id: uuid.UUID
+    actor: str = Field(min_length=1, max_length=255)
+    owner: str | None = Field(default=None, min_length=1, max_length=255)
+    due_days: int = Field(default=7, ge=1, le=90)
+
+
+class AssignReviewRequest(BaseModel):
+    owner: str = Field(min_length=1, max_length=255)
+    actor: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class DecideReviewRequest(BaseModel):
+    decision: ReviewDecision
+    actor: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=10, max_length=2000)

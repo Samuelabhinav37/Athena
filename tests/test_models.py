@@ -25,4 +25,6 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
         "risk_findings",
         "role_transitions",
         "roles",
+        "review_cases",
+        "review_events",
     }

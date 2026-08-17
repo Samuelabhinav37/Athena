@@ -22,7 +22,7 @@
     {
       "type": "pytest",
       "reference": "tests/test_risk_analytics.py",
-      "evidence": "Retained, stale, peer-deviating, and policy-failing access produces explainable risk factors."
+      "evidence": "Explainable access risk can open a human-owned review with immutable decisions and no implicit privilege changes."
     },
     {
       "type": "pytest",
