@@ -1066,6 +1066,19 @@ Build the authenticated authorization-code-with-PKCE React shell, then add ident
 entitlement provenance, risk/anomaly summaries, review operations, execution evidence, connector
 status, monitoring history, and audit-oriented navigation against the protected API.
 
+## Repository guardrails for coding agents
+
+Added repository-scoped operating and enforcement guidance for Codex and other coding agents:
+
+- root `AGENTS.md` defines Athena-specific scope control, destructive-action prohibitions, Git
+  discipline, secret handling, prompt-injection treatment, decision-model invariants, dependency
+  policy, verification requirements, stop conditions, and project context; and
+- `.codex/config.toml` selects `workspace-write`, `on-request` approvals, disabled sandbox network
+  access, and an optional read-only review profile.
+
+The supplied files contained no credentials or personal secrets. They were placed at their intended
+repository paths without changing their policy content.
+
 ## Journal update checklist
 
 At the end of each meaningful change:

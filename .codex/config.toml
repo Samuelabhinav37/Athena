@@ -1,0 +1,23 @@
+# Codex config for the Athena repo (identity governance: FastAPI + PostgreSQL + OPA).
+# Place at the repo root as .codex/config.toml (loaded only for TRUSTED projects),
+# or merge these keys into ~/.codex/config.toml to apply them machine-wide.
+#
+# Two independent controls:
+#   sandbox_mode    -> what files/network a command can reach (OS-enforced)
+#   approval_policy -> when Codex pauses to ask you first
+# "Auto mode" that still stops for danger = workspace-write + on-request.
+
+approval_policy = "on-request"      # untrusted | on-request | never
+sandbox_mode    = "workspace-write" # read-only | workspace-write | danger-full-access
+
+[sandbox_workspace_write]
+# Network is OFF by default. Athena setup needs it (pip install -e ".[dev]",
+# docker image pulls, GitHub/AWS connector syncs), so those commands will surface
+# an approval prompt instead of silently failing — approve them case by case.
+network_access = false
+
+# --- Optional: a stricter read-only profile for reviews / unfamiliar changes ---
+# Invoke with:  codex -p review "..."
+[profiles.review]
+approval_policy = "on-request"
+sandbox_mode    = "read-only"
