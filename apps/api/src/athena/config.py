@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "athena-collector"
     keycloak_client_secret: SecretStr = SecretStr("athena-local-collector-secret")
     opa_url: str = "http://localhost:8181"
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "gemma3:4b"
+    ollama_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
     policy_directory: Path = Path("policies")
     github_api_url: str = "https://api.github.com"
     github_api_version: str = "2026-03-10"
@@ -37,6 +41,14 @@ class Settings(BaseSettings):
     oidc_issuer: str = "http://localhost:8080/realms/athena"
     oidc_audience: str = "athena-api"
     oidc_jwks_url: str = ""
+
+    @field_validator("ollama_url")
+    @classmethod
+    def require_local_ollama(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("Ollama must use a local loopback HTTP endpoint")
+        return value.rstrip("/")
 
 
 @lru_cache

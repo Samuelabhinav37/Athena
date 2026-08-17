@@ -2,7 +2,7 @@
 
 This document is Athena's living engineering record. Update it whenever a milestone changes the architecture, introduces a decision, encounters a meaningful problem, or produces new validation evidence.
 
-Last updated: August 16, 2026
+Last updated: August 17, 2026
 
 ## Project objective
 
@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** React identity, risk, review, and audit dashboard
+**Active milestone:** Explain and present integration
 
 **Completed:**
 
@@ -52,9 +52,10 @@ The governing safety rule is:
 - Incremental AWS IAM authorization connector
 - Keycloak OIDC authentication and role-based API authorization
 - Authorized remediation execution framework
+- Guarded local Ollama evidence explanations
 
-**Next outcome:** Athena provides an authenticated React shell with identity inventory, evidence
-navigation, risk summaries, and review workflow views backed by the existing APIs.
+**Next outcome:** Merge the independently validated React dashboard and expose generated
+explanations in the identity evidence view.
 
 ## Roadmap
 
@@ -66,7 +67,7 @@ navigation, risk summaries, and review workflow views backed by the existing API
 | 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
 | 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Complete |
 | 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Complete |
-| 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
+| 6. Explain and present | Ollama explanations, React dashboard, and evidence report | In progress |
 | 7. Remediation and monitoring | Human decisions and durable scheduled evidence | Complete |
 | 8. GitHub connector | Incremental organization authorization evidence | Complete |
 | 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
@@ -1065,6 +1066,53 @@ then correctly failed on the two new tables and was updated to include them.
 Build the authenticated authorization-code-with-PKCE React shell, then add identity inventory,
 entitlement provenance, risk/anomaly summaries, review operations, execution evidence, connector
 status, monitoring history, and audit-oriented navigation against the protected API.
+
+## Local Ollama evidence explanations
+
+Added a viewer-protected, read-only explanation endpoint at
+`POST /v1/identities/{identity_id}/explanation`. It builds a bounded snapshot from existing identity,
+entitlement, provenance, policy, risk, and anomaly records and asks a local Ollama model for a
+schema-constrained summary. The response includes its model, generation time, referenced evidence
+identifiers, canonical snapshot digest, findings, limitations, and a mandatory decision-boundary
+disclaimer.
+
+### Trust-boundary decisions
+
+- Ollama URLs are restricted to loopback HTTP endpoints so normalized identity evidence cannot be
+  sent to a remote inference service through this feature.
+- Connector and identity strings remain untrusted data. Prompt delimiters are escaped, the system
+  instruction explicitly rejects embedded commands, and the model receives no tools.
+- Requests use temperature zero, non-streaming responses, and a supplied JSON Schema. Pydantic
+  rejects output that does not match the response contract.
+- Evidence size and record counts are bounded. The generated explanation is not persisted as an
+  authoritative fact and has no path into OPA, analytics, reviews, grants, or execution.
+- Unavailable or malformed model responses fail closed with `503`; Athena never fabricates a
+  fallback explanation.
+
+### Errors and resolutions
+
+The first focused test run could not find database and API fixtures because those fixtures were
+module-local in an older test file. Local in-memory fixtures were added to the new explanation test
+instead of refactoring unrelated test infrastructure. Ruff then identified import ordering in the
+identity route; the imports were reordered without changing behavior.
+
+### Validation evidence
+
+- Focused explanation security and failure tests: 4 passed
+- Ruff linting: passed
+- Non-local Ollama URL rejection: passed
+- Prompt-delimiter injection remains escaped inside the untrusted evidence block: passed
+- Schema-constrained request, zero temperature, non-streaming mode, and no model tools: passed
+- Invalid structured model output fails closed: passed
+- No dependency, model download, database schema, migration, or persistence change introduced
+
+### Known limitations
+
+- A local Ollama installation and operator-selected model are required for a live response.
+- Generated explanations are intentionally ephemeral; the evidence digest allows a reviewer to
+  identify the source snapshot but does not turn generated prose into authoritative audit evidence.
+- Dashboard presentation of the explanation will follow after the independent dashboard branch is
+  merged.
 
 ## Repository guardrails for coding agents
 
