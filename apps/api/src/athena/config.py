@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     github_api_version: str = "2026-03-10"
     github_org: str = ""
     github_token: SecretStr = SecretStr("")
+    aws_enabled: bool = False
+    aws_profile: str = ""
+    aws_region: str = "us-east-1"
 
 
 @lru_cache

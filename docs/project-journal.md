@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Milestone 5 — risk analytics
+**Active milestone:** OIDC authentication and role-based API authorization
 
 **Completed:**
 
@@ -45,8 +45,14 @@ The governing safety rule is:
 - Initial NIST AC-2, AC-5, and AC-6 continuous-control mappings
 - Immutable identity role-transition history and access observations
 - Explainable access-decay scoring with Security peer comparison
+- Governed Isolation Forest peer analytics
+- Human remediation review workflow
+- Durable continuous monitoring
+- Incremental GitHub authorization connector
+- Incremental AWS IAM authorization connector
 
-**Next outcome:** Athena establishes a reproducible entitlement-anomaly baseline and compares Alice with a meaningful synthetic peer cohort using Isolation Forest.
+**Next outcome:** Athena authenticates API callers through Keycloak OIDC and authorizes viewer,
+analyst, reviewer, and administrator operations.
 
 ## Roadmap
 
@@ -57,8 +63,12 @@ The governing safety rule is:
 | 2. Identity backbone | Canonical schemas, PostgreSQL persistence, migrations, and ingestion | Complete |
 | 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
 | 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Complete |
-| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | In progress |
+| 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Complete |
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Planned |
+| 7. Remediation and monitoring | Human decisions and durable scheduled evidence | Complete |
+| 8. GitHub connector | Incremental organization authorization evidence | Complete |
+| 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
+| 10. API access control | OIDC authentication and role-based authorization | In progress |
 
 ## Work completed
 
@@ -849,11 +859,74 @@ No application behavior changed.
 - README redesign commit: `5f1d0f4`
 - Hosted GitHub Actions run `31996341828`: success
 
-## Next work: additional cloud authorization connector
+## Milestone 10: AWS IAM authorization connector
 
-Add AWS IAM inventory next: users, roles, policies, trust relationships, access-key age, and effective
-permissions, with read-only credentials, pagination, incremental checkpoints, and explicit handling
-of indirect role assumption.
+Delivered Athena's first cloud authorization connector:
+
+- standard boto3 credential-chain support with optional profile and region configuration;
+- read-only account discovery through STS and IAM authorization inventory;
+- pagination for account authorization details and per-user access-key metadata;
+- canonical IAM user and role identities plus group memberships;
+- role trust-policy and permissions-boundary metadata;
+- customer-managed, AWS-managed, and inline policy collection;
+- normalization of Allow actions and AWS resource ARN patterns into grants and permissions;
+- direct-user, group-inherited, and role-identity provenance;
+- access-key status, creation time, and calculated age without secret key material;
+- stable content fingerprints, unchanged-snapshot detection, missing-grant revocation, and missing
+  identity deactivation scoped to the AWS account;
+- sanitized connector checkpoints and append-only synchronization audit events;
+- `sync-aws-iam` CLI integration and optional continuous-monitoring integration; and
+- a least-privilege collector policy and operating guide in `docs/aws-iam.md`.
+
+### Authorization decision
+
+Policy inventory is not represented as definitive AWS effective access. Every policy-derived grant
+records `lineage_complete=false` and identifies the unresolved influence of explicit Deny,
+permissions boundaries, service-control policies, resource and session policies, conditions, and
+indirect role assumption. This preserves useful evidence without overstating Athena's current AWS
+authorization evaluator.
+
+No database migration was required because the canonical identity, group, cloud resource,
+permission, grant, provenance, audit-event, and connector-checkpoint models already cover this
+connector.
+
+### Validation evidence
+
+- Focused AWS collector and synchronization tests: 2 passed
+- Full automated Python suite: 49 passed
+- Ruff linting: passed
+- boto3 package/import validation: `1.43.72`
+- AWS authorization and access-key pagination: passed with deterministic clients
+- IAM users, roles, groups, policies, trust metadata, and access-key age normalization: passed
+- Direct and group-inherited provenance materialization: passed
+- Explicit Deny statements are not materialized as Allow grants: passed
+- Unchanged snapshot: zero grant writes
+- Missing policy access revocation and entitlement deactivation: passed
+- Docker Compose configuration validation: passed
+
+### Errors and resolutions
+
+The first lint run found import ordering, one unused import, and two overlong lines. Imports and line
+wrapping were corrected before the full suite. The system Python did not contain the project test
+dependencies, so validation was rerun through the repository's `.venv`. A combined infrastructure
+check later stalled because Docker Desktop was not running; the process was terminated, Compose
+syntax was verified independently, and service-backed migration, Rego, and security-gate checks
+were deferred to hosted GitHub Actions.
+
+### Known limitations
+
+- No AWS credentials or account were supplied, so external collection was verified with deterministic
+  IAM and STS clients rather than a production account.
+- The connector inventories policy evidence but does not yet implement full AWS authorization
+  simulation, explicit-Deny evaluation, Organizations SCPs, or indirect role-assumption resolution.
+- Policy variables, `NotAction`, `NotResource`, and runtime condition context require a later AWS
+  evaluation engine.
+
+## Next work: OIDC authentication and API authorization
+
+Authenticate Athena API callers through Keycloak OIDC, define viewer, analyst, reviewer, and
+administrator permissions, protect sensitive endpoints, and preserve the authenticated actor on
+reviews, decisions, and audit events.
 
 ## Journal update checklist
 

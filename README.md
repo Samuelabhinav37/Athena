@@ -46,7 +46,7 @@ Athena outcome      Explain → Evaluate → Score → Review → Preserve evide
 
 ```mermaid
 flowchart LR
-    Sources["Identity & Access Sources<br/>Keycloak · GitHub"] --> Collect["Read-only Collectors"]
+    Sources["Identity & Access Sources<br/>Keycloak · GitHub · AWS IAM"] --> Collect["Read-only Collectors"]
     Collect --> Normalize["Canonical Identity Model"]
     Normalize --> DB[(PostgreSQL<br/>Evidence System of Record)]
 
@@ -74,7 +74,7 @@ flowchart LR
 
 | Capability | Delivered behavior |
 |---|---|
-| Identity ingestion | Keycloak users, groups, roles, and GitHub organization authorization data |
+| Identity ingestion | Keycloak, GitHub organization, and AWS IAM authorization data |
 | Authorization provenance | Ordered explanation of how an identity received each effective permission |
 | Governance detection | Missing approval, business justification, expiration, and incomplete lineage |
 | Policy as code | Deterministic OPA/Rego allow and deny decisions with versioned evidence |
@@ -198,6 +198,28 @@ python -m athena.cli sync-github
 
 The connector uses API-version headers, pagination, ETags, cached checkpoints, content fingerprints, and revocation detection. Never commit `.env` or production credentials.
 
+## AWS IAM Connector
+
+Athena uses the standard AWS credential chain, so credentials stay in AWS-supported environment,
+profile, workload-role, or instance-role providers. Configure an optional profile and region:
+
+```dotenv
+ATHENA_AWS_PROFILE=athena-read-only
+ATHENA_AWS_REGION=us-east-1
+ATHENA_AWS_ENABLED=true
+```
+
+Run a read-only synchronization:
+
+```bash
+python -m athena.cli sync-aws-iam
+```
+
+The connector collects users, groups, roles, role trust policies, managed and inline policies, and
+access-key status and age. It normalizes Allow actions over AWS resource patterns, detects removed
+grants, and skips unchanged snapshots. See the [AWS IAM connector guide](docs/aws-iam.md) for the
+minimum collector policy and authorization limitations.
+
 ## API Evidence
 
 | Endpoint | Evidence |
@@ -246,7 +268,7 @@ Athena/
 - [x] Human remediation workflow
 - [x] Durable continuous monitoring
 - [x] Incremental GitHub authorization connector
-- [ ] AWS IAM authorization connector
+- [x] Incremental AWS IAM authorization connector
 - [ ] Athena OIDC login and role-based API authorization
 - [ ] React identity, risk, review, and audit dashboard
 - [ ] Local Ollama explanations
@@ -258,6 +280,7 @@ Athena/
 - [Complete project journal](docs/project-journal.md)
 - [Branch protection recommendations](docs/branch-protection.md)
 - [Keycloak identity lab](infra/keycloak/README.md)
+- [AWS IAM connector](docs/aws-iam.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

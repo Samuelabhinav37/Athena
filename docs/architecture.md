@@ -18,7 +18,7 @@ In version 0.1, all access removal requires a recorded human decision.
 ## Initial data flow
 
 ```text
-Keycloak and seeded activity
+Keycloak, GitHub, AWS IAM, and seeded activity
           |
           v
 FastAPI collectors and normalization

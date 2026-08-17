@@ -10,12 +10,14 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from athena.collectors.aws_iam import AwsIamCollectionError, AwsIamCollector
 from athena.collectors.github import GitHubCollectionError, GitHubCollector
 from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollector
 from athena.config import get_settings
 from athena.database import get_session_factory
 from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaClient, OpaEvaluationError
+from athena.services.aws_iam_sync import AwsIamSyncService
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
 from athena.services.github_sync import GitHubSyncService
@@ -55,6 +57,20 @@ def sync_github() -> int:
             result = service.sync(snapshot)
     except (GitHubCollectionError, SQLAlchemyError, ValueError) as error:
         print(f"GitHub synchronization failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(asdict(result), sort_keys=True))
+    return 0
+
+
+def sync_aws_iam() -> int:
+    try:
+        settings = get_settings()
+        with get_session_factory()() as session:
+            with AwsIamCollector(settings) as collector:
+                snapshot = collector.collect()
+            result = AwsIamSyncService(session).sync(snapshot)
+    except (AwsIamCollectionError, SQLAlchemyError, ValueError) as error:
+        print(f"AWS IAM synchronization failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(asdict(result), sort_keys=True))
     return 0
@@ -270,6 +286,10 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
                 with GitHubCollector(settings) as github:
                     return asdict(service.sync(github.collect(cache)))
 
+            def synchronize_aws_iam() -> dict:
+                with AwsIamCollector(settings) as aws:
+                    return asdict(AwsIamSyncService(session).sync(aws.collect()))
+
             def provenance() -> dict:
                 entitlements = ProvenanceService(session).materialize_identity(identity())
                 session.commit()
@@ -309,12 +329,15 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
             ]
             if settings.github_org and settings.github_token.get_secret_value():
                 operations.append(("github_sync", synchronize_github))
+            if settings.aws_enabled:
+                operations.append(("aws_iam_sync", synchronize_aws_iam))
             operations.extend([
                 ("provenance", provenance), ("policy_evaluation", policies),
                 ("risk_assessment", risk), ("peer_anomaly", anomaly), ("review", review),
             ])
             result = MonitoringService(session).run(schedule_key, requested_by, operations)
     except (
+        AwsIamCollectionError,
         KeycloakCollectionError,
         MonitoringError,
         OpaEvaluationError,
@@ -355,6 +378,9 @@ def main() -> int:
     subcommands.add_parser("sync-keycloak", help="Synchronize identities from Keycloak")
     subcommands.add_parser(
         "sync-github", help="Synchronize GitHub organization repository permissions"
+    )
+    subcommands.add_parser(
+        "sync-aws-iam", help="Synchronize AWS IAM identities and policy permissions"
     )
     subcommands.add_parser(
         "seed-provenance-demo", help="Seed and materialize Alice's authorization scenario"
@@ -413,6 +439,8 @@ def main() -> int:
         return sync_keycloak()
     if arguments.command == "sync-github":
         return sync_github()
+    if arguments.command == "sync-aws-iam":
+        return sync_aws_iam()
     if arguments.command == "seed-provenance-demo":
         return seed_provenance_demo()
     if arguments.command == "evaluate-policies":
