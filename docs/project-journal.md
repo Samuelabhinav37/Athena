@@ -822,6 +822,31 @@ misrepresenting the result as a direct grant.
   organizations will need GraphQL batching, audit-log enrichment, or another optimized strategy.
 - Fine-grained source lineage remains incomplete until team/repository grant sources are correlated.
 
+## Documentation refresh: portfolio-style project README
+
+Redesigned the root README to make Athena easier to understand, evaluate, and run:
+
+- added a concise project identity, security-gate and technology badges, and quick navigation;
+- introduced the five authorization questions and a concrete role-transition business scenario;
+- added a Mermaid architecture diagram showing collection, normalization, evaluation, governance,
+  remediation, evidence, and monitoring;
+- summarized delivered capabilities, authorization provenance, and API evidence in compact tables;
+- added copy-ready quick-start, end-to-end demo, and GitHub connector instructions;
+- documented the repository map and separated completed work from planned roadmap items; and
+- linked the architecture, journal, branch-protection, Keycloak, contribution, security, and license
+  documentation.
+
+The presentation structure was inspired by the public AI Red-Teaming Lab portfolio README while
+retaining Athena's own architecture, terminology, evidence, and commands. The in-app browser was
+unavailable during inspection, so the public GitHub page was reviewed through direct web access.
+No application behavior changed.
+
+### Validation evidence
+
+- Markdown whitespace validation (`git diff --check`): passed
+- All local README documentation and workflow link targets: present
+- Delivered and planned capabilities are visibly separated
+
 ## Next work: additional cloud authorization connector
 
 Add AWS IAM inventory next: users, roles, policies, trust relationships, access-key age, and effective
