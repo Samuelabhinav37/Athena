@@ -750,6 +750,8 @@ Delivered a durable, observable monitoring pipeline:
 - Live monitoring API: 200, one run, six ordered steps
 - ORM monitoring-step mutation attempt: blocked
 - Valid direct PostgreSQL monitoring-step update: blocked by trigger
+- Hosted GitHub Actions run `31992137329`: success
+- Implementation commit: `bdabaff`
 
 ### Failure and resolution
 
