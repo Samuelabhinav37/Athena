@@ -707,6 +707,8 @@ Upgraded the advisory model to `peer-isolation-forest-v2` with governed cohort p
 - Live reviewed false-positive labels: 0, rate 0.0
 - Live second-run drift status: stable, maximum feature shift 0.0
 - Alembic model/schema drift check: no new upgrade operations
+- Hosted GitHub Actions run `31991040762`: success
+- Implementation commit: `4f3a944`
 
 No migration was needed: cohort and calibration evidence fits the already immutable, versioned
 `peer_definition` and `summary` JSON contracts introduced in migration `20260816_05`.
