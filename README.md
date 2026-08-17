@@ -81,7 +81,7 @@ flowchart LR
 | Identity drift | Controlled role-transition history and retained-access detection |
 | Explainable risk | Seven weighted access-decay factors with per-entitlement findings |
 | Peer analytics | Governed cohorts, fixed-seed Isolation Forest, drift and false-positive metrics |
-| Human remediation | Owned reviews with immutable `retain`, `revoke`, `extend`, or `exception` decisions |
+| Human remediation | Owned reviews plus administrator-authorized, idempotent execution requests |
 | Continuous monitoring | Idempotent, retryable pipeline with immutable per-step evidence |
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
 
@@ -112,7 +112,8 @@ Detect → Explain → Recommend → Human reviews → Authorized executor acts
 - OPA decisions are deterministic and versioned.
 - ML output is advisory and cannot grant, deny, or revoke access.
 - Human decisions are append-only evidence.
-- Destructive decisions remain `pending` until a separately authorized connector performs and verifies the change.
+- Destructive decisions become durable execution requests; local access changes only after an
+  injected source adapter verifies the upstream revocation.
 - Collector credentials are read-only and secrets are never returned by status APIs.
 - API access tokens are validated for signature, issuer, audience, expiry, and fixed `RS256` use.
 - Review actors come from the authenticated token and cannot be supplied in request payloads.
@@ -238,6 +239,7 @@ minimum collector policy and authorization limitations.
 | `GET /v1/monitoring/runs` | Scheduled pipeline attempts and ordered step evidence |
 | `GET /v1/connectors` | Sanitized connector checkpoints without cached payloads |
 | `GET /v1/auth/me` | Validated caller identity and Athena roles |
+| `GET /v1/executions` | Administrator-only remediation execution and verification evidence |
 
 ## Evidence-Driven Engineering
 
@@ -276,6 +278,8 @@ Athena/
 - [x] Incremental GitHub authorization connector
 - [x] Incremental AWS IAM authorization connector
 - [x] Athena OIDC token validation and role-based API authorization
+- [x] Authorized remediation execution framework
+- [ ] GitHub and AWS write adapters for approved remediation
 - [ ] React identity, risk, review, and audit dashboard
 - [ ] Local Ollama explanations
 - [ ] Neo4j identity attack-path analysis

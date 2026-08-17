@@ -17,6 +17,11 @@ API callers cross a separate authentication boundary. Keycloak issues audience-r
 access tokens; FastAPI validates their signature and claims before hierarchical Athena roles permit
 evidence reads or review mutations. Human actor identity is taken from the validated token.
 
+Remediation execution crosses an additional credential boundary. The API can authorize and persist
+an execution request but does not hold connector write credentials. A separate worker injects a
+source-specific adapter, and Athena changes its local authorization evidence only after independent
+upstream verification.
+
 In version 0.1, all access removal requires a recorded human decision.
 
 ## Initial data flow

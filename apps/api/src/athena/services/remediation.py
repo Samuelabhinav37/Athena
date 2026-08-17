@@ -53,8 +53,12 @@ class RemediationService:
         if existing is not None:
             return CaseOutcome(existing.id, existing.status, existing.resolution)
         now = datetime.now(UTC)
+        entitlement_id = None
+        if risk is not None and risk.findings:
+            entitlement_id = max(risk.findings, key=lambda finding: finding.score).entitlement_id
         case = ReviewCase(
             identity_id=identity.id,
+            entitlement_id=entitlement_id,
             risk_assessment_id=risk.id if risk else None,
             anomaly_result_id=anomaly.id if anomaly else None,
             title=f"Review unusual access for {identity.username}",

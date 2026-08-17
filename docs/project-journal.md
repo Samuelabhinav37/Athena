@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Authorized remediation executor framework
+**Active milestone:** React identity, risk, review, and audit dashboard
 
 **Completed:**
 
@@ -51,9 +51,10 @@ The governing safety rule is:
 - Incremental GitHub authorization connector
 - Incremental AWS IAM authorization connector
 - Keycloak OIDC authentication and role-based API authorization
+- Authorized remediation execution framework
 
-**Next outcome:** Athena turns an approved destructive review decision into an explicitly authorized,
-idempotent execution request with verification evidence and safe failure recovery.
+**Next outcome:** Athena provides an authenticated React shell with identity inventory, evidence
+navigation, risk summaries, and review workflow views backed by the existing APIs.
 
 ## Roadmap
 
@@ -70,7 +71,8 @@ idempotent execution request with verification evidence and safe failure recover
 | 8. GitHub connector | Incremental organization authorization evidence | Complete |
 | 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
 | 10. API access control | OIDC authentication and role-based authorization | Complete |
-| 11. Authorized execution | Approved remediation execution and verification evidence | In progress |
+| 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
+| 12. React dashboard | Authenticated identity, risk, review, and audit interface | In progress |
 
 ## Work completed
 
@@ -994,12 +996,73 @@ sources while realm correctness remained covered by JSON parsing and structural 
 - `ATHENA_AUTH_REQUIRED=false` is available only for isolated development and tests; production must
   keep authentication enabled.
 
-## Next work: authorized remediation executor
+## Milestone 12: authorized remediation execution framework
 
-Create an administrator-only, idempotent execution-request framework that accepts only approved
-destructive review decisions, dispatches through source-specific executors, verifies the upstream
-state, and records immutable before/after or failure evidence without granting connector credentials
-to the API process.
+Delivered the durable safety boundary between a review decision and an upstream access change:
+
+- administrator-only execution creation and evidence APIs;
+- execution requests accepted only from resolved `revoke` decisions with an active entitlement;
+- one execution per review plus globally unique caller-supplied idempotency keys;
+- immutable before evidence linked to the review decision event and normalized target;
+- source-specific adapter protocol with separate revoke and verify operations;
+- exact adapter/grant source matching and stable idempotency keys on retry;
+- pending, running, succeeded, failed, and verification-failed states;
+- retryable failure evidence with attempt counts and append-only transitions;
+- generic persistence for unexpected adapter errors so upstream secrets cannot leak into evidence;
+- local grant revocation and provenance rematerialization only after verification succeeds;
+- no-op replay after success and active-access preservation on every failure path;
+- SQLAlchemy immutability guards plus a PostgreSQL trigger for execution events;
+- migration `20260817_09`; and
+- an execution architecture, status, API, adapter, and safety-invariant guide.
+
+### Credential-boundary decision
+
+The API can authorize and store an execution request but exposes no run endpoint and holds no
+connector write credentials. A separate worker must inject an adapter. A connector receipt is not
+treated as success: its independent verification method must prove upstream removal before Athena
+revokes the canonical grant.
+
+The first framework supports `revoke` only. `extend` lacks a reviewed target expiration and remains
+outside execution until its decision contract captures that value explicitly.
+
+### Validation evidence
+
+- Focused execution safety and administrator API tests: 5 passed
+- Full automated Python suite: 61 passed
+- Ruff linting: passed
+- Docker Compose configuration validation: passed
+- Unapproved, unresolved, missing-entitlement, and inactive-access rejection: passed
+- Execution request and idempotency-key replay: passed
+- Adapter source binding and stable retry key: passed
+- Verified success, local revocation, and provenance deactivation: passed
+- Execution failure and verification failure preserve active access: passed
+- Successful execution replay performs zero additional adapter calls: passed
+- Authenticated administrator recorded as execution requester: passed
+- Viewer execution creation denied with `403`: passed
+- ORM execution-event immutability: passed
+
+### Errors and resolutions
+
+The first deterministic fixture omitted Bob, whom the established provenance scenario requires; the
+fixture was aligned with the controlled identity lab. The first verified run left its entitlement
+active because the session disables autoflush and provenance queried before seeing the in-memory
+grant revocation. An explicit flush was added before rematerialization. The canonical schema contract
+then correctly failed on the two new tables and was updated to include them.
+
+### Known limitations
+
+- Production GitHub and AWS write adapters are intentionally not implemented or enabled.
+- A separate worker process, credential delivery mechanism, leasing, and crash recovery are still
+  required before production execution.
+- Live PostgreSQL trigger and migration validation depend on hosted CI while Docker Desktop is
+  stopped locally.
+- `extend` and connector-specific rollback or compensation flows are not yet modeled.
+
+## Next work: React dashboard
+
+Build the authenticated authorization-code-with-PKCE React shell, then add identity inventory,
+entitlement provenance, risk/anomaly summaries, review operations, execution evidence, connector
+status, monitoring history, and audit-oriented navigation against the protected API.
 
 ## Journal update checklist
 

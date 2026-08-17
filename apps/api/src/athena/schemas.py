@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from athena.models import (
+    ExecutionStatus,
     GrantSubjectType,
     IdentityType,
     MonitoringStatus,
@@ -259,3 +260,43 @@ class AuthenticatedPrincipalResponse(BaseModel):
     subject: str
     username: str
     roles: list[str]
+
+
+class CreateExecutionRequest(BaseModel):
+    case_id: uuid.UUID
+    idempotency_key: str = Field(min_length=8, max_length=255)
+
+
+class RemediationExecutionEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    occurred_at: datetime
+    actor: str
+    action: str
+    from_status: ExecutionStatus | None
+    to_status: ExecutionStatus
+    evidence: dict
+    error: str | None
+
+
+class RemediationExecutionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    case_id: uuid.UUID
+    entitlement_id: uuid.UUID
+    source: str
+    action: str
+    target_external_id: str
+    idempotency_key: str
+    requested_by: str
+    status: ExecutionStatus
+    attempt_count: int
+    started_at: datetime | None
+    completed_at: datetime | None
+    before_evidence: dict
+    after_evidence: dict
+    adapter_receipt: dict
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+    events: list[RemediationExecutionEventResponse]

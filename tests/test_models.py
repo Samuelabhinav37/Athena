@@ -23,6 +23,8 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
         "permissions",
         "policy_evaluations",
         "provenance_edges",
+        "remediation_execution_events",
+        "remediation_executions",
         "resources",
         "risk_assessments",
         "risk_findings",

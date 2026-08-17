@@ -106,6 +106,14 @@ class MonitoringStatus(StrEnum):
     FAILED = "failed"
 
 
+class ExecutionStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    VERIFICATION_FAILED = "verification_failed"
+
+
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
@@ -649,6 +657,89 @@ class ReviewEvent(Base):
     case: Mapped[ReviewCase] = relationship(back_populates="events")
 
 
+class RemediationExecution(TimestampMixin, Base):
+    __tablename__ = "remediation_executions"
+    __table_args__ = (
+        UniqueConstraint("case_id", name="uq_remediation_execution_case"),
+        UniqueConstraint("idempotency_key", name="uq_remediation_execution_idempotency"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("review_cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("effective_entitlements.id", ondelete="RESTRICT"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[ExecutionStatus] = mapped_column(
+        Enum(
+            ExecutionStatus,
+            name="remediation_execution_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+        default=ExecutionStatus.PENDING,
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    before_evidence: Mapped[dict] = mapped_column(json_type, nullable=False)
+    after_evidence: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+    adapter_receipt: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    case: Mapped[ReviewCase] = relationship()
+    entitlement: Mapped[EffectiveEntitlement] = relationship()
+    events: Mapped[list["RemediationExecutionEvent"]] = relationship(
+        back_populates="execution",
+        cascade="all, delete-orphan",
+        order_by="RemediationExecutionEvent.occurred_at",
+        lazy="selectin",
+    )
+
+
+class RemediationExecutionEvent(Base):
+    __tablename__ = "remediation_execution_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    execution_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("remediation_executions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    actor: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    from_status: Mapped[ExecutionStatus | None] = mapped_column(
+        Enum(
+            ExecutionStatus,
+            name="remediation_event_from_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        )
+    )
+    to_status: Mapped[ExecutionStatus] = mapped_column(
+        Enum(
+            ExecutionStatus,
+            name="remediation_event_to_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+    )
+    evidence: Mapped[dict] = mapped_column(json_type, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    execution: Mapped[RemediationExecution] = relationship(back_populates="events")
+
+
 class MonitoringRun(Base):
     __tablename__ = "monitoring_runs"
     __table_args__ = (UniqueConstraint("schedule_key", name="uq_monitoring_run_schedule_key"),)
@@ -746,6 +837,12 @@ def prevent_anomaly_evidence_mutation(*_: object) -> None:
 @event.listens_for(ReviewEvent, "before_delete")
 def prevent_review_event_mutation(*_: object) -> None:
     raise ValueError("Review events are immutable")
+
+
+@event.listens_for(RemediationExecutionEvent, "before_update")
+@event.listens_for(RemediationExecutionEvent, "before_delete")
+def prevent_remediation_execution_event_mutation(*_: object) -> None:
+    raise ValueError("Remediation execution events are immutable")
 
 
 @event.listens_for(MonitoringStep, "before_update")
