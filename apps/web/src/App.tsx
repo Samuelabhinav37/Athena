@@ -4,6 +4,7 @@ import { apiGet, apiPost, apiText, ApiError } from "./api";
 import { completeSignin, userManager } from "./auth";
 import type {
   AnomalyAssessment,
+  AttackPath,
   Connector,
   Entitlement,
   Execution,
@@ -199,6 +200,9 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [risks, setRisks] = useState<RiskAssessment[]>([]);
   const [anomalies, setAnomalies] = useState<AnomalyAssessment[]>([]);
+  const [attackPaths, setAttackPaths] = useState<AttackPath[]>([]);
+  const [graphState, setGraphState] = useState<LoadState>("idle");
+  const [graphError, setGraphError] = useState("");
   const [loading, setLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [explanation, setExplanation] = useState<IdentityExplanation | null>(null);
@@ -211,6 +215,7 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
     if (!selectedId) return;
     let active = true; setLoading(true); setDetailError(""); setExplanation(null);
     setExplanationState("idle"); setExplanationError("");
+    setGraphState("loading"); setGraphError(""); setAttackPaths([]);
     Promise.all([
       apiGet<Entitlement[]>(user, `/v1/identities/${selectedId}/entitlements`),
       apiGet<RiskAssessment[]>(user, `/v1/identities/${selectedId}/risk-assessments`),
@@ -220,6 +225,14 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
     }).catch((caught: unknown) => {
       if (active) setDetailError(caught instanceof Error ? caught.message : "Unable to load identity evidence");
     }).finally(() => { if (active) setLoading(false); });
+    apiGet<AttackPath[]>(user, `/v1/attack-paths/identities/${selectedId}?max_depth=6&limit=25`)
+      .then((paths) => { if (active) { setAttackPaths(paths); setGraphState("ready"); } })
+      .catch((caught: unknown) => {
+        if (active) {
+          setGraphError(caught instanceof Error ? caught.message : "Attack-path graph unavailable");
+          setGraphState("error");
+        }
+      });
     return () => { active = false; };
   }, [selectedId, user]);
 
@@ -243,6 +256,7 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
       <section className="evidence-panel">{selected ? <><header className="identity-header"><div><p>{selected.source} / {selected.identity_type}</p><h2>{selected.display_name}</h2><span>{selected.job_title ?? "Title unavailable"} · {selected.email ?? "Email unavailable"}</span></div><Badge value={selected.active ? "active" : "inactive"} /></header>
         {loading ? <div className="inline-loader">Loading evidence…</div> : detailError ? <div className="notice notice--error">{detailError}</div> : <><div className="evidence-stats"><div><strong>{entitlements.length}</strong><small>Entitlements</small></div><div><strong>{risks[0]?.score.toFixed(2) ?? "—"}</strong><small>Risk score</small></div><div><strong>{anomalies.filter((item) => item.is_anomaly).length}</strong><small>Anomalies</small></div></div>
           <div className="explanation-card"><div className="explanation-heading"><div><p className="kicker">Local model · advisory only</p><h3>Evidence explanation</h3></div><button className="button button--secondary" onClick={() => void generateExplanation()} disabled={explanationState === "loading"}>{explanationState === "loading" ? "Generating…" : explanation ? "Regenerate" : "Generate explanation"}</button></div>{explanationError && <div className="notice notice--error">{explanationError}</div>}{explanation && <div className="explanation-body"><p>{explanation.summary}</p>{explanation.findings.length > 0 && <ul>{explanation.findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}<div className="explanation-meta"><span>Model {explanation.model}</span><span>{explanation.evidence_references.length} evidence references</span><span>Digest {explanation.evidence_digest.slice(0, 12)}…</span></div><small>{explanation.disclaimer}</small>{explanation.limitations.length > 0 && <details><summary>Limitations</summary><ul>{explanation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></details>}</div>}</div>
+          <div className="attack-card"><div className="attack-heading"><div><p className="kicker">Neo4j · derived index</p><h3>Privileged attack paths</h3></div><span>Advisory only</span></div>{graphState === "loading" && <div className="inline-loader">Querying bounded graph paths…</div>}{graphState === "error" && <div className="graph-unavailable"><strong>Graph unavailable</strong><small>{graphError}. PostgreSQL evidence remains available.</small></div>}{graphState === "ready" && (attackPaths.length ? <div className="attack-paths">{attackPaths.map((path, pathIndex) => <div className="attack-path" key={`${selectedId}-${pathIndex}`}>{path.nodes.map((node, nodeIndex) => <div className="attack-step" key={`${node.id}-${nodeIndex}`}><div className={`attack-node attack-node--${node.kind}`}><small>{node.kind}</small><strong>{node.label}</strong></div>{nodeIndex < path.relationships.length && <span className="attack-edge">{path.relationships[nodeIndex]} →</span>}</div>)}</div>)}</div> : <Empty>No privileged resource paths found within six hops.</Empty>)}</div>
           <div className="evidence-section"><h3>Authorization lineage</h3>{entitlements.length ? entitlements.map((item) => <article className="entitlement" key={item.id}><div className="entitlement-head"><div><strong>{item.permission.name}</strong><small>{item.permission.action} on {item.permission.resource.name}</small></div><Badge value={item.governance.status} /></div>{item.provenance.map((edge) => <div className="lineage" key={`${item.id}-${edge.sequence}`}><span>{edge.from_label}</span><i>{edge.relationship} →</i><span>{edge.to_label}</span></div>)}{item.governance.gaps.length > 0 && <p className="gap">Governance gaps: {item.governance.gaps.join(", ")}</p>}</article>) : <Empty>No entitlements materialized for this identity.</Empty>}</div></>}</> : <Empty>Select an identity to inspect evidence.</Empty>}</section></div>
   </div>;
 }

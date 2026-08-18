@@ -287,8 +287,9 @@ Athena/
 - [ ] GitHub and AWS write adapters for approved remediation
 - [x] React identity, risk, review, and audit dashboard
 - [x] Local Ollama explanations
-- [ ] Production deployment and recovery hardening
+- [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
+- [x] Authenticated attack-path dashboard presentation
 
 ## Documentation
 

@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Neo4j identity attack-path analysis
+**Active milestone:** Attack-path dashboard presentation
 
 **Completed:**
 
@@ -55,9 +55,10 @@ The governing safety rule is:
 - Guarded local Ollama evidence explanations
 - Authenticated React identity-governance dashboard
 - Derived Neo4j identity attack-path foundation
+- Authenticated attack-path dashboard presentation
 
-**Next outcome:** Validate a one-way Neo4j projection and bounded privileged-resource path query
-without changing PostgreSQL authority or Athena's decision model.
+**Next outcome:** Present bounded privileged paths inside the authenticated identity evidence view
+without making graph availability a dependency for PostgreSQL-backed evidence.
 
 ## Roadmap
 
@@ -76,8 +77,9 @@ without changing PostgreSQL authority or Athena's decision model.
 | 10. API access control | OIDC authentication and role-based authorization | Complete |
 | 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
 | 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
-| 13. Deployment hardening | Containers, operations, backup, recovery, and demo packaging | In progress |
-| 14. Attack-path analysis | Derived Neo4j projection and bounded advisory path queries | In progress |
+| 13. Deployment hardening | Containers, operations, backup, recovery, and demo packaging | Complete |
+| 14. Attack-path analysis | Derived Neo4j projection and bounded advisory path queries | Complete |
+| 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | In progress |
 
 ## Milestone 14: Neo4j attack-path foundation
 
@@ -102,6 +104,22 @@ The approved projection produced eight unique nodes and eight unique lineage edg
 demo evidence. Alice's bounded query returned one privileged path with relationships
 `direct_grant -> applies_to`. PostgreSQL was not migrated or modified, and no access or remediation
 action was executed.
+
+## Milestone 15: attack-path dashboard presentation
+
+Extended the authenticated identity evidence view with:
+
+- a bounded request for up to 25 paths within six hops;
+- compact node-and-relationship path rendering using the existing dependency-free design system;
+- explicit `Neo4j - derived index` and `Advisory only` labels;
+- loading and no-path states; and
+- isolated graph failure handling that keeps PostgreSQL entitlement, risk, anomaly, and explanation
+  evidence available when Neo4j is disabled or unreachable.
+
+No frontend dependency was added. Browser-based visual inspection could not run because no in-app or
+extension browser was available in the session; TypeScript compilation, the Vite production build,
+static UI contract tests, and container health checks remain the required validation evidence for
+this slice.
 
 ## Work completed
 
