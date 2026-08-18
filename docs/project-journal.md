@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** End-to-end demonstration and deployment hardening
+**Active milestone:** Deployment, observability, backup, and recovery hardening
 
 **Completed:**
 
@@ -55,8 +55,8 @@ The governing safety rule is:
 - Guarded local Ollama evidence explanations
 - Authenticated React identity-governance dashboard
 
-**Next outcome:** Package a complete local demonstration and define production deployment,
-observability, backup, and recovery requirements.
+**Next outcome:** Validate the non-root runtime images in hosted CI, then exercise the controlled
+demo stack when Docker Desktop is available and explicit database-migration approval is granted.
 
 ## Roadmap
 
@@ -75,6 +75,7 @@ observability, backup, and recovery requirements.
 | 10. API access control | OIDC authentication and role-based authorization | Complete |
 | 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
 | 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
+| 13. Deployment hardening | Containers, operations, backup, recovery, and demo packaging | In progress |
 
 ## Work completed
 
@@ -1218,6 +1219,56 @@ Markdown-table initializer, which was split without changing output.
 - Live explanation rendering still requires an operator-installed local Ollama model.
 - The report is a point-in-time summary, not a signed artifact or external certification.
 - Production backup, restore, retention, telemetry, and deployment runbooks remain to be defined.
+
+## Deployment and operations hardening
+
+Added a reproducible deployment and controlled-demonstration baseline:
+
+- Python 3.13.14 slim API image running as dedicated UID/GID 10001;
+- Node 24.14.1 build stage and NGINX 1.29.8 web runtime running as `nginx`;
+- read-only web container filesystem with an ephemeral `/tmp`;
+- same-origin NGINX proxy for protected `/v1/` API calls;
+- complete demo Compose topology with non-published PostgreSQL and OPA services, required secret
+  placeholders, persistent database storage, health checks, dependency conditions, and restart
+  policies;
+- production settings validation that rejects disabled authentication, development database and
+  Keycloak credentials, and a non-HTTPS OIDC issuer;
+- bounded JSON request events with safe correlation IDs and no query strings, headers, bodies,
+  tokens, claims, or evidence content; and
+- deployment, observability, backup, restore-rehearsal, retention, and recovery guidance.
+
+### Architectural decisions
+
+The API does not apply migrations automatically. Migration is a separately authorized operator
+step because it changes the evidence store. The demo stack also does not weaken the loopback-only
+Ollama boundary: explanations remain unavailable from the containerized API until a reviewed
+co-located inference topology exists.
+
+The original Uvicorn access log is disabled in the API image in favor of Athena's bounded request
+event. Safe caller-provided request IDs are returned and preserved; unsafe values are replaced with
+UUIDs so they cannot forge structured log lines.
+
+### Validation evidence
+
+- Focused deployment, production-configuration, and request-observability tests: 6 passed
+- Full automated Python suite: 74 passed, with one existing Starlette deprecation warning
+- Frontend TypeScript check and production build: passed
+- Development and demo Compose configuration validation: passed
+- Ruff linting and diff checks: passed
+- Container base versions and non-root runtime declarations: covered by static regression tests
+- PostgreSQL and OPA host-port non-publication plus required demo secrets: covered by regression
+  tests
+- No package dependency or database migration introduced
+
+### Known limitations
+
+- Docker Desktop is stopped locally, so actual API/web image construction and runtime health checks
+  require hosted CI and a later controlled demo run.
+- The Keycloak `start-dev` mode and imported Acme realm are demonstration components only.
+- Backup and restore commands are documented but were not executed; every database operation still
+  requires explicit approval and an isolated verified target.
+- Image signing, SBOM/vulnerability enforcement, TLS ingress, external secret management, and
+  production telemetry backends remain deployment-platform responsibilities.
 
 ## Repository guardrails for coding agents
 

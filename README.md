@@ -284,6 +284,7 @@ Athena/
 - [ ] GitHub and AWS write adapters for approved remediation
 - [x] React identity, risk, review, and audit dashboard
 - [x] Local Ollama explanations
+- [ ] Production deployment and recovery hardening
 - [ ] Neo4j identity attack-path analysis
 
 ## Documentation
@@ -296,6 +297,8 @@ Athena/
 - [OIDC authentication and API roles](docs/authentication.md)
 - [Local Ollama explanation boundary](docs/ollama-explanations.md)
 - [Authorization evidence reports](docs/evidence-reports.md)
+- [Deployment and controlled demonstration](docs/deployment.md)
+- [Operations, observability, backup, and recovery](docs/operations.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

@@ -3,6 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from athena.database import get_session_factory
+from athena.observability import RequestObservabilityMiddleware
 from athena.routes.auth import router as auth_router
 from athena.routes.connectors import router as connectors_router
 from athena.routes.executions import router as executions_router
@@ -16,6 +17,7 @@ app = FastAPI(
     description="Continuous authorization provenance and identity-governance evidence.",
     version="0.1.0",
 )
+app.add_middleware(RequestObservabilityMiddleware)
 
 app.include_router(identities_router)
 app.include_router(auth_router)
