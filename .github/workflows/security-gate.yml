@@ -21,6 +21,8 @@ jobs:
     env:
       ATHENA_DATABASE_URL: postgresql+psycopg://athena:athena@localhost:5432/athena
       ATHENA_POLICY_DIRECTORY: policies
+      NEO4J_AUTH: neo4j/ci-compose-validation
+      NEO4J_PASSWORD: ci-compose-validation
     services:
       postgres:
         image: postgres:16-alpine

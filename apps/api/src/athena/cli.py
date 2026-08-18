@@ -17,6 +17,7 @@ from athena.config import get_settings
 from athena.database import get_session_factory
 from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaClient, OpaEvaluationError
+from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
 from athena.services.aws_iam_sync import AwsIamSyncService
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
@@ -82,6 +83,20 @@ def seed_provenance_demo() -> int:
             result = DemoScenarioService(session).seed()
     except (DemoScenarioError, SQLAlchemyError, ValueError) as error:
         print(f"Provenance demo seed failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+def project_attack_graph() -> int:
+    settings = get_settings()
+    try:
+        with get_session_factory()() as session:
+            projection = build_projection(session)
+        with Neo4jAttackPathAdapter(settings) as adapter:
+            result = adapter.project(projection)
+    except (AttackPathError, SQLAlchemyError, ValueError) as error:
+        print(f"Attack graph projection failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))
     return 0
@@ -385,6 +400,9 @@ def main() -> int:
     subcommands.add_parser(
         "seed-provenance-demo", help="Seed and materialize Alice's authorization scenario"
     )
+    subcommands.add_parser(
+        "project-attack-graph", help="Project active PostgreSQL provenance into Neo4j"
+    )
     evaluate_parser = subcommands.add_parser(
         "evaluate-policies", help="Evaluate active entitlements through OPA"
     )
@@ -443,6 +461,8 @@ def main() -> int:
         return sync_aws_iam()
     if arguments.command == "seed-provenance-demo":
         return seed_provenance_demo()
+    if arguments.command == "project-attack-graph":
+        return project_attack_graph()
     if arguments.command == "evaluate-policies":
         return evaluate_policies(arguments.username)
     if arguments.command == "security-gate":
