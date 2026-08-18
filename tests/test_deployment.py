@@ -128,3 +128,15 @@ def test_dashboard_exposes_machine_identity_posture_without_access_changes() -> 
     assert "Machine identity" in application
     assert "Read-only analysis" in application
     assert "no automatic access changes" in application
+
+
+def test_dashboard_preserves_human_review_and_execution_boundaries() -> None:
+    application = Path("apps/web/src/App.tsx").read_text(encoding="utf-8")
+    api = Path("apps/web/src/api.ts").read_text(encoding="utf-8")
+
+    assert '"/v1/reviews"' in application
+    assert "/assign`" in application
+    assert "/decide`" in application
+    assert "Record immutable decision" in application
+    assert "remain pending until separately authorized execution" in application
+    assert '"Content-Type": "application/json"' in api

@@ -99,7 +99,15 @@ export interface ReviewCase {
   due_at: string;
   resolution: string | null;
   created_at: string;
-  events: { id: string; occurred_at: string; actor: string; action: string; reason: string }[];
+  events: {
+    id: string;
+    occurred_at: string;
+    actor: string;
+    action: string;
+    reason: string;
+    decision: string | null;
+    execution_status: string;
+  }[];
 }
 
 export interface Connector {

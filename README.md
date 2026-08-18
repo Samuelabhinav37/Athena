@@ -295,6 +295,7 @@ Athena/
 - [x] Machine and workload identity posture foundation
 - [x] Authenticated machine identity posture dashboard
 - [x] AWS role owner and last-used lifecycle evidence
+- [x] Role-aware human review workflow dashboard
 
 ## Documentation
 

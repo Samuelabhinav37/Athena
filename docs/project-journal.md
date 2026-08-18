@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Human review workflow presentation
+**Active milestone:** Frontend component and accessibility testing
 
 **Completed:**
 
@@ -59,9 +59,10 @@ The governing safety rule is:
 - Machine and workload identity posture foundation
 - Authenticated machine identity posture dashboard
 - AWS role owner and last-used lifecycle evidence
+- Role-aware human review workflow dashboard
 
-**Next outcome:** Expose review assignment and human decision forms without allowing the UI to
-bypass policy evaluation or the separately authorized execution boundary.
+**Next outcome:** Add component, accessibility, authentication, and API-error coverage after the
+frontend testing dependency is explicitly approved.
 
 ## Roadmap
 
@@ -86,6 +87,21 @@ bypass policy evaluation or the separately authorized execution boundary.
 | 16. Machine identity governance | Owner, usage, credential, and access posture | Complete |
 | 17. Machine identity presentation | Searchable posture inventory and evidence detail console | Complete |
 | 18. AWS role lifecycle evidence | Read-only owner and role-use posture enrichment | Complete |
+| 19. Human review presentation | Assignment, decision, and immutable history workspace | Complete |
+
+## Milestone 19: Human review workflow presentation
+
+Extended the authenticated review queue into a role-aware human decision workspace:
+
+- analysts can open evidence-backed cases with bounded due dates;
+- reviewers can assign an accountable owner with a recorded reason;
+- only the assigned reviewer can submit retain, revoke, extend, or exception decisions;
+- every case exposes its immutable event history and execution state; and
+- revoke and extend decisions remain pending until separately authorized execution.
+
+The API remains authoritative for role hierarchy, ownership, valid state transitions, evidence
+requirements, and reason length. The interface adds no connector action and cannot bypass OPA or
+the authorized execution framework.
 
 ## Milestone 17: Machine identity dashboard presentation
 

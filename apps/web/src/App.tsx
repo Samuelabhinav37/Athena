@@ -168,7 +168,7 @@ function Dashboard({ user }: { user: User }) {
         {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} />}
         {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
         {state === "ready" && page === "machines" && <MachineIdentities user={user} />}
-        {state === "ready" && page === "reviews" && <Reviews reviews={reviews} identities={identities} />}
+        {state === "ready" && page === "reviews" && principal && <Reviews user={user} reviews={reviews} setReviews={setReviews} identities={identities} principal={principal} />}
         {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
       </main>
     </div>
@@ -313,10 +313,51 @@ function MachineIdentities({ user }: { user: User }) {
   </div>;
 }
 
-function Reviews({ reviews, identities }: { reviews: ReviewCase[]; identities: Identity[] }) {
+function Reviews({ user, reviews, setReviews, identities, principal }: { user: User; reviews: ReviewCase[]; setReviews: (reviews: ReviewCase[]) => void; identities: Identity[]; principal: Principal }) {
+  const [selectedId, setSelectedId] = useState(reviews[0]?.id ?? "");
+  const [actionState, setActionState] = useState<LoadState>("idle");
+  const [actionError, setActionError] = useState("");
+  const [owner, setOwner] = useState(principal.username);
+  const [assignReason, setAssignReason] = useState("");
+  const [decision, setDecision] = useState("retain");
+  const [decisionReason, setDecisionReason] = useState("");
+  const [newIdentityId, setNewIdentityId] = useState(identities[0]?.id ?? "");
+  const [dueDays, setDueDays] = useState(7);
+  const selected = reviews.find((review) => review.id === selectedId);
+  const roleLevel = Math.max(...principal.roles.map((role) => ({ "athena-viewer": 1, "athena-analyst": 2, "athena-reviewer": 3, "athena-administrator": 4 }[role] ?? 0)), 0);
+  const canOpen = roleLevel >= 2;
+  const canAssign = roleLevel >= 3;
+  const canDecide = canAssign && selected?.status === "in_review" && selected.owner === principal.username;
   const nameFor = (id: string) => identities.find((identity) => identity.id === id)?.display_name ?? id.slice(0, 8);
-  return <div className="page"><section className="page-heading"><div><p className="kicker">Human decision boundary</p><h1>Review with context.<br /><em>Act with proof.</em></h1></div><p className="heading-note">Athena records decisions as immutable evidence. Destructive access changes always remain separately authorized.</p></section>
-    <section className="panel table-panel"><div className="review-table table-header"><span>Case</span><span>Identity</span><span>Owner</span><span>Due</span><span>Status</span></div>{reviews.length ? reviews.map((review) => <div className="review-table" key={review.id}><span><strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{nameFor(review.identity_id)}</span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><span><Badge value={review.status} /></span></div>) : <Empty>No review cases recorded.</Empty>}</section>
+  const updateReview = (updated: ReviewCase) => {
+    setReviews(reviews.some((item) => item.id === updated.id)
+      ? reviews.map((item) => item.id === updated.id ? updated : item)
+      : [updated, ...reviews]);
+    setSelectedId(updated.id);
+  };
+  async function submit(path: string, body: unknown, reset: () => void) {
+    setActionState("loading"); setActionError("");
+    try {
+      const updated = await apiPost<ReviewCase>(user, path, body);
+      updateReview(updated); reset(); setActionState("ready");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Review action failed");
+      setActionState("error");
+    }
+  }
+  const active = reviews.filter((review) => ["open", "in_review"].includes(review.status)).length;
+  const overdue = reviews.filter((review) => ["open", "in_review"].includes(review.status) && Date.parse(review.due_at) < Date.now()).length;
+  const pending = reviews.filter((review) => review.events.some((event) => event.execution_status === "pending")).length;
+
+  return <div className="page review-page"><section className="console-heading"><div><p className="kicker">Human decision boundary</p><h1>Review with context.<br /><em>Act with proof.</em></h1><p>Assign accountable owners, record reasoned decisions, and preserve immutable evidence. Access changes remain separately authorized.</p></div><div className="console-scope"><small>Decision authority</small><strong>{principal.username}</strong><span><i /> {canAssign ? "Reviewer controls enabled" : canOpen ? "Analyst controls enabled" : "Read-only evidence"}</span></div></section>
+    <section className="console-metrics"><Metric label="Active cases" value={String(active)} detail="Open or in review" accent="amber" /><Metric label="Overdue" value={String(overdue)} detail="Requires attention" accent="coral" /><Metric label="Resolved" value={String(reviews.filter((review) => review.status === "resolved").length)} detail="Immutable decisions" accent="mint" /><Metric label="Pending execution" value={String(pending)} detail="Never automatic" accent="blue" /></section>
+    {actionError && <div className="notice notice--error"><strong>Action not recorded.</strong> {actionError}</div>}
+    <section className="review-workspace"><div className="review-queue"><header><div><p className="kicker">Case inventory</p><h2>Review queue</h2></div>{canOpen && <details className="new-review"><summary>Open review</summary><form onSubmit={(event) => { event.preventDefault(); void submit("/v1/reviews", { identity_id: newIdentityId, due_days: dueDays }, () => setDueDays(7)); }}><label>Identity<select value={newIdentityId} onChange={(event) => setNewIdentityId(event.target.value)}>{identities.map((identity) => <option value={identity.id} key={identity.id}>{identity.display_name}</option>)}</select></label><label>Due in days<input type="number" min="1" max="90" value={dueDays} onChange={(event) => setDueDays(Number(event.target.value))} /></label><button className="button button--secondary" disabled={actionState === "loading" || !newIdentityId}>Create evidence case</button></form></details>}</header>
+        <div className="review-list">{reviews.length ? reviews.map((review) => <button key={review.id} className={review.id === selectedId ? "review-case selected" : "review-case"} onClick={() => { setSelectedId(review.id); setActionError(""); }}><span><strong>{review.title}</strong><small>{nameFor(review.identity_id)} · due {formatDate(review.due_at)}</small></span><span><Badge value={review.status} /><small>{review.owner ?? "Unassigned"}</small></span></button>) : <Empty>No review cases recorded.</Empty>}</div></div>
+      <aside className="review-detail">{selected ? <><header><div><p className="kicker">Case {selected.id.slice(0, 8)}</p><h2>{selected.title}</h2><small>{nameFor(selected.identity_id)} · created {formatDate(selected.created_at)}</small></div><Badge value={selected.status} /></header><div className="detail-grid"><div><small>Owner</small><strong>{selected.owner ?? "Unassigned"}</strong></div><div><small>Due</small><strong>{formatDate(selected.due_at)}</strong></div><div><small>Resolution</small><strong>{selected.resolution ?? "Pending"}</strong></div><div><small>Execution</small><strong>{selected.events.at(-1)?.execution_status ?? "Not applicable"}</strong></div></div>
+        {canAssign && ["open", "in_review"].includes(selected.status) && <form className="review-action" onSubmit={(event) => { event.preventDefault(); void submit(`/v1/reviews/${selected.id}/assign`, { owner, reason: assignReason }, () => setAssignReason("")); }}><div><p className="kicker">Reviewer action</p><h3>Assign accountable owner</h3></div><label>Owner<input value={owner} maxLength={255} required onChange={(event) => setOwner(event.target.value)} /></label><label>Assignment reason<textarea value={assignReason} maxLength={2000} required onChange={(event) => setAssignReason(event.target.value)} /></label><button className="button button--secondary" disabled={actionState === "loading"}>Assign case</button></form>}
+        {selected.status === "in_review" && <form className="review-action review-action--decision" onSubmit={(event) => { event.preventDefault(); void submit(`/v1/reviews/${selected.id}/decide`, { decision, reason: decisionReason }, () => setDecisionReason("")); }}><div><p className="kicker">Human decision</p><h3>{canDecide ? "Record decision" : `Assigned to ${selected.owner}`}</h3></div><label>Decision<select value={decision} disabled={!canDecide} onChange={(event) => setDecision(event.target.value)}><option value="retain">Retain access</option><option value="revoke">Request revoke</option><option value="extend">Extend review</option><option value="exception">Document exception</option></select></label><label>Decision reason<textarea value={decisionReason} minLength={10} maxLength={2000} required disabled={!canDecide} onChange={(event) => setDecisionReason(event.target.value)} /></label><button className="button button--secondary" disabled={!canDecide || actionState === "loading"}>Record immutable decision</button><small>Revoke and extend decisions remain pending until separately authorized execution.</small></form>}
+        <section className="review-timeline"><p className="kicker">Immutable history</p><h3>Decision evidence</h3>{selected.events.map((event) => <article key={event.id}><i /><div><strong>{event.action}{event.decision ? ` · ${event.decision}` : ""}</strong><small>{event.actor} · {formatDate(event.occurred_at)}</small><p>{event.reason}</p><Badge value={event.execution_status} /></div></article>)}</section></> : <Empty>Select a review case to inspect its evidence.</Empty>}</aside></section>
   </div>;
 }
 
