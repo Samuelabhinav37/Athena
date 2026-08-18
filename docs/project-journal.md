@@ -148,6 +148,15 @@ Validation evidence:
 - deterministic security gate: four fixtures and three control mappings passed; and
 - development and demo Compose configuration plus diff checks: passed.
 
+### AWS role lifecycle evidence
+
+Extended the read-only AWS IAM collector with `GetRole` evidence for machine identities. Athena now
+normalizes recognized owner tags and AWS-reported role last-used time and region into the existing
+bounded identity metadata, allowing the posture service to use connector evidence when canonical
+access observations are absent. Raw tags, role responses, access-key identifiers, and credentials
+remain excluded from the posture API. This extension required no dependency or schema migration and
+does not perform an AWS or Athena access change.
+
 ## Work completed
 
 ### Repository foundation

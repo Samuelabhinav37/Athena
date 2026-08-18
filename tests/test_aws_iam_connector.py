@@ -17,6 +17,7 @@ class FakeIam:
     def __init__(self) -> None:
         self.authorization_calls = []
         self.key_calls = []
+        self.role_calls = []
 
     def get_account_authorization_details(self, **parameters: object) -> dict:
         self.authorization_calls.append(parameters)
@@ -34,7 +35,16 @@ class FakeIam:
                     }
                 ],
                 "GroupDetailList": [],
-                "RoleDetailList": [],
+                "RoleDetailList": [
+                    {
+                        "Path": "/",
+                        "RoleName": "SecurityAudit",
+                        "RoleId": "AROASECURITY",
+                        "Arn": "arn:aws:iam::123456789012:role/SecurityAudit",
+                        "RolePolicyList": [],
+                        "AttachedManagedPolicies": [],
+                    }
+                ],
                 "Policies": [],
                 "IsTruncated": True,
                 "Marker": "page-2",
@@ -70,6 +80,19 @@ class FakeIam:
             "IsTruncated": False,
         }
 
+    def get_role(self, **parameters: object) -> dict:
+        self.role_calls.append(parameters)
+        return {
+            "Role": {
+                "RoleName": parameters["RoleName"],
+                "Tags": [{"Key": "Owner", "Value": "platform-team"}],
+                "RoleLastUsed": {
+                    "LastUsedDate": datetime(2026, 8, 1, tzinfo=UTC),
+                    "Region": "us-east-1",
+                },
+            }
+        }
+
 
 def test_collector_paginates_authorization_inventory_and_collects_key_age_evidence() -> None:
     iam = FakeIam()
@@ -85,6 +108,9 @@ def test_collector_paginates_authorization_inventory_and_collects_key_age_eviden
     assert len(iam.authorization_calls) == 2
     assert iam.authorization_calls[1]["Marker"] == "page-2"
     assert iam.key_calls == [{"UserName": "alice"}]
+    assert iam.role_calls == [{"RoleName": "SecurityAudit"}]
+    assert snapshot.roles[0]["AthenaPosture"]["Owner"] == "platform-team"
+    assert snapshot.roles[0]["AthenaPosture"]["LastUsedRegion"] == "us-east-1"
     assert snapshot.endpoint_cache["inventory"]["counts"]["users"] == 1
     assert len(snapshot.fingerprint) == 64
 
@@ -161,6 +187,11 @@ def snapshot(fingerprint: str, include_policies: bool = True) -> AwsIamSnapshot:
                 "AssumeRolePolicyDocument": {"Statement": []},
                 "RolePolicyList": [],
                 "AttachedManagedPolicies": [],
+                "AthenaPosture": {
+                    "Owner": "platform-team",
+                    "LastUsedAt": datetime(2026, 8, 1, tzinfo=UTC),
+                    "LastUsedRegion": "us-east-1",
+                },
             }
         ],
         policies=policies,
@@ -211,6 +242,11 @@ def test_sync_materializes_policy_lineage_is_idempotent_and_revokes_removed_acce
         assert key_evidence["created_at"] == "2026-01-01T00:00:00+00:00"
         assert key_evidence["age_days"] == 228
         assert role.identity_type.value == "service_account"
+        assert role.source_metadata["owner"] == "platform-team"
+        assert role.source_metadata["role_last_used_at"] == "2026-08-01T00:00:00+00:00"
+        assert role.source_metadata["role_last_used_region"] == "us-east-1"
+        assert "AthenaPosture" not in role.source_metadata
+        assert "Tags" not in role.source_metadata
         assert first.grants_created == 2
         assert first.allowed_statements == 2
         assert second.unchanged is True

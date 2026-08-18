@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import UTC, datetime
 
 import pytest
 from athena.database import get_db_session
@@ -98,3 +99,32 @@ def test_machine_identity_api_rejects_unbounded_limit(machine_session: Session) 
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_machine_identity_uses_connector_role_last_used_evidence(
+    machine_session: Session,
+) -> None:
+    identity = Identity(
+        source="aws_iam",
+        external_id="role-with-usage",
+        username="deployer",
+        display_name="deployer",
+        identity_type=IdentityType.SERVICE_ACCOUNT,
+        active=True,
+        source_metadata={
+            "owner": "platform-team",
+            "role_last_used_at": "2026-08-01T00:00:00+00:00",
+        },
+    )
+    machine_session.add(identity)
+    machine_session.commit()
+
+    posture = next(
+        item
+        for item in load_machine_identity_posture(machine_session)
+        if item.identity_id == identity.id
+    )
+
+    assert posture.owner == "platform-team"
+    assert posture.last_used_at == datetime(2026, 8, 1, tzinfo=UTC)
+    assert all(finding.code != "usage_unknown" for finding in posture.findings)

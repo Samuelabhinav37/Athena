@@ -98,6 +98,13 @@ class AwsIamSyncService:
                     "path": role.get("Path", "/"),
                     "trust_policy": role.get("AssumeRolePolicyDocument", {}),
                     "permissions_boundary": role.get("PermissionsBoundary"),
+                    "owner": role.get("AthenaPosture", {}).get("Owner"),
+                    "role_last_used_at": self._isoformat(
+                        role.get("AthenaPosture", {}).get("LastUsedAt")
+                    ),
+                    "role_last_used_region": role.get("AthenaPosture", {}).get(
+                        "LastUsedRegion"
+                    ),
                 },
             )
             for role in snapshot.roles
@@ -247,6 +254,12 @@ class AwsIamSyncService:
                 "age_days": key.get("AgeDays"),
             })
         return metadata
+
+    @staticmethod
+    def _isoformat(value: object) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
     @staticmethod
     def _managed_policy_documents(policies: list[dict]) -> dict[str, dict]:

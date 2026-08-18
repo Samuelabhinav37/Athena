@@ -17,6 +17,7 @@ through the role trust policy and your normal AWS controls.
       "Effect": "Allow",
       "Action": [
         "iam:GetAccountAuthorizationDetails",
+        "iam:GetRole",
         "iam:ListAccessKeys",
         "sts:GetCallerIdentity"
       ],
@@ -48,6 +49,7 @@ python -m athena.cli sync-aws-iam
 
 - IAM users, groups, group membership, and roles;
 - role trust-policy documents and permission-boundary metadata;
+- role owner tags (`Owner` or `athena:owner`) plus AWS-reported last-used time and region;
 - customer-managed and AWS-managed policies plus inline policies;
 - allowed actions and resource ARN patterns;
 - access-key status, creation time, and calculated age without secret key material;
@@ -72,3 +74,8 @@ does not resolve:
 
 These limitations are stored on every policy-derived grant so downstream policy, risk, and audit
 views cannot mistake observed policy evidence for a definitive effective-access decision.
+
+Role tags are reduced to the recognized owner value during normalization. The machine-identity API
+does not expose raw tag collections, trust policies, role responses, access-key identifiers, or
+credential material. AWS role last-used data is service-provided evidence and can be absent or
+limited by AWS retention; Athena leaves that absence visible instead of inferring activity.
