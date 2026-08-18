@@ -1258,17 +1258,68 @@ UUIDs so they cannot forge structured log lines.
 - Container base versions and non-root runtime declarations: covered by static regression tests
 - PostgreSQL and OPA host-port non-publication plus required demo secrets: covered by regression
   tests
-- No package dependency or database migration introduced
+- No package dependency or new database migration introduced
 
 ### Known limitations
 
-- Docker Desktop is stopped locally, so actual API/web image construction and runtime health checks
-  require hosted CI and a later controlled demo run.
+- The controlled local demo built and exercised the images; production TLS, external secret
+  management, and platform-specific deployment validation remain out of scope locally.
 - The Keycloak `start-dev` mode and imported Acme realm are demonstration components only.
 - Backup and restore commands are documented but were not executed; every database operation still
   requires explicit approval and an isolated verified target.
 - Image signing, SBOM/vulnerability enforcement, TLS ingress, external secret management, and
   production telemetry backends remain deployment-platform responsibilities.
+
+### Controlled demo finding
+
+The first local demo start built both images and brought PostgreSQL and OPA to healthy state, but
+Keycloak remained in `health: starting`. Its HTTP/1.0 probe omitted the mandatory `Host` header;
+Keycloak 26 rejected the request while serving normally. The probe now supplies `Host: localhost`,
+with a regression assertion on the resolved Compose source. No migration or application service was
+started before this health failure was diagnosed.
+
+After the corrected stack became healthy, the first protected proxy request correctly returned
+`401`, but the live API log did not contain the expected JSON request event. The dedicated logger had
+had no output handler under Uvicorn's default logging configuration; focused tests had installed a
+capture handler and masked the runtime behavior. Athena now gives the request logger a dedicated
+stdout handler at INFO level, disables propagation to prevent duplicates, and tests that default
+configuration explicitly.
+
+Recreating only the API container then exposed NGINX's startup-time DNS caching: the web proxy kept
+the replaced container's old address and returned `502`. The proxy now resolves the Compose service
+name through Docker's embedded DNS with a short validity window, allowing routine API replacement
+without requiring the web container to restart.
+
+The same live trace showed that NGINX replaced caller-provided request IDs before they reached the
+API. The proxy now forwards the original header; the API remains the trust boundary that preserves
+safe values and replaces missing or unsafe values with a UUID.
+
+With explicit operator approval, the fresh demo database was migrated through `20260817_09` and
+`alembic check` reported no pending schema operations. PostgreSQL, Keycloak, OPA, API, and web all
+reached healthy state; the dashboard, realm endpoint, and same-origin proxy were exercised. No
+backup, restore, downgrade, deletion, identity synchronization, or monitoring-pipeline write was
+performed.
+
+### Controlled demo data phase
+
+Before synchronization, the demo API's collector endpoint was still using its loopback default,
+which would address the API container rather than Keycloak. The Compose service now supplies
+`ATHENA_KEYCLOAK_URL=http://keycloak:8080`, covered by a static deployment regression assertion.
+
+With a second explicit operator approval, the isolated demo database received the documented
+non-destructive scenario data:
+
+- Keycloak synchronization observed six groups, created six identities, and observed eleven roles;
+- provenance seeding created three grants and materialized three entitlements; and
+- monitoring slot `manual:controlled-demo-20260818` completed six ordered steps on attempt one.
+
+Replaying that completed schedule key returned the same run as an idempotent no-op. `alembic check`
+reported no schema operations, and all five Rego tests passed. Running the security gate directly in
+the production API image initially reported missing test-evidence paths because that minimal image
+does not package the repository's `tests/` directory. The CI-equivalent retry mounted only that
+directory read-only into an ephemeral API container and passed all four fixtures and all three
+control mappings. No GitHub/AWS collection, access execution, deletion, downgrade, backup, restore,
+or remediation action was performed.
 
 ## Repository guardrails for coding agents
 

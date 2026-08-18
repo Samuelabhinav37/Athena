@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import sys
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -8,6 +9,12 @@ from typing import Any
 
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 logger = logging.getLogger("athena.requests")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if not logger.handlers:
+    request_handler = logging.StreamHandler(sys.stdout)
+    request_handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(request_handler)
 
 
 class RequestObservabilityMiddleware:
