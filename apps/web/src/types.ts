@@ -71,6 +71,11 @@ export interface IdentityExplanation {
   disclaimer: string;
 }
 
+export interface AttackPath {
+  nodes: { id: string; kind: string; label: string }[];
+  relationships: string[];
+}
+
 export interface ReviewCase {
   id: string;
   identity_id: string;

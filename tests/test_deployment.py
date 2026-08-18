@@ -111,3 +111,11 @@ def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
 
     assert "NEO4J_AUTH: neo4j/ci-compose-validation" in workflow
     assert "NEO4J_PASSWORD: ci-compose-validation" in workflow
+
+
+def test_dashboard_exposes_bounded_advisory_attack_paths() -> None:
+    application = Path("apps/web/src/App.tsx").read_text(encoding="utf-8")
+
+    assert "/v1/attack-paths/identities/${selectedId}?max_depth=6&limit=25" in application
+    assert "Advisory only" in application
+    assert "PostgreSQL evidence remains available" in application
