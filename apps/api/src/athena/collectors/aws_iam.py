@@ -59,7 +59,7 @@ class AwsIamCollector:
             details = self._authorization_details()
             users = details["UserDetailList"]
             groups = details["GroupDetailList"]
-            roles = details["RoleDetailList"]
+            roles = self._role_posture(details["RoleDetailList"])
             policies = details["Policies"]
             access_keys = self._access_keys(users)
         except (KeyError, TypeError, ValueError) as error:
@@ -137,6 +137,41 @@ class AwsIamCollector:
                 if not marker:
                     raise AwsIamCollectionError("AWS access-key pagination omitted Marker")
         return keys
+
+    def _role_posture(self, roles: list[dict]) -> list[dict]:
+        enriched = []
+        for role in roles:
+            response = self.iam.get_role(RoleName=role["RoleName"])
+            detail = response.get("Role")
+            if not isinstance(detail, dict):
+                raise AwsIamCollectionError("AWS IAM get_role response omitted Role")
+            last_used = detail.get("RoleLastUsed", {})
+            tags = detail.get("Tags", [])
+            owner = next(
+                (
+                    tag.get("Value")
+                    for tag in tags
+                    if isinstance(tag, dict)
+                    and str(tag.get("Key", "")).lower() in {"owner", "athena:owner"}
+                    and isinstance(tag.get("Value"), str)
+                    and tag["Value"].strip()
+                ),
+                None,
+            )
+            used_at = last_used.get("LastUsedDate") if isinstance(last_used, dict) else None
+            enriched.append(
+                {
+                    **role,
+                    "AthenaPosture": {
+                        "Owner": owner,
+                        "LastUsedAt": used_at,
+                        "LastUsedRegion": (
+                            last_used.get("Region") if isinstance(last_used, dict) else None
+                        ),
+                    },
+                }
+            )
+        return enriched
 
 
 def _json(value: Any) -> str:

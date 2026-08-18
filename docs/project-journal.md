@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Machine identity dashboard presentation
+**Active milestone:** Human review workflow presentation
 
 **Completed:**
 
@@ -58,9 +58,10 @@ The governing safety rule is:
 - Authenticated attack-path dashboard presentation
 - Machine and workload identity posture foundation
 - Authenticated machine identity posture dashboard
+- AWS role owner and last-used lifecycle evidence
 
-**Next outcome:** Extend machine identity evidence with connector-backed credential metadata while
-preserving the read-only analysis and separately authorized remediation boundaries.
+**Next outcome:** Expose review assignment and human decision forms without allowing the UI to
+bypass policy evaluation or the separately authorized execution boundary.
 
 ## Roadmap
 
@@ -84,6 +85,7 @@ preserving the read-only analysis and separately authorized remediation boundari
 | 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | Complete |
 | 16. Machine identity governance | Owner, usage, credential, and access posture | Complete |
 | 17. Machine identity presentation | Searchable posture inventory and evidence detail console | Complete |
+| 18. AWS role lifecycle evidence | Read-only owner and role-use posture enrichment | Complete |
 
 ## Milestone 17: Machine identity dashboard presentation
 
@@ -163,6 +165,15 @@ Validation evidence:
 - Rego policy tests: 5/5 passed;
 - deterministic security gate: four fixtures and three control mappings passed; and
 - development and demo Compose configuration plus diff checks: passed.
+
+## Milestone 18: AWS role lifecycle evidence
+
+Extended the read-only AWS IAM collector with `GetRole` evidence for machine identities. Athena now
+normalizes recognized owner tags and AWS-reported role last-used time and region into the existing
+bounded identity metadata, allowing the posture service to use connector evidence when canonical
+access observations are absent. Raw tags, role responses, access-key identifiers, and credentials
+remain excluded from the posture API. This extension required no dependency or schema migration and
+does not perform an AWS or Athena access change.
 
 ## Work completed
 

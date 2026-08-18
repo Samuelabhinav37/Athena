@@ -73,6 +73,8 @@ def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
         (observation.last_used_at for observation in observations if observation.last_used_at), None
     )
     metadata = identity.source_metadata if isinstance(identity.source_metadata, dict) else {}
+    if last_used_at is None:
+        last_used_at = _metadata_datetime(metadata.get("role_last_used_at"))
     owner = metadata.get("owner") if isinstance(metadata.get("owner"), str) else None
     findings: list[MachineIdentityFinding] = []
     if not owner:
@@ -138,3 +140,12 @@ def _has_stale_credential(metadata: dict) -> bool:
         and key["age_days"] > STALE_CREDENTIAL_DAYS
         for key in keys
     )
+
+
+def _metadata_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None

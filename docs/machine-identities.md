@@ -28,7 +28,10 @@ engine, and any destructive response requires human review plus separately autho
 
 ## Current evidence limits
 
-AWS IAM roles are normalized as service accounts, but AWS role inventory does not currently provide
-an Athena owner field or role last-used evidence. Those absences remain visible rather than inferred.
-Future connectors may normalize platform-specific ownership and workload activity into the same
-contract without exposing secret material.
+AWS IAM roles are normalized as service accounts. The read-only collector uses `GetRole` to reduce
+recognized `Owner` or `athena:owner` tags into the accountable-owner field and records AWS-reported
+last-used time and region. Raw tags and role responses are not exposed. Missing owner or usage data
+remains visible rather than inferred, including when AWS does not return role-use history.
+
+Future connectors may normalize additional platform-specific ownership and workload activity into
+the same contract without exposing secret material.
