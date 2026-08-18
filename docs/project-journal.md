@@ -53,9 +53,10 @@ The governing safety rule is:
 - Keycloak OIDC authentication and role-based API authorization
 - Authorized remediation execution framework
 - Guarded local Ollama evidence explanations
+- Authenticated React identity-governance dashboard
 
-**Next outcome:** Merge the independently validated React dashboard and expose generated
-explanations in the identity evidence view.
+**Next outcome:** Expose generated explanations in the identity evidence view and produce an
+audit-ready evidence report from authoritative records.
 
 ## Roadmap
 
@@ -73,7 +74,7 @@ explanations in the identity evidence view.
 | 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
 | 10. API access control | OIDC authentication and role-based authorization | Complete |
 | 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
-| 12. React dashboard | Authenticated identity, risk, review, and audit interface | In progress |
+| 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
 
 ## Work completed
 
@@ -1061,11 +1062,60 @@ then correctly failed on the two new tables and was updated to include them.
   stopped locally.
 - `extend` and connector-specific rollback or compensation flows are not yet modeled.
 
-## Next work: React dashboard
+## React dashboard
 
-Build the authenticated authorization-code-with-PKCE React shell, then add identity inventory,
-entitlement provenance, risk/anomaly summaries, review operations, execution evidence, connector
-status, monitoring history, and audit-oriented navigation against the protected API.
+Added the `apps/web` React, TypeScript, and Vite application with exact dependency versions locked
+in `package-lock.json`. The dashboard uses Keycloak authorization code with PKCE S256, stores the
+OIDC user in session storage, keeps tokens in authorization headers, and uses a same-origin Vite
+proxy for the protected API instead of enabling permissive CORS.
+
+The interface provides:
+
+- role-aware authenticated navigation and principal context;
+- an authorization posture overview with review, connector, monitoring, and execution signals;
+- searchable identity inventory with entitlement governance, ordered provenance, risk, and anomaly
+  evidence;
+- human review queue and immutable decision context; and
+- connector freshness, monitoring history, and administrator-only remediation evidence.
+
+The UI never performs real connector actions and exposes no grant, revoke, or execution control.
+Remediation remains behind Athena's separately authorized API and human approval boundary.
+
+### Errors and resolutions
+
+The initial TypeScript pass could not resolve Vite's `import.meta.env` and CSS module declarations.
+Adding the standard `vite/client` ambient declaration fixed both errors. The first stylesheet also
+requested hosted fonts; that request was removed so the dashboard makes no unnecessary third-party
+network call. A local browser preview returned HTTP 200, but visual browser automation was not
+available in this session, so interactive visual QA remains an explicit follow-up.
+
+### Known limitations
+
+- Review assignment and decision forms are not yet exposed in the UI; the current milestone is a
+  safe read-oriented evidence workspace.
+- The current frontend gate is TypeScript plus the production build. Component-level DOM tests will
+  require a separately approved test dependency.
+- Interactive PKCE login and authenticated data rendering require the local Keycloak and API stack.
+
+### Validation evidence
+
+- `npm install` audit: 27 packages audited, 0 known vulnerabilities
+- `npm run typecheck`: passed
+- `npm run build`: passed; 20 modules transformed
+- Local Vite availability: HTTP 200 on `127.0.0.1:3000`
+- Full automated Python suite: 61 passed, with one existing Starlette deprecation warning
+- Ruff linting: passed
+- Docker Compose configuration validation: passed
+- Rego tests and the OPA-backed security gate: not run successfully because Docker Desktop was
+  stopped and no OPA service was listening on `localhost:8181`
+- Automated visual browser inspection: unavailable because no controllable browser was connected
+- Implementation branch: `feature/react-dashboard`; no commit or push performed
+
+## Next work: evidence-grounded explanations
+
+Add a local Ollama explanation adapter that consumes immutable evidence snapshots, treats all
+connector content as untrusted data, cites the evidence used, and cannot create policy decisions or
+execute remediation.
 
 ## Local Ollama evidence explanations
 
