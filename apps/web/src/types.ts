@@ -59,6 +59,18 @@ export interface AnomalyAssessment {
   run: { model_version: string; algorithm: string; trained_at: string };
 }
 
+export interface IdentityExplanation {
+  identity_id: string;
+  generated_at: string;
+  model: string;
+  evidence_digest: string;
+  evidence_references: string[];
+  summary: string;
+  findings: string[];
+  limitations: string[];
+  disclaimer: string;
+}
+
 export interface ReviewCase {
   id: string;
   identity_id: string;

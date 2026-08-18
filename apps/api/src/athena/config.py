@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma3:4b"
     ollama_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
     policy_directory: Path = Path("policies")
+    control_directory: Path = Path("controls")
     github_api_url: str = "https://api.github.com"
     github_api_version: str = "2026-03-10"
     github_org: str = ""

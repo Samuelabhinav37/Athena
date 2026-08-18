@@ -48,6 +48,10 @@ PostgreSQL system of record
 review workflow, audit trail, and explanations
 ```
 
+Administrator-only evidence reporting reads the same authoritative records and version-controlled
+control mappings. It emits JSON or Markdown with a canonical facts digest, performs no write, and
+excludes generated LLM prose from report evidence.
+
 PostgreSQL is authoritative in the MVP. Graph storage is introduced through an adapter only when attack-path queries require it.
 
 ## Canonical concepts
