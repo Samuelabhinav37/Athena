@@ -84,6 +84,7 @@ flowchart LR
 | Human remediation | Owned reviews plus administrator-authorized, idempotent execution requests |
 | Continuous monitoring | Idempotent, retryable pipeline with immutable per-step evidence |
 | Attack paths | Bounded Neo4j queries over a derived, read-only provenance projection |
+| Machine identities | Deterministic owner, usage, credential-age, and access-governance posture |
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
 
 ## Authorization Provenance
@@ -240,6 +241,7 @@ minimum collector policy and authorization limitations.
 | `GET /v1/reviews` | Human remediation cases and immutable decision history |
 | `GET /v1/monitoring/runs` | Scheduled pipeline attempts and ordered step evidence |
 | `GET /v1/attack-paths/identities/{id}` | Bounded privileged-resource paths from Neo4j |
+| `GET /v1/machine-identities` | Bounded non-human identity lifecycle posture |
 | `GET /v1/connectors` | Sanitized connector checkpoints without cached payloads |
 | `GET /v1/auth/me` | Validated caller identity and Athena roles |
 | `GET /v1/executions` | Administrator-only remediation execution and verification evidence |
@@ -290,6 +292,7 @@ Athena/
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
+- [x] Machine and workload identity posture foundation
 
 ## Documentation
 
@@ -302,6 +305,7 @@ Athena/
 - [Local Ollama explanation boundary](docs/ollama-explanations.md)
 - [Authorization evidence reports](docs/evidence-reports.md)
 - [Neo4j attack-path analysis](docs/attack-paths.md)
+- [Machine and workload identity governance](docs/machine-identities.md)
 - [Deployment and controlled demonstration](docs/deployment.md)
 - [Operations, observability, backup, and recovery](docs/operations.md)
 - [Contribution guide](CONTRIBUTING.md)
