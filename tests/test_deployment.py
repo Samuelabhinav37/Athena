@@ -104,3 +104,10 @@ def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> Non
     assert "NEO4J_AUTH:?Set NEO4J_AUTH" in compose
     assert '"7474:7474"' not in compose
     assert '"7687:7687"' not in compose
+
+
+def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
+    workflow = Path(".github/workflows/security-gate.yml").read_text(encoding="utf-8")
+
+    assert "NEO4J_AUTH: neo4j/ci-compose-validation" in workflow
+    assert "NEO4J_PASSWORD: ci-compose-validation" in workflow

@@ -61,6 +61,8 @@ jobs:
           POSTGRES_PASSWORD: ci-compose-validation
           KEYCLOAK_ADMIN: ci-admin
           KEYCLOAK_ADMIN_PASSWORD: ci-compose-validation
+          NEO4J_AUTH: neo4j/ci-compose-validation
+          NEO4J_PASSWORD: ci-compose-validation
         run: |
           docker compose config --quiet
           docker compose -f compose.demo.yaml config --quiet
