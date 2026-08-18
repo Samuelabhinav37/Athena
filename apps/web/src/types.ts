@@ -76,6 +76,20 @@ export interface AttackPath {
   relationships: string[];
 }
 
+export interface MachineIdentityPosture {
+  identity_id: string;
+  username: string;
+  display_name: string;
+  identity_type: string;
+  source: string;
+  active: boolean;
+  owner: string | null;
+  active_entitlements: number;
+  privileged_entitlements: number;
+  last_used_at: string | null;
+  findings: { code: string; severity: "low" | "medium" | "high"; summary: string }[];
+}
+
 export interface ReviewCase {
   id: string;
   identity_id: string;
