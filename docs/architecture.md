@@ -42,6 +42,7 @@ PostgreSQL system of record
           |
           +----> OPA policy evaluation
           +----> peer and decay analytics
+          +----> Neo4j derived attack-path index
           +----> NIST evidence generation
           |
           v
@@ -52,7 +53,9 @@ Administrator-only evidence reporting reads the same authoritative records and v
 control mappings. It emits JSON or Markdown with a canonical facts digest, performs no write, and
 excludes generated LLM prose from report evidence.
 
-PostgreSQL is authoritative in the MVP. Graph storage is introduced through an adapter only when attack-path queries require it.
+PostgreSQL is authoritative. Neo4j receives an explicit, one-way projection of active provenance
+and serves only bounded advisory attack-path queries; graph output cannot drive policy or access
+execution.
 
 ## Canonical concepts
 

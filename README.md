@@ -83,6 +83,7 @@ flowchart LR
 | Peer analytics | Governed cohorts, fixed-seed Isolation Forest, drift and false-positive metrics |
 | Human remediation | Owned reviews plus administrator-authorized, idempotent execution requests |
 | Continuous monitoring | Idempotent, retryable pipeline with immutable per-step evidence |
+| Attack paths | Bounded Neo4j queries over a derived, read-only provenance projection |
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
 
 ## Authorization Provenance
@@ -163,6 +164,7 @@ Run the complete Alice identity-drift story:
 ```bash
 python -m athena.cli sync-keycloak
 python -m athena.cli seed-provenance-demo
+python -m athena.cli project-attack-graph
 python -m athena.cli evaluate-policies --username alice
 python -m athena.cli apply-drift-demo
 python -m athena.cli assess-risk --username alice
@@ -237,6 +239,7 @@ minimum collector policy and authorization limitations.
 | `GET /v1/identities/{id}/anomaly-assessments` | Model, cohort, drift, score, and explanation evidence |
 | `GET /v1/reviews` | Human remediation cases and immutable decision history |
 | `GET /v1/monitoring/runs` | Scheduled pipeline attempts and ordered step evidence |
+| `GET /v1/attack-paths/identities/{id}` | Bounded privileged-resource paths from Neo4j |
 | `GET /v1/connectors` | Sanitized connector checkpoints without cached payloads |
 | `GET /v1/auth/me` | Validated caller identity and Athena roles |
 | `GET /v1/executions` | Administrator-only remediation execution and verification evidence |
@@ -285,7 +288,7 @@ Athena/
 - [x] React identity, risk, review, and audit dashboard
 - [x] Local Ollama explanations
 - [ ] Production deployment and recovery hardening
-- [ ] Neo4j identity attack-path analysis
+- [x] Neo4j identity attack-path foundation
 
 ## Documentation
 
@@ -297,6 +300,7 @@ Athena/
 - [OIDC authentication and API roles](docs/authentication.md)
 - [Local Ollama explanation boundary](docs/ollama-explanations.md)
 - [Authorization evidence reports](docs/evidence-reports.md)
+- [Neo4j attack-path analysis](docs/attack-paths.md)
 - [Deployment and controlled demonstration](docs/deployment.md)
 - [Operations, observability, backup, and recovery](docs/operations.md)
 - [Contribution guide](CONTRIBUTING.md)

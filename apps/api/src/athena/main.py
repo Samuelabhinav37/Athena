@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from athena.database import get_session_factory
 from athena.observability import RequestObservabilityMiddleware
+from athena.routes.attack_paths import router as attack_paths_router
 from athena.routes.auth import router as auth_router
 from athena.routes.connectors import router as connectors_router
 from athena.routes.executions import router as executions_router
@@ -20,6 +21,7 @@ app = FastAPI(
 app.add_middleware(RequestObservabilityMiddleware)
 
 app.include_router(identities_router)
+app.include_router(attack_paths_router)
 app.include_router(auth_router)
 app.include_router(executions_router)
 app.include_router(connectors_router)

@@ -100,3 +100,7 @@ def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> Non
     assert "read_only: true" in compose
     assert "Host: localhost" in compose
     assert "ATHENA_KEYCLOAK_URL: http://keycloak:8080" in compose
+    assert "neo4j:2026.06.0-community" in compose
+    assert "NEO4J_AUTH:?Set NEO4J_AUTH" in compose
+    assert '"7474:7474"' not in compose
+    assert '"7687:7687"' not in compose

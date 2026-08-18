@@ -106,6 +106,21 @@ class EntitlementResponse(BaseModel):
     computed_at: datetime
 
 
+class AttackPathNodeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    kind: str
+    label: str
+
+
+class AttackPathResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    nodes: tuple[AttackPathNodeResponse, ...]
+    relationships: tuple[str, ...]
+
+
 class PolicyEvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

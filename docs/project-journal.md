@@ -2,7 +2,7 @@
 
 This document is Athena's living engineering record. Update it whenever a milestone changes the architecture, introduces a decision, encounters a meaningful problem, or produces new validation evidence.
 
-Last updated: August 17, 2026
+Last updated: August 18, 2026
 
 ## Project objective
 
@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Deployment, observability, backup, and recovery hardening
+**Active milestone:** Neo4j identity attack-path analysis
 
 **Completed:**
 
@@ -54,9 +54,10 @@ The governing safety rule is:
 - Authorized remediation execution framework
 - Guarded local Ollama evidence explanations
 - Authenticated React identity-governance dashboard
+- Derived Neo4j identity attack-path foundation
 
-**Next outcome:** Validate the non-root runtime images in hosted CI, then exercise the controlled
-demo stack when Docker Desktop is available and explicit database-migration approval is granted.
+**Next outcome:** Validate a one-way Neo4j projection and bounded privileged-resource path query
+without changing PostgreSQL authority or Athena's decision model.
 
 ## Roadmap
 
@@ -76,6 +77,31 @@ demo stack when Docker Desktop is available and explicit database-migration appr
 | 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
 | 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
 | 13. Deployment hardening | Containers, operations, backup, recovery, and demo packaging | In progress |
+| 14. Attack-path analysis | Derived Neo4j projection and bounded advisory path queries | In progress |
+
+## Milestone 14: Neo4j attack-path foundation
+
+Added a one-way analytical graph boundary while retaining PostgreSQL as Athena's authoritative
+evidence store:
+
+- official Neo4j Python driver `>=6.2,<7` and pinned Community image
+  `neo4j:2026.06.0-community`;
+- explicit, disabled-by-default graph configuration with secret-backed authentication;
+- idempotent projection of active canonical provenance nodes and edges using stable UUIDs;
+- bounded shortest-first privileged-resource queries with maximum depth 8 and result limit 100;
+- viewer-protected `GET /v1/attack-paths/identities/{identity_id}` API;
+- explicit `project-attack-graph` operator command; and
+- architecture and operations guidance that prevents graph results from influencing OPA,
+  remediation decisions, or execution.
+
+### Controlled live validation
+
+The first start attempt found Docker Desktop stopped and performed no projection. After the engine
+was restarted, the pinned Neo4j service became healthy and the API image rebuilt with driver 6.2.0.
+The approved projection produced eight unique nodes and eight unique lineage edges from the existing
+demo evidence. Alice's bounded query returned one privileged path with relationships
+`direct_grant -> applies_to`. PostgreSQL was not migrated or modified, and no access or remediation
+action was executed.
 
 ## Work completed
 

@@ -40,5 +40,21 @@ services:
     volumes:
       - ./policies:/policies:ro
 
+  neo4j:
+    image: neo4j:2026.06.0-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:?Set NEO4J_AUTH for the graph service}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
 volumes:
   postgres-data:
+  neo4j-data:

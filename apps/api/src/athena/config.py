@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "athena-collector"
     keycloak_client_secret: SecretStr = SecretStr("athena-local-collector-secret")
     opa_url: str = "http://localhost:8181"
+    neo4j_enabled: bool = False
+    neo4j_url: str = "neo4j://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: SecretStr = SecretStr("")
+    neo4j_database: str = "neo4j"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:4b"
     ollama_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
