@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Machine and workload identity governance
+**Active milestone:** Machine identity dashboard presentation
 
 **Completed:**
 
@@ -57,9 +57,10 @@ The governing safety rule is:
 - Derived Neo4j identity attack-path foundation
 - Authenticated attack-path dashboard presentation
 - Machine and workload identity posture foundation
+- Authenticated machine identity posture dashboard
 
-**Next outcome:** Expose deterministic lifecycle posture for non-human identities without inferring
-missing ownership or allowing findings to change access.
+**Next outcome:** Extend machine identity evidence with connector-backed credential metadata while
+preserving the read-only analysis and separately authorized remediation boundaries.
 
 ## Roadmap
 
@@ -81,7 +82,22 @@ missing ownership or allowing findings to change access.
 | 13. Deployment hardening | Containers, operations, backup, recovery, and demo packaging | Complete |
 | 14. Attack-path analysis | Derived Neo4j projection and bounded advisory path queries | Complete |
 | 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | Complete |
-| 16. Machine identity governance | Owner, usage, credential, and access posture | In progress |
+| 16. Machine identity governance | Owner, usage, credential, and access posture | Complete |
+| 17. Machine identity presentation | Searchable posture inventory and evidence detail console | Complete |
+
+## Milestone 17: Machine identity dashboard presentation
+
+Added an authenticated, AWS-console-inspired machine identity workspace to the React dashboard:
+
+- summary cards expose identity totals, high-severity findings, missing owners, and privileged access;
+- search and deterministic type/finding filters make the inventory easier to navigate;
+- the resource table and detail panel expose ownership, lifecycle use, entitlements, and findings; and
+- the interface labels all posture as read-only evidence and never initiates an access change.
+
+Validation covered the TypeScript compiler, production Vite bundle, Python tests, Rego policy tests,
+and Athena security gate. Visual browser inspection was unavailable because the in-app browser had
+no active browser instance, so responsive behavior was verified through the compiled layout rules
+and production build rather than a rendered browser session.
 
 ## Milestone 14: Neo4j attack-path foundation
 
