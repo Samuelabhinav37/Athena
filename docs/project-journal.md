@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Explain and present integration
+**Active milestone:** End-to-end demonstration and deployment hardening
 
 **Completed:**
 
@@ -55,8 +55,8 @@ The governing safety rule is:
 - Guarded local Ollama evidence explanations
 - Authenticated React identity-governance dashboard
 
-**Next outcome:** Expose generated explanations in the identity evidence view and produce an
-audit-ready evidence report from authoritative records.
+**Next outcome:** Package a complete local demonstration and define production deployment,
+observability, backup, and recovery requirements.
 
 ## Roadmap
 
@@ -68,7 +68,7 @@ audit-ready evidence report from authoritative records.
 | 3. Authorization provenance | Trace every effective entitlement to its source | Complete |
 | 4. Deterministic security | OPA policies, tests, CI security gate, and NIST mappings | Complete |
 | 5. Risk analytics | Identity drift, peer analysis, and explainable access decay | Complete |
-| 6. Explain and present | Ollama explanations, React dashboard, and evidence report | In progress |
+| 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Complete |
 | 7. Remediation and monitoring | Human decisions and durable scheduled evidence | Complete |
 | 8. GitHub connector | Incremental organization authorization evidence | Complete |
 | 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
@@ -1163,6 +1163,61 @@ identity route; the imports were reordered without changing behavior.
   identify the source snapshot but does not turn generated prose into authoritative audit evidence.
 - Dashboard presentation of the explanation will follow after the independent dashboard branch is
   merged.
+
+## Explain-and-present integration
+
+Combined the authenticated dashboard and guarded explanation API into one end-to-end identity
+evidence view. Viewers can explicitly request a local explanation for the selected identity. The UI
+labels generated content advisory, displays its local model, evidence-reference count, and digest,
+and keeps it visually separate from authoritative authorization lineage.
+
+Added administrator-only JSON and Markdown authorization evidence reports. Reports deterministically
+summarize identity, active entitlement, policy, risk, anomaly, review, execution, monitoring,
+connector, and audit-event records plus version-controlled NIST control mappings. An integrity
+digest covers canonical facts and limitations while excluding generation time, allowing unchanged
+evidence to produce the same digest across representations.
+
+### Security and architecture decisions
+
+- Explanation generation remains explicit and never runs automatically while browsing identities.
+- Explanation failures stay local to the advisory panel and do not hide authoritative evidence.
+- Full evidence reports require the administrator role; viewers receive `403`.
+- Report generation is read-only and introduces no model, migration, database write, or persisted
+  report state.
+- Generated LLM text is excluded from authoritative report facts and the facts digest.
+- The Markdown download uses the authenticated API response and creates a short-lived browser object
+  URL; access tokens never enter the download URL.
+
+### Errors and resolutions
+
+Merging the two independently validated feature branches produced expected conflicts in README and
+project-journal milestone text. Both completed states were preserved, the combined codebase passed
+frontend and backend validation, and refreshed PR checks passed before the explanation PR merged.
+The first report test compared a substring directly against a list of full limitation sentences;
+the assertion was corrected to express its intended prefix check. Ruff also caught one long
+Markdown-table initializer, which was split without changing output.
+
+### Validation evidence
+
+- Dashboard explanation TypeScript check and production build: passed
+- Focused report and explanation tests: 7 passed
+- Full automated Python suite: 68 passed, with one existing Starlette deprecation warning
+- Docker Compose configuration validation: passed
+- Administrator JSON and Markdown report access: passed
+- Viewer report denial with `403`: passed
+- Stable evidence digest for unchanged facts: passed
+- LLM output exclusion from report facts and Markdown: passed
+- Ruff linting: passed
+- No dependency or database migration introduced
+- Dashboard PR #1 merge commit: `95c893b`
+- Explanation PR #2 merge commit: `346dde1`
+- Combined pull-request security gate run `32094159468`: success
+
+### Known limitations
+
+- Live explanation rendering still requires an operator-installed local Ollama model.
+- The report is a point-in-time summary, not a signed artifact or external certification.
+- Production backup, restore, retention, telemetry, and deployment runbooks remain to be defined.
 
 ## Repository guardrails for coding agents
 

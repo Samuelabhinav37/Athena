@@ -241,6 +241,7 @@ minimum collector policy and authorization limitations.
 | `GET /v1/auth/me` | Validated caller identity and Athena roles |
 | `GET /v1/executions` | Administrator-only remediation execution and verification evidence |
 | `POST /v1/identities/{id}/explanation` | Local, structured explanation with evidence references and digest |
+| `GET /v1/reports/evidence[.md]` | Administrator-only JSON or Markdown authorization evidence report |
 
 ## Evidence-Driven Engineering
 
@@ -294,6 +295,7 @@ Athena/
 - [AWS IAM connector](docs/aws-iam.md)
 - [OIDC authentication and API roles](docs/authentication.md)
 - [Local Ollama explanation boundary](docs/ollama-explanations.md)
+- [Authorization evidence reports](docs/evidence-reports.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

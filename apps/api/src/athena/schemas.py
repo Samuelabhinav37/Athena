@@ -277,6 +277,29 @@ class IdentityExplanationResponse(GeneratedExplanationContent):
     disclaimer: str
 
 
+class EvidenceControlResponse(BaseModel):
+    control_id: str
+    title: str
+    status: str
+    automated_checks: int
+    limitations: list[str]
+
+
+class EvidenceReportResponse(BaseModel):
+    schema_version: str
+    generated_at: datetime
+    scope: str
+    inventory: dict[str, int | float | None]
+    policy_decisions: dict[str, int]
+    review_statuses: dict[str, int]
+    execution_statuses: dict[str, int]
+    monitoring_statuses: dict[str, int]
+    controls: list[EvidenceControlResponse]
+    authoritative_sources: list[str]
+    limitations: list[str]
+    evidence_digest: str
+
+
 class CreateExecutionRequest(BaseModel):
     case_id: uuid.UUID
     idempotency_key: str = Field(min_length=8, max_length=255)

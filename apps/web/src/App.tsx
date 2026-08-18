@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "oidc-client-ts";
-import { apiGet, ApiError } from "./api";
+import { apiGet, apiPost, apiText, ApiError } from "./api";
 import { completeSignin, userManager } from "./auth";
 import type {
   AnomalyAssessment,
@@ -8,6 +8,7 @@ import type {
   Entitlement,
   Execution,
   Identity,
+  IdentityExplanation,
   MonitoringRun,
   Principal,
   ReviewCase,
@@ -164,7 +165,7 @@ function Dashboard({ user }: { user: User }) {
         {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} />}
         {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
         {state === "ready" && page === "reviews" && <Reviews reviews={reviews} identities={identities} />}
-        {state === "ready" && page === "operations" && <Operations connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
+        {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
       </main>
     </div>
   );
@@ -200,12 +201,16 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
   const [anomalies, setAnomalies] = useState<AnomalyAssessment[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [explanation, setExplanation] = useState<IdentityExplanation | null>(null);
+  const [explanationState, setExplanationState] = useState<LoadState>("idle");
+  const [explanationError, setExplanationError] = useState("");
   const filtered = useMemo(() => identities.filter((identity) => `${identity.display_name} ${identity.username} ${identity.department}`.toLowerCase().includes(query.toLowerCase())), [identities, query]);
   const selected = identities.find((identity) => identity.id === selectedId);
 
   useEffect(() => {
     if (!selectedId) return;
-    let active = true; setLoading(true); setDetailError("");
+    let active = true; setLoading(true); setDetailError(""); setExplanation(null);
+    setExplanationState("idle"); setExplanationError("");
     Promise.all([
       apiGet<Entitlement[]>(user, `/v1/identities/${selectedId}/entitlements`),
       apiGet<RiskAssessment[]>(user, `/v1/identities/${selectedId}/risk-assessments`),
@@ -218,10 +223,26 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
     return () => { active = false; };
   }, [selectedId, user]);
 
+  async function generateExplanation() {
+    if (!selectedId || explanationState === "loading") return;
+    setExplanationState("loading"); setExplanationError("");
+    try {
+      const generated = await apiPost<IdentityExplanation>(
+        user,
+        `/v1/identities/${selectedId}/explanation`
+      );
+      setExplanation(generated); setExplanationState("ready");
+    } catch (caught) {
+      setExplanationError(caught instanceof Error ? caught.message : "Explanation unavailable");
+      setExplanationState("error");
+    }
+  }
+
   return <div className="page"><section className="page-heading"><div><p className="kicker">Identity inventory</p><h1>Trace every permission<br /><em>to its origin.</em></h1></div><input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search identities" aria-label="Search identities" /></section>
     <div className="identity-layout"><section className="identity-list" aria-label="Identities">{filtered.map((identity) => <button key={identity.id} className={identity.id === selectedId ? "identity-row selected" : "identity-row"} onClick={() => setSelectedId(identity.id)}><span className="avatar">{identity.display_name.slice(0, 1)}</span><span><strong>{identity.display_name}</strong><small>{identity.department ?? identity.source} · {identity.username}</small></span><span className={identity.active ? "live-dot" : "live-dot inactive"} /></button>)}</section>
       <section className="evidence-panel">{selected ? <><header className="identity-header"><div><p>{selected.source} / {selected.identity_type}</p><h2>{selected.display_name}</h2><span>{selected.job_title ?? "Title unavailable"} · {selected.email ?? "Email unavailable"}</span></div><Badge value={selected.active ? "active" : "inactive"} /></header>
         {loading ? <div className="inline-loader">Loading evidence…</div> : detailError ? <div className="notice notice--error">{detailError}</div> : <><div className="evidence-stats"><div><strong>{entitlements.length}</strong><small>Entitlements</small></div><div><strong>{risks[0]?.score.toFixed(2) ?? "—"}</strong><small>Risk score</small></div><div><strong>{anomalies.filter((item) => item.is_anomaly).length}</strong><small>Anomalies</small></div></div>
+          <div className="explanation-card"><div className="explanation-heading"><div><p className="kicker">Local model · advisory only</p><h3>Evidence explanation</h3></div><button className="button button--secondary" onClick={() => void generateExplanation()} disabled={explanationState === "loading"}>{explanationState === "loading" ? "Generating…" : explanation ? "Regenerate" : "Generate explanation"}</button></div>{explanationError && <div className="notice notice--error">{explanationError}</div>}{explanation && <div className="explanation-body"><p>{explanation.summary}</p>{explanation.findings.length > 0 && <ul>{explanation.findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}<div className="explanation-meta"><span>Model {explanation.model}</span><span>{explanation.evidence_references.length} evidence references</span><span>Digest {explanation.evidence_digest.slice(0, 12)}…</span></div><small>{explanation.disclaimer}</small>{explanation.limitations.length > 0 && <details><summary>Limitations</summary><ul>{explanation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></details>}</div>}</div>
           <div className="evidence-section"><h3>Authorization lineage</h3>{entitlements.length ? entitlements.map((item) => <article className="entitlement" key={item.id}><div className="entitlement-head"><div><strong>{item.permission.name}</strong><small>{item.permission.action} on {item.permission.resource.name}</small></div><Badge value={item.governance.status} /></div>{item.provenance.map((edge) => <div className="lineage" key={`${item.id}-${edge.sequence}`}><span>{edge.from_label}</span><i>{edge.relationship} →</i><span>{edge.to_label}</span></div>)}{item.governance.gaps.length > 0 && <p className="gap">Governance gaps: {item.governance.gaps.join(", ")}</p>}</article>) : <Empty>No entitlements materialized for this identity.</Empty>}</div></>}</> : <Empty>Select an identity to inspect evidence.</Empty>}</section></div>
   </div>;
 }
@@ -233,8 +254,23 @@ function Reviews({ reviews, identities }: { reviews: ReviewCase[]; identities: I
   </div>;
 }
 
-function Operations({ connectors, runs, executions, isAdmin }: { connectors: Connector[]; runs: MonitoringRun[]; executions: Execution[]; isAdmin: boolean }) {
-  return <div className="page"><section className="page-heading"><div><p className="kicker">Operational evidence</p><h1>Know what ran.<br /><em>Know what changed.</em></h1></div></section>
+function Operations({ user, connectors, runs, executions, isAdmin }: { user: User; connectors: Connector[]; runs: MonitoringRun[]; executions: Execution[]; isAdmin: boolean }) {
+  const [reportState, setReportState] = useState<LoadState>("idle");
+  const [reportError, setReportError] = useState("");
+  async function downloadReport() {
+    setReportState("loading"); setReportError("");
+    try {
+      const markdown = await apiText(user, "/v1/reports/evidence.md");
+      const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = "athena-authorization-evidence.md"; link.click();
+      URL.revokeObjectURL(url); setReportState("ready");
+    } catch (caught) {
+      setReportError(caught instanceof Error ? caught.message : "Report unavailable");
+      setReportState("error");
+    }
+  }
+  return <div className="page"><section className="page-heading"><div><p className="kicker">Operational evidence</p><h1>Know what ran.<br /><em>Know what changed.</em></h1></div>{isAdmin && <button className="button button--secondary" disabled={reportState === "loading"} onClick={() => void downloadReport()}>{reportState === "loading" ? "Building report…" : "Download evidence report"}</button>}</section>{reportError && <div className="notice notice--error">{reportError}</div>}
     <section className="split-grid"><article className="panel"><PanelTitle eyebrow="Source freshness" title="Connector checkpoints" />{connectors.length ? <div className="stack-list">{connectors.map((item) => <div className="stack-row" key={item.id}><div><strong>{item.connector}</strong><small>{item.scope} · {item.cached_endpoints} cached endpoints</small></div><time>{formatDate(item.observed_at)}</time></div>)}</div> : <Empty>No connector checkpoints recorded.</Empty>}</article>
       <article className="panel"><PanelTitle eyebrow="Idempotent pipeline" title="Monitoring history" />{runs.length ? <div className="stack-list">{runs.slice(0, 6).map((run) => <div className="stack-row" key={run.id}><div><strong>{run.schedule_key}</strong><small>{run.steps.length} steps · attempt {run.attempt_count}</small></div><Badge value={run.status} /></div>)}</div> : <Empty>No monitoring runs recorded.</Empty>}</article></section>
     <section className="panel executions"><PanelTitle eyebrow="Administrator evidence" title="Remediation requests" />{!isAdmin ? <Empty>Administrator role required to view execution evidence.</Empty> : executions.length ? <div className="stack-list">{executions.map((item) => <div className="stack-row" key={item.id}><div><strong>{item.action} · {item.source}</strong><small>Requested by {item.requested_by} · {formatDate(item.created_at)}</small></div><Badge value={item.status} /></div>)}</div> : <Empty>No remediation requests recorded.</Empty>}</section>
