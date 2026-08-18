@@ -119,3 +119,12 @@ def test_dashboard_exposes_bounded_advisory_attack_paths() -> None:
     assert "/v1/attack-paths/identities/${selectedId}?max_depth=6&limit=25" in application
     assert "Advisory only" in application
     assert "PostgreSQL evidence remains available" in application
+
+
+def test_dashboard_exposes_machine_identity_posture_without_access_changes() -> None:
+    application = Path("apps/web/src/App.tsx").read_text(encoding="utf-8")
+
+    assert '"/v1/machine-identities?limit=200"' in application
+    assert "Machine identity" in application
+    assert "Read-only analysis" in application
+    assert "no automatic access changes" in application

@@ -293,6 +293,7 @@ Athena/
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
 - [x] Machine and workload identity posture foundation
+- [x] Authenticated machine identity posture dashboard
 
 ## Documentation
 

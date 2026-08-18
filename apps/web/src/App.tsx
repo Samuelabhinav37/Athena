@@ -10,20 +10,22 @@ import type {
   Execution,
   Identity,
   IdentityExplanation,
+  MachineIdentityPosture,
   MonitoringRun,
   Principal,
   ReviewCase,
   RiskAssessment
 } from "./types";
 
-type Page = "overview" | "identities" | "reviews" | "operations";
+type Page = "overview" | "identities" | "machines" | "reviews" | "operations";
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 const NAV: { id: Page; label: string; eyebrow: string }[] = [
   { id: "overview", label: "Command center", eyebrow: "01" },
   { id: "identities", label: "Identity evidence", eyebrow: "02" },
-  { id: "reviews", label: "Review queue", eyebrow: "03" },
-  { id: "operations", label: "System operations", eyebrow: "04" }
+  { id: "machines", label: "Machine identities", eyebrow: "03" },
+  { id: "reviews", label: "Review queue", eyebrow: "04" },
+  { id: "operations", label: "System operations", eyebrow: "05" }
 ];
 
 function formatDate(value: string | null): string {
@@ -165,6 +167,7 @@ function Dashboard({ user }: { user: User }) {
         {state === "error" && <div className="notice notice--error"><strong>Evidence unavailable.</strong> {error}</div>}
         {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} />}
         {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
+        {state === "ready" && page === "machines" && <MachineIdentities user={user} />}
         {state === "ready" && page === "reviews" && <Reviews reviews={reviews} identities={identities} />}
         {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
       </main>
@@ -258,6 +261,55 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
           <div className="explanation-card"><div className="explanation-heading"><div><p className="kicker">Local model · advisory only</p><h3>Evidence explanation</h3></div><button className="button button--secondary" onClick={() => void generateExplanation()} disabled={explanationState === "loading"}>{explanationState === "loading" ? "Generating…" : explanation ? "Regenerate" : "Generate explanation"}</button></div>{explanationError && <div className="notice notice--error">{explanationError}</div>}{explanation && <div className="explanation-body"><p>{explanation.summary}</p>{explanation.findings.length > 0 && <ul>{explanation.findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}<div className="explanation-meta"><span>Model {explanation.model}</span><span>{explanation.evidence_references.length} evidence references</span><span>Digest {explanation.evidence_digest.slice(0, 12)}…</span></div><small>{explanation.disclaimer}</small>{explanation.limitations.length > 0 && <details><summary>Limitations</summary><ul>{explanation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></details>}</div>}</div>
           <div className="attack-card"><div className="attack-heading"><div><p className="kicker">Neo4j · derived index</p><h3>Privileged attack paths</h3></div><span>Advisory only</span></div>{graphState === "loading" && <div className="inline-loader">Querying bounded graph paths…</div>}{graphState === "error" && <div className="graph-unavailable"><strong>Graph unavailable</strong><small>{graphError}. PostgreSQL evidence remains available.</small></div>}{graphState === "ready" && (attackPaths.length ? <div className="attack-paths">{attackPaths.map((path, pathIndex) => <div className="attack-path" key={`${selectedId}-${pathIndex}`}>{path.nodes.map((node, nodeIndex) => <div className="attack-step" key={`${node.id}-${nodeIndex}`}><div className={`attack-node attack-node--${node.kind}`}><small>{node.kind}</small><strong>{node.label}</strong></div>{nodeIndex < path.relationships.length && <span className="attack-edge">{path.relationships[nodeIndex]} →</span>}</div>)}</div>)}</div> : <Empty>No privileged resource paths found within six hops.</Empty>)}</div>
           <div className="evidence-section"><h3>Authorization lineage</h3>{entitlements.length ? entitlements.map((item) => <article className="entitlement" key={item.id}><div className="entitlement-head"><div><strong>{item.permission.name}</strong><small>{item.permission.action} on {item.permission.resource.name}</small></div><Badge value={item.governance.status} /></div>{item.provenance.map((edge) => <div className="lineage" key={`${item.id}-${edge.sequence}`}><span>{edge.from_label}</span><i>{edge.relationship} →</i><span>{edge.to_label}</span></div>)}{item.governance.gaps.length > 0 && <p className="gap">Governance gaps: {item.governance.gaps.join(", ")}</p>}</article>) : <Empty>No entitlements materialized for this identity.</Empty>}</div></>}</> : <Empty>Select an identity to inspect evidence.</Empty>}</section></div>
+  </div>;
+}
+
+function MachineIdentities({ user }: { user: User }) {
+  const [items, setItems] = useState<MachineIdentityPosture[]>([]);
+  const [state, setState] = useState<LoadState>("loading");
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [findingFilter, setFindingFilter] = useState("all");
+  const [selectedId, setSelectedId] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    apiGet<MachineIdentityPosture[]>(user, "/v1/machine-identities?limit=200")
+      .then((data) => {
+        if (!active) return;
+        setItems(data); setSelectedId(data[0]?.identity_id ?? ""); setState("ready");
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : "Machine identity posture unavailable");
+        setState("error");
+      });
+    return () => { active = false; };
+  }, [user]);
+
+  const types = useMemo(() => [...new Set(items.map((item) => item.identity_type))].sort(), [items]);
+  const filtered = useMemo(() => items.filter((item) => {
+    const matchesQuery = `${item.display_name} ${item.username} ${item.source} ${item.owner ?? ""}`
+      .toLowerCase().includes(query.toLowerCase());
+    const matchesType = typeFilter === "all" || item.identity_type === typeFilter;
+    const matchesFinding = findingFilter === "all"
+      || (findingFilter === "clear" ? item.findings.length === 0 : item.findings.some((finding) => finding.severity === findingFilter));
+    return matchesQuery && matchesType && matchesFinding;
+  }), [items, query, typeFilter, findingFilter]);
+  const selected = items.find((item) => item.identity_id === selectedId);
+  const highRisk = items.filter((item) => item.findings.some((finding) => finding.severity === "high")).length;
+  const missingOwners = items.filter((item) => !item.owner).length;
+  const privileged = items.filter((item) => item.privileged_entitlements > 0).length;
+
+  return <div className="page machine-page"><section className="console-heading"><div><p className="kicker">Non-human access inventory</p><h1>Machine identity<br /><em>posture.</em></h1><p>Find ownership gaps, stale credentials, unknown use, and privileged access without exposing secret material.</p></div><div className="console-scope"><small>Evidence scope</small><strong>All connected sources</strong><span><i /> Read-only analysis</span></div></section>
+    {state === "loading" && <Splash message="Loading machine identity posture…" />}
+    {state === "error" && <div className="notice notice--error"><strong>Posture unavailable.</strong> {error}</div>}
+    {state === "ready" && <><section className="console-metrics"><Metric label="Machine identities" value={String(items.length)} detail={`${items.filter((item) => item.active).length} active`} accent="blue" /><Metric label="High findings" value={String(highRisk)} detail="Prioritize investigation" accent="coral" /><Metric label="Missing owners" value={String(missingOwners)} detail="Accountability required" accent="amber" /><Metric label="Privileged" value={String(privileged)} detail="Advisory evidence only" accent="mint" /></section>
+      <section className="console-panel"><header className="console-toolbar"><div><h2>Machine identities</h2><small>{filtered.length} of {items.length} resources</small></div><div className="console-filters"><input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find identity" aria-label="Find machine identity" /><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Filter by identity type"><option value="all">All identity types</option>{types.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select><select value={findingFilter} onChange={(event) => setFindingFilter(event.target.value)} aria-label="Filter by finding severity"><option value="all">All findings</option><option value="high">High severity</option><option value="medium">Medium severity</option><option value="clear">No findings</option></select></div></header>
+        <div className="machine-console"><div className="machine-table" role="table" aria-label="Machine identity posture"><div className="machine-row machine-row--head" role="row"><span>Name</span><span>Type</span><span>Owner</span><span>Access</span><span>Findings</span></div>{filtered.length ? filtered.map((item) => <button role="row" key={item.identity_id} className={item.identity_id === selectedId ? "machine-row selected" : "machine-row"} onClick={() => setSelectedId(item.identity_id)}><span><strong>{item.display_name}</strong><small>{item.source} · {item.username}</small></span><span><Badge value={item.identity_type} /></span><span>{item.owner ?? <em>Not assigned</em>}</span><span><strong>{item.active_entitlements}</strong><small>{item.privileged_entitlements} privileged</small></span><span><strong className={item.findings.some((finding) => finding.severity === "high") ? "finding-count finding-count--high" : "finding-count"}>{item.findings.length}</strong></span></button>) : <Empty>No machine identities match these filters.</Empty>}</div>
+          <aside className="machine-detail">{selected ? <><header><div className="machine-symbol">{selected.display_name.slice(0, 2).toUpperCase()}</div><div><p>{selected.identity_type.replaceAll("_", " ")}</p><h2>{selected.display_name}</h2><small>{selected.source} / {selected.username}</small></div></header><div className="detail-grid"><div><small>Owner</small><strong>{selected.owner ?? "Not assigned"}</strong></div><div><small>Status</small><Badge value={selected.active ? "active" : "inactive"} /></div><div><small>Last used</small><strong>{formatDate(selected.last_used_at)}</strong></div><div><small>Privileged access</small><strong>{selected.privileged_entitlements}</strong></div></div><section className="finding-list"><div><p className="kicker">Deterministic posture</p><h3>Findings</h3></div>{selected.findings.length ? selected.findings.map((finding) => <article key={finding.code} className={`finding finding--${finding.severity}`}><div><Badge value={finding.severity} /><strong>{finding.code.replaceAll("_", " ")}</strong></div><p>{finding.summary}</p></article>) : <Empty>No lifecycle findings detected.</Empty>}</section><footer>Evidence summary only · no automatic access changes</footer></> : <Empty>Select a machine identity to inspect posture.</Empty>}</aside></div>
+      </section></>}
   </div>;
 }
 
