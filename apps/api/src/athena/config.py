@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,23 @@ class Settings(BaseSettings):
         if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
             raise ValueError("Ollama must use a local loopback HTTP endpoint")
         return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.env.lower() != "production":
+            return self
+        errors = []
+        if not self.auth_required:
+            errors.append("authentication must be enabled")
+        if "athena:athena@" in self.database_url:
+            errors.append("the default database credential is forbidden")
+        if self.keycloak_client_secret.get_secret_value() == "athena-local-collector-secret":
+            errors.append("the default Keycloak collector secret is forbidden")
+        if not self.oidc_issuer.startswith("https://"):
+            errors.append("the OIDC issuer must use HTTPS")
+        if errors:
+            raise ValueError("Invalid production configuration: " + "; ".join(errors))
+        return self
 
 
 @lru_cache

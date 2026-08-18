@@ -1,0 +1,90 @@
+name: athena-demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-athena}
+      POSTGRES_USER: ${POSTGRES_USER:-athena}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD for the demo stack}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?Set KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/keycloak/realm-athena.json:/opt/keycloak/data/import/realm-athena.json:ro
+    healthcheck:
+      test:
+        ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/athena HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  opa:
+    image: openpolicyagent/opa:1.4.2
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies/iam", "/policies/system"]
+    volumes:
+      - ./policies:/policies:ro
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      ATHENA_ENV: demo
+      ATHENA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
+      ATHENA_OPA_URL: http://opa:8181
+      ATHENA_AUTH_REQUIRED: "true"
+      ATHENA_OIDC_ISSUER: http://localhost:8080/realms/athena
+      ATHENA_OIDC_JWKS_URL: http://keycloak:8080/realms/athena/protocol/openid-connect/certs
+      ATHENA_OIDC_AUDIENCE: athena-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

@@ -57,7 +57,18 @@ jobs:
         run: pytest -q
 
       - name: Validate Compose
-        run: docker compose config --quiet
+        env:
+          POSTGRES_PASSWORD: ci-compose-validation
+          KEYCLOAK_ADMIN: ci-admin
+          KEYCLOAK_ADMIN_PASSWORD: ci-compose-validation
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.demo.yaml config --quiet
+
+      - name: Build runtime images
+        run: |
+          docker build --file apps/api/Dockerfile --tag athena-api:${{ github.sha }} .
+          docker build --file apps/web/Dockerfile --tag athena-web:${{ github.sha }} .
 
       - name: Apply and check migrations
         run: |
