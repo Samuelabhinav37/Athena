@@ -294,6 +294,7 @@ Athena/
 - [x] Authenticated attack-path dashboard presentation
 - [x] Machine and workload identity posture foundation
 - [x] Authenticated machine identity posture dashboard
+- [x] AWS role owner and last-used lifecycle evidence
 
 ## Documentation
 
