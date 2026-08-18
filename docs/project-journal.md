@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Attack-path dashboard presentation
+**Active milestone:** Machine and workload identity governance
 
 **Completed:**
 
@@ -56,9 +56,10 @@ The governing safety rule is:
 - Authenticated React identity-governance dashboard
 - Derived Neo4j identity attack-path foundation
 - Authenticated attack-path dashboard presentation
+- Machine and workload identity posture foundation
 
-**Next outcome:** Present bounded privileged paths inside the authenticated identity evidence view
-without making graph availability a dependency for PostgreSQL-backed evidence.
+**Next outcome:** Expose deterministic lifecycle posture for non-human identities without inferring
+missing ownership or allowing findings to change access.
 
 ## Roadmap
 
@@ -79,7 +80,8 @@ without making graph availability a dependency for PostgreSQL-backed evidence.
 | 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
 | 13. Deployment hardening | Containers, operations, backup, recovery, and demo packaging | Complete |
 | 14. Attack-path analysis | Derived Neo4j projection and bounded advisory path queries | Complete |
-| 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | In progress |
+| 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | Complete |
+| 16. Machine identity governance | Owner, usage, credential, and access posture | In progress |
 
 ## Milestone 14: Neo4j attack-path foundation
 
@@ -120,6 +122,31 @@ No frontend dependency was added. Browser-based visual inspection could not run 
 extension browser was available in the session; TypeScript compilation, the Vite production build,
 static UI contract tests, and container health checks remain the required validation evidence for
 this slice.
+
+## Milestone 16: machine identity posture foundation
+
+Added deterministic, read-only lifecycle posture for service accounts, applications, workloads, API
+clients, and agents:
+
+- viewer-protected, bounded `GET /v1/machine-identities` inventory;
+- accountable owner, active/privileged entitlement counts, and latest-use summary;
+- explicit findings for missing ownership, missing or stale usage, stale active credentials, and
+  ungoverned entitlements;
+- exclusion of humans and raw source metadata, trust policies, tokens, key identifiers, and secrets;
+  and
+- operating guidance that keeps posture advisory and destructive responses human-controlled.
+
+The slice reuses canonical identities, access observations, grants, and entitlements. It introduces
+no dependency or schema migration and performs no database or connector write.
+
+Validation evidence:
+
+- focused posture and API tests: 3 passed;
+- full Python suite: 83 passed with the existing Starlette deprecation warning;
+- Ruff linting: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- development and demo Compose configuration plus diff checks: passed.
 
 ## Work completed
 

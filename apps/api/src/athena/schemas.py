@@ -121,6 +121,30 @@ class AttackPathResponse(BaseModel):
     relationships: tuple[str, ...]
 
 
+class MachineIdentityFindingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    severity: str
+    summary: str
+
+
+class MachineIdentityPostureResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    identity_id: uuid.UUID
+    username: str
+    display_name: str
+    identity_type: IdentityType
+    source: str
+    active: bool
+    owner: str | None
+    active_entitlements: int
+    privileged_entitlements: int
+    last_used_at: datetime | None
+    findings: tuple[MachineIdentityFindingResponse, ...]
+
+
 class PolicyEvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
