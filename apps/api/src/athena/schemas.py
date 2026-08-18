@@ -262,6 +262,21 @@ class AuthenticatedPrincipalResponse(BaseModel):
     roles: list[str]
 
 
+class GeneratedExplanationContent(BaseModel):
+    summary: str = Field(min_length=1, max_length=4000)
+    findings: list[str] = Field(max_length=20)
+    limitations: list[str] = Field(max_length=20)
+
+
+class IdentityExplanationResponse(GeneratedExplanationContent):
+    identity_id: uuid.UUID
+    generated_at: datetime
+    model: str
+    evidence_digest: str
+    evidence_references: list[str]
+    disclaimer: str
+
+
 class CreateExecutionRequest(BaseModel):
     case_id: uuid.UUID
     idempotency_key: str = Field(min_length=8, max_length=255)

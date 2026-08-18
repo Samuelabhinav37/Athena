@@ -5,18 +5,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from athena.auth import require_viewer
+from athena.config import Settings, get_settings
 from athena.database import get_db_session
 from athena.repositories import IdentityRepository
 from athena.schemas import (
     AnomalyResultResponse,
     EntitlementResponse,
     GrantGovernanceResponse,
+    IdentityExplanationResponse,
     IdentityResponse,
     PermissionSummary,
     PolicyEvaluationResponse,
     ProvenanceEdgeResponse,
     RiskAssessmentResponse,
     RiskFindingResponse,
+)
+from athena.services.explanations import (
+    ExplanationError,
+    OllamaExplanationService,
 )
 from athena.services.peer_anomaly import load_anomaly_results
 from athena.services.policy_evaluation import load_policy_evaluations
@@ -27,6 +33,7 @@ router = APIRouter(
     prefix="/v1/identities", tags=["identities"], dependencies=[Depends(require_viewer)]
 )
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
+RuntimeSettings = Annotated[Settings, Depends(get_settings)]
 
 
 @router.get("", response_model=list[IdentityResponse])
@@ -141,3 +148,21 @@ def list_identity_anomaly_assessments(
     if IdentityRepository(session).get(identity_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     return list(load_anomaly_results(session, identity_id))
+
+
+@router.post("/{identity_id}/explanation", response_model=IdentityExplanationResponse)
+def explain_identity(
+    identity_id: uuid.UUID,
+    session: DatabaseSession,
+    settings: RuntimeSettings,
+) -> IdentityExplanationResponse:
+    identity = IdentityRepository(session).get(identity_id)
+    if identity is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
+    try:
+        return OllamaExplanationService(session, settings).explain(identity)
+    except ExplanationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(error),
+        ) from error

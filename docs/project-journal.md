@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** End-to-end demonstration and deployment hardening
+**Active milestone:** Explain and present integration
 
 **Completed:**
 
@@ -52,10 +52,11 @@ The governing safety rule is:
 - Incremental AWS IAM authorization connector
 - Keycloak OIDC authentication and role-based API authorization
 - Authorized remediation execution framework
+- Guarded local Ollama evidence explanations
 - Authenticated React identity-governance dashboard
 
-**Next outcome:** Athena adds local, evidence-grounded Ollama explanations without allowing the LLM
-to make or execute access decisions.
+**Next outcome:** Expose generated explanations in the identity evidence view and produce an
+audit-ready evidence report from authoritative records.
 
 ## Roadmap
 
@@ -1115,6 +1116,53 @@ available in this session, so interactive visual QA remains an explicit follow-u
 Add a local Ollama explanation adapter that consumes immutable evidence snapshots, treats all
 connector content as untrusted data, cites the evidence used, and cannot create policy decisions or
 execute remediation.
+
+## Local Ollama evidence explanations
+
+Added a viewer-protected, read-only explanation endpoint at
+`POST /v1/identities/{identity_id}/explanation`. It builds a bounded snapshot from existing identity,
+entitlement, provenance, policy, risk, and anomaly records and asks a local Ollama model for a
+schema-constrained summary. The response includes its model, generation time, referenced evidence
+identifiers, canonical snapshot digest, findings, limitations, and a mandatory decision-boundary
+disclaimer.
+
+### Trust-boundary decisions
+
+- Ollama URLs are restricted to loopback HTTP endpoints so normalized identity evidence cannot be
+  sent to a remote inference service through this feature.
+- Connector and identity strings remain untrusted data. Prompt delimiters are escaped, the system
+  instruction explicitly rejects embedded commands, and the model receives no tools.
+- Requests use temperature zero, non-streaming responses, and a supplied JSON Schema. Pydantic
+  rejects output that does not match the response contract.
+- Evidence size and record counts are bounded. The generated explanation is not persisted as an
+  authoritative fact and has no path into OPA, analytics, reviews, grants, or execution.
+- Unavailable or malformed model responses fail closed with `503`; Athena never fabricates a
+  fallback explanation.
+
+### Errors and resolutions
+
+The first focused test run could not find database and API fixtures because those fixtures were
+module-local in an older test file. Local in-memory fixtures were added to the new explanation test
+instead of refactoring unrelated test infrastructure. Ruff then identified import ordering in the
+identity route; the imports were reordered without changing behavior.
+
+### Validation evidence
+
+- Focused explanation security and failure tests: 4 passed
+- Ruff linting: passed
+- Non-local Ollama URL rejection: passed
+- Prompt-delimiter injection remains escaped inside the untrusted evidence block: passed
+- Schema-constrained request, zero temperature, non-streaming mode, and no model tools: passed
+- Invalid structured model output fails closed: passed
+- No dependency, model download, database schema, migration, or persistence change introduced
+
+### Known limitations
+
+- A local Ollama installation and operator-selected model are required for a live response.
+- Generated explanations are intentionally ephemeral; the evidence digest allows a reviewer to
+  identify the source snapshot but does not turn generated prose into authoritative audit evidence.
+- Dashboard presentation of the explanation will follow after the independent dashboard branch is
+  merged.
 
 ## Repository guardrails for coding agents
 

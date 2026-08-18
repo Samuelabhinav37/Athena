@@ -240,6 +240,7 @@ minimum collector policy and authorization limitations.
 | `GET /v1/connectors` | Sanitized connector checkpoints without cached payloads |
 | `GET /v1/auth/me` | Validated caller identity and Athena roles |
 | `GET /v1/executions` | Administrator-only remediation execution and verification evidence |
+| `POST /v1/identities/{id}/explanation` | Local, structured explanation with evidence references and digest |
 
 ## Evidence-Driven Engineering
 
@@ -281,7 +282,7 @@ Athena/
 - [x] Authorized remediation execution framework
 - [ ] GitHub and AWS write adapters for approved remediation
 - [x] React identity, risk, review, and audit dashboard
-- [ ] Local Ollama explanations
+- [x] Local Ollama explanations
 - [ ] Neo4j identity attack-path analysis
 
 ## Documentation
@@ -292,6 +293,7 @@ Athena/
 - [Keycloak identity lab](infra/keycloak/README.md)
 - [AWS IAM connector](docs/aws-iam.md)
 - [OIDC authentication and API roles](docs/authentication.md)
+- [Local Ollama explanation boundary](docs/ollama-explanations.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
