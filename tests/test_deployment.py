@@ -9,23 +9,36 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 
-def test_request_logging_preserves_safe_correlation_id(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.INFO, logger="athena.requests")
-    with TestClient(app) as client:
-        response = client.get(
-            "/health?token=must-not-be-logged", headers={"X-Request-ID": "demo-42"}
-        )
+def test_request_logging_preserves_safe_correlation_id() -> None:
+    assert logging.getLogger("athena.requests").level == logging.INFO
+    request_logger = logging.getLogger("athena.requests")
+    assert request_logger.propagate is False
+    records: list[logging.LogRecord] = []
+
+    class CaptureHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    capture_handler = CaptureHandler()
+    request_logger.addHandler(capture_handler)
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/health?token=must-not-be-logged", headers={"X-Request-ID": "demo-42"}
+            )
+    finally:
+        request_logger.removeHandler(capture_handler)
 
     assert response.status_code == 200
     assert response.headers["x-request-id"] == "demo-42"
     event = json.loads(
-        next(record.message for record in caplog.records if "http_request" in record.message)
+        next(record.message for record in records if "http_request" in record.message)
     )
     assert event["method"] == "GET"
     assert event["path"] == "/health"
     assert event["status"] == 200
     assert event["request_id"] == "demo-42"
-    assert "must-not-be-logged" not in caplog.text
+    assert "must-not-be-logged" not in "".join(record.message for record in records)
 
 
 def test_request_logging_replaces_unsafe_correlation_id() -> None:
@@ -71,6 +84,11 @@ def test_runtime_images_are_versioned_and_drop_root() -> None:
     assert "USER nginx" in web
     assert "npm ci" in web
 
+    nginx = Path("apps/web/nginx.conf").read_text(encoding="utf-8")
+    assert "resolver 127.0.0.11" in nginx
+    assert "proxy_pass $api_upstream" in nginx
+    assert "proxy_set_header X-Request-ID $http_x_request_id" in nginx
+
 
 def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> None:
     compose = Path("compose.demo.yaml").read_text(encoding="utf-8")
@@ -80,3 +98,5 @@ def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> Non
     assert '"5432:5432"' not in compose
     assert '"8181:8181"' not in compose
     assert "read_only: true" in compose
+    assert "Host: localhost" in compose
+    assert "ATHENA_KEYCLOAK_URL: http://keycloak:8080" in compose

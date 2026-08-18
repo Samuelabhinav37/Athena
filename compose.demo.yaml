@@ -28,7 +28,7 @@ services:
       - ./infra/keycloak/realm-athena.json:/opt/keycloak/data/import/realm-athena.json:ro
     healthcheck:
       test:
-        ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/athena HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+        ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/athena HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -54,6 +54,7 @@ services:
       ATHENA_ENV: demo
       ATHENA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
       ATHENA_OPA_URL: http://opa:8181
+      ATHENA_KEYCLOAK_URL: http://keycloak:8080
       ATHENA_AUTH_REQUIRED: "true"
       ATHENA_OIDC_ISSUER: http://localhost:8080/realms/athena
       ATHENA_OIDC_JWKS_URL: http://keycloak:8080/realms/athena/protocol/openid-connect/certs
