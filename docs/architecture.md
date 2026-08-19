@@ -117,6 +117,12 @@ privileged eligibility, machine identities, and activity signals. It is always r
 evidence-only; it cannot grant authority or hide an incomplete-data boundary. See the
 [connector SDK contract](connector-sdk.md).
 
+Compliance mappings pass through a separate versioned framework contract. The initial NIST pack
+preserves objectives, evidence links, implementation status, and limitations, then renders them as
+an OSCAL-compatible Component Definition with deterministic identifiers. This describes how Athena
+supports controls; it is not an assessment result or certification. See
+[portable compliance frameworks](compliance-frameworks.md).
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

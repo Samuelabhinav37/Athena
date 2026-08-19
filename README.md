@@ -91,6 +91,7 @@ flowchart LR
 | Telemetry export | Deterministic vendor-neutral JSON packages with offline integrity verification |
 | OTLP telemetry export | Deterministic OTLP/HTTP JSON requests with explicit mapping-loss warnings |
 | Connector portability | Versioned read-only capability manifests for GitHub, Azure, and Keycloak |
+| Framework portability | Deterministic NIST mappings rendered as an OSCAL-compatible component definition |
 
 ## Authorization Provenance
 
@@ -303,6 +304,7 @@ Athena/
 - [x] Deterministic vendor-neutral JSON telemetry export
 - [x] Deterministic OTLP/HTTP JSON telemetry export
 - [x] Vendor-neutral IAM connector capability contract
+- [x] OSCAL-compatible compliance framework contract
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Vendor-neutral IAM connector SDK
+**Active milestone:** Portable compliance framework engine
 
 **Completed:**
 
@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Define the first OSCAL-compatible compliance framework contracts while preserving
-the current deterministic NIST control evidence.
+**Next outcome:** Complete Rego and deterministic security-gate validation for the framework
+contract, then formalize the canonical principal-action-resource-context policy request.
 
 ## Roadmap
 
@@ -98,6 +98,34 @@ the current deterministic NIST control evidence.
 | 28. JSON telemetry export | Deterministic packages and offline integrity verification | Complete |
 | 29. OTLP/JSON telemetry export | Stable OpenTelemetry log requests with explicit mapping loss | Complete |
 | 30. IAM connector SDK contract | Read-only provider manifests and conformance rules | Complete |
+| 31. Compliance framework contract | Deterministic NIST pack and OSCAL component definition | Validation pending |
+
+## Milestone 31: OSCAL-compatible compliance framework contract
+
+Added framework contract `1.0` to validate the existing NIST SP 800-53 Revision 5 JSON mappings as
+a deterministic pack. The pack retains control objectives, typed automated-evidence references,
+implementation status, and limitations under a content digest. Unsafe file traversal, malformed
+controls, duplicate IDs, and empty packs fail closed.
+
+The first renderer produces the core JSON hierarchy of an OSCAL Component Definition: metadata, an
+Athena software component, a catalog-linked control implementation, and implemented requirements
+for AC-2, AC-5, and AC-6. UUIDv5 identifiers derive from the pack digest. Repository evidence links,
+Athena URNs, partial status, and every limitation remain explicit; generated AI text is excluded.
+
+Assessment Results are deliberately out of scope because Athena does not yet have a portable
+Assessment Plan and assessed-system context. This slice performs no download, external schema
+validation, file write, signature, dependency change, migration, or evidence-store mutation.
+
+Validation evidence:
+
+- focused framework contract tests: 3 passed;
+- full automated Python suite: 164 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed; and
+- frontend TypeScript check and production build: passed.
+
+Rego and the deterministic security gate could not run because the local Docker Linux engine and
+OPA endpoint were unavailable. No substitute or weakened policy check was used; milestone
+validation remains pending until those required checks run.
 
 ## Milestone 30: vendor-neutral IAM connector SDK contract
 
