@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Portable compliance framework engine
+**Active milestone:** Portable evidence reporting
 
 **Completed:**
 
@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Complete Rego and deterministic security-gate validation for the framework
-contract, then formalize the canonical principal-action-resource-context policy request.
+**Next outcome:** Review the context and dependency requirements for OSCAL assessment, PDF, and
+Word renderers before implementing another portable report format.
 
 ## Roadmap
 
@@ -98,7 +98,62 @@ contract, then formalize the canonical principal-action-resource-context policy 
 | 28. JSON telemetry export | Deterministic packages and offline integrity verification | Complete |
 | 29. OTLP/JSON telemetry export | Stable OpenTelemetry log requests with explicit mapping loss | Complete |
 | 30. IAM connector SDK contract | Read-only provider manifests and conformance rules | Complete |
-| 31. Compliance framework contract | Deterministic NIST pack and OSCAL component definition | Validation pending |
+| 31. Compliance framework contract | Deterministic NIST pack and OSCAL component definition | Complete |
+| 32. Policy interoperability contract | Canonical requests and an explicit OPA adapter | Complete |
+| 33. Portable report renderer contract | Digest-verified deterministic JSON and Markdown | Complete |
+
+## Milestone 33: portable evidence renderer contract
+
+Added renderer contract `1.0` with immutable manifests and artifacts. Every renderer revalidates the
+evidence response and recomputes its authoritative digest before producing bytes. Artifacts retain
+the source evidence digest and add a SHA-256 digest of the exact rendered content.
+
+Canonical compact JSON and Markdown are registered as deterministic implementations. The existing
+Markdown report path now delegates to the renderer without changing its public content. Tampered
+facts fail closed, and AI-generated prose remains excluded from renderer inputs. OSCAL assessment,
+PDF, and Word formats are declared but not falsely registered: they require additional assessment
+context or reviewed generation and visual-verification workflows.
+
+This slice adds no endpoint, dependency, database query or write, file output, destination,
+signature, retention behavior, or authoritative evidence field.
+
+Validation evidence:
+
+- focused report renderer and evidence-report tests: 6 passed;
+- full automated Python suite including pending policy changes: 169 passed with the existing
+  Starlette deprecation warning;
+- Ruff linting and diff checks: passed; and
+- frontend TypeScript check and production build: passed.
+
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 32: canonical policy interoperability contract
+
+Added versioned policy request contract `2.0` with frozen, unknown-field-rejecting models for
+principal, action, resource, and context. Context contains governance evidence, authentication
+posture, and ordered provenance. New immutable policy-evaluation snapshots store this canonical
+shape instead of the OPA-specific payload.
+
+Added `OpaAuthorizationAdapter` as the only translation boundary. It deterministically maps the
+canonical request to the existing Rego input `1.0`, leaving policy files, fixtures, policy path,
+decision shape, structured violations, and fail-closed behavior unchanged. The security gate still
+tests native OPA fixtures independently. Future engines require distinct adapters and semantic
+conformance; a shared request does not imply equivalent policy behavior.
+
+This slice adds no alternate engine, policy translation, policy change, dependency, migration,
+credential, remediation authority, or evidence-store mutation beyond the existing append-only
+policy evaluation write.
+
+Validation evidence:
+
+- focused policy contract, evaluation, monitoring, and CLI tests: 10 passed;
+- full automated Python suite: 166 passed with the existing Starlette deprecation warning; and
+- Ruff linting: passed; and
+- frontend TypeScript check and production build: passed.
+
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 31: OSCAL-compatible compliance framework contract
 
@@ -123,9 +178,8 @@ Validation evidence:
 - Ruff linting and diff checks: passed; and
 - frontend TypeScript check and production build: passed.
 
-Rego and the deterministic security gate could not run because the local Docker Linux engine and
-OPA endpoint were unavailable. No substitute or weakened policy check was used; milestone
-validation remains pending until those required checks run.
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 30: vendor-neutral IAM connector SDK contract
 

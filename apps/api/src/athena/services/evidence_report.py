@@ -79,6 +79,25 @@ def _digest_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def evidence_report_facts(report: EvidenceReportResponse) -> dict[str, Any]:
+    return {
+        "schema_version": report.schema_version,
+        "scope": report.scope,
+        "inventory": report.inventory,
+        "policy_decisions": report.policy_decisions,
+        "review_statuses": report.review_statuses,
+        "execution_statuses": report.execution_statuses,
+        "monitoring_statuses": report.monitoring_statuses,
+        "controls": [control.model_dump() for control in report.controls],
+        "authoritative_sources": report.authoritative_sources,
+        "limitations": report.limitations,
+    }
+
+
+def verify_evidence_report(report: EvidenceReportResponse) -> bool:
+    return _digest_payload(evidence_report_facts(report)) == report.evidence_digest
+
+
 class EvidenceReportService:
     def __init__(self, session: Session, control_directory: Path) -> None:
         self.session = session
@@ -128,37 +147,6 @@ class EvidenceReportService:
 
     @staticmethod
     def markdown(report: EvidenceReportResponse) -> str:
-        lines = [
-            "# Athena Authorization Evidence Report",
-            "",
-            f"**Generated:** {report.generated_at.isoformat()}",
-            f"**Evidence digest:** `{report.evidence_digest}`",
-            f"**Scope:** {report.scope}",
-            "",
-            "## Inventory",
-            "",
-            "| Measure | Value |",
-            "|---|---:|",
-        ]
-        lines.extend(
-            f"| {name.replace('_', ' ').title()} | {value if value is not None else 'N/A'} |"
-            for name, value in report.inventory.items()
-        )
-        lines.extend(
-            [
-                "",
-                "## NIST control mappings",
-                "",
-                "| Control | Status | Checks |",
-                "|---|---|---:|",
-            ]
-        )
-        lines.extend(
-            f"| {control.control_id} — {control.title} | {control.status} | "
-            f"{control.automated_checks} |"
-            for control in report.controls
-        )
-        lines.extend(["", "## Limitations", ""])
-        lines.extend(f"- {limitation}" for limitation in report.limitations)
-        lines.extend(["", "Generated LLM explanations are not authoritative report evidence.", ""])
-        return "\n".join(lines)
+        from athena.services.report_renderers import MarkdownEvidenceRenderer
+
+        return MarkdownEvidenceRenderer().render(report).content.decode()

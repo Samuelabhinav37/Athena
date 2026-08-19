@@ -123,6 +123,18 @@ an OSCAL-compatible Component Definition with deterministic identifiers. This de
 supports controls; it is not an assessment result or certification. See
 [portable compliance frameworks](compliance-frameworks.md).
 
+Policy evaluation uses canonical request contract `2.0` for principal, action, resource, and
+governance/authentication/provenance context. The stored input snapshot uses this engine-neutral
+shape. An explicit OPA adapter translates it to the unchanged Rego input contract `1.0`; OPA remains
+the only authoritative engine, and no cross-engine semantic equivalence is assumed. See
+[policy interoperability](policy-interoperability.md).
+
+Evidence collection is separate from presentation. Renderer contract `1.0` revalidates the source
+report digest before producing deterministic canonical JSON or Markdown bytes, each with its own
+content digest and format manifest. AI prose is not an input. OSCAL assessment, PDF, and Word remain
+unregistered until their required context and reviewed generation workflows exist. See
+[portable evidence renderers](portable-reports.md).
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

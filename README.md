@@ -92,6 +92,8 @@ flowchart LR
 | OTLP telemetry export | Deterministic OTLP/HTTP JSON requests with explicit mapping-loss warnings |
 | Connector portability | Versioned read-only capability manifests for GitHub, Azure, and Keycloak |
 | Framework portability | Deterministic NIST mappings rendered as an OSCAL-compatible component definition |
+| Policy interoperability | Canonical principal-action-resource-context requests with OPA as authority |
+| Portable reporting | Digest-verified deterministic JSON and Markdown renderer contracts |
 
 ## Authorization Provenance
 
@@ -305,6 +307,8 @@ Athena/
 - [x] Deterministic OTLP/HTTP JSON telemetry export
 - [x] Vendor-neutral IAM connector capability contract
 - [x] OSCAL-compatible compliance framework contract
+- [x] Canonical policy request and explicit OPA adapter
+- [x] Portable JSON and Markdown evidence renderer contract
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
