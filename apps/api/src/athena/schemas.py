@@ -311,6 +311,8 @@ class IdentityExplanationResponse(GeneratedExplanationContent):
     identity_id: uuid.UUID
     generated_at: datetime
     model: str
+    provider: str
+    provider_metadata: dict[str, str]
     evidence_digest: str
     evidence_references: list[str]
     disclaimer: str

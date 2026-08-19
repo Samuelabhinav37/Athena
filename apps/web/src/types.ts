@@ -63,6 +63,8 @@ export interface IdentityExplanation {
   identity_id: string;
   generated_at: string;
   model: string;
+  provider: "ollama" | "azure_ai";
+  provider_metadata: Record<string, string>;
   evidence_digest: string;
   evidence_references: string[];
   summary: string;

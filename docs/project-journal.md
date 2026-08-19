@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Microsoft Azure identity and authorization replacement
+**Active milestone:** Vendor-neutral AI provider architecture
 
 **Completed:**
 
@@ -59,9 +59,10 @@ The governing safety rule is:
 - Machine and workload identity posture foundation
 - Authenticated machine identity posture dashboard
 - Azure service-principal owner and credential-expiration evidence
+- Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Merge the completed human review workflow presentation, then add frontend
-component and accessibility testing after explicit dependency approval.
+**Next outcome:** Complete AI boundary verification across provider switching, failure handling,
+prompt injection, secret exclusion, and authoritative-state invariants.
 
 ## Roadmap
 
@@ -87,6 +88,31 @@ component and accessibility testing after explicit dependency approval.
 | 17. Machine identity presentation | Searchable posture inventory and evidence detail console | Complete |
 | 18. Azure workload lifecycle evidence | Owner and credential-expiration posture | Complete |
 | 20. Azure replacement | Remove AWS runtime and make Azure the cloud authorization source | Complete |
+| 21. AI portability | Provider-neutral explanation contract with Ollama and Azure AI adapters | Complete |
+
+## Milestone 21: vendor-neutral AI provider architecture
+
+Introduced an Athena-owned `AIProvider` contract and moved evidence collection, canonical digests,
+prompt construction, schema validation, and API response construction into a shared explanation
+service. The existing loopback-only Ollama behavior now runs through an Ollama adapter. A guarded
+Azure AI adapter uses `DefaultAzureCredential`, accepts only credential-free HTTPS Azure AI
+endpoints, redacts direct identity and business-reason fields before hosted inference, requests
+strict structured output, applies bounded timeouts, and returns only safe request/finish metadata.
+
+Both adapters produce the same Athena response schema. Generated content remains ephemeral and has
+no write path into evidence facts, OPA decisions, analytics, reviews, grants, or remediation state.
+Provider failures and malformed output fail closed; provider switching is explicit and Athena does
+not silently fall back to another provider.
+
+Validation evidence:
+
+- focused provider, configuration, redaction, injection, and malformed-output tests: 8 passed;
+- full automated Python suite: 90 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 20: Microsoft Azure replacement
 

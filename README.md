@@ -86,6 +86,7 @@ flowchart LR
 | Attack paths | Bounded Neo4j queries over a derived, read-only provenance projection |
 | Machine identities | Deterministic owner, usage, credential-age, and access-governance posture |
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
+| AI explanations | Provider-neutral advisory explanations through local Ollama or guarded Azure AI |
 
 ## Authorization Provenance
 
@@ -289,6 +290,7 @@ Athena/
 - [ ] GitHub and Azure write adapters for approved remediation
 - [x] React identity, risk, review, and audit dashboard
 - [x] Local Ollama explanations
+- [x] Vendor-neutral AIProvider contract with Ollama and Azure AI adapters
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
