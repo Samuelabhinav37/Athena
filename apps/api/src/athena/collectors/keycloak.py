@@ -3,7 +3,15 @@ from typing import Any
 
 import httpx
 
-from athena.collectors.contracts import NormalizedGroup, NormalizedIdentity, NormalizedRole
+from athena.collectors.contracts import (
+    CapabilitySupport,
+    ConnectorCapability,
+    ConnectorCapabilityDeclaration,
+    ConnectorManifest,
+    NormalizedGroup,
+    NormalizedIdentity,
+    NormalizedRole,
+)
 from athena.config import Settings
 from athena.models import IdentityType
 
@@ -15,6 +23,63 @@ class KeycloakCollectionError(RuntimeError):
 
 
 class KeycloakCollector:
+    @classmethod
+    def manifest(cls) -> ConnectorManifest:
+        declarations = {
+            ConnectorCapability.IDENTITY_DISCOVERY: ("supported", "Collects realm human users."),
+            ConnectorCapability.PAGINATION: (
+                "supported",
+                "Uses bounded offset pagination for users.",
+            ),
+            ConnectorCapability.INCREMENTAL_CURSORS: (
+                "unsupported",
+                "Performs full collection and has no change cursor.",
+            ),
+            ConnectorCapability.RETRIES: (
+                "unsupported",
+                "Fails closed on request errors; retry orchestration is external.",
+            ),
+            ConnectorCapability.COLLECTION_FRESHNESS: (
+                "unsupported",
+                "The collector result does not carry an observation timestamp.",
+            ),
+            ConnectorCapability.AUTHORIZATION_INHERITANCE: (
+                "partial",
+                "Collects current realm roles and groups without complete grant lineage.",
+            ),
+            ConnectorCapability.NESTED_GROUPS: (
+                "partial",
+                "Preserves group paths but does not emit a nested-group relationship graph.",
+            ),
+            ConnectorCapability.DENY_RULES: (
+                "unsupported",
+                "Does not collect Keycloak authorization-service deny policies.",
+            ),
+            ConnectorCapability.PRIVILEGED_ELIGIBILITY: (
+                "unsupported",
+                "Does not collect time-bound privileged eligibility.",
+            ),
+            ConnectorCapability.MACHINE_IDENTITIES: (
+                "unsupported",
+                "Explicitly excludes Keycloak service-account users from this snapshot.",
+            ),
+            ConnectorCapability.ACTIVITY_SIGNALS: (
+                "unsupported",
+                "Does not collect login events or last-used activity.",
+            ),
+        }
+        return ConnectorManifest(
+            connector_id="keycloak",
+            display_name="Keycloak realm",
+            provider="Keycloak",
+            capabilities={
+                capability: ConnectorCapabilityDeclaration(
+                    support=CapabilitySupport(support), detail=detail
+                )
+                for capability, (support, detail) in declarations.items()
+            },
+        )
+
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self.settings = settings
         self.client = client or httpx.Client(timeout=httpx.Timeout(10.0))

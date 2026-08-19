@@ -7,6 +7,12 @@ import httpx
 from azure.core.exceptions import AzureError
 from azure.identity import DefaultAzureCredential
 
+from athena.collectors.contracts import (
+    CapabilitySupport,
+    ConnectorCapability,
+    ConnectorCapabilityDeclaration,
+    ConnectorManifest,
+)
 from athena.config import Settings
 
 
@@ -36,6 +42,66 @@ class AzureSnapshot:
 
 class AzureCollector:
     """Collect Microsoft Entra and Azure RBAC evidence through read-only APIs."""
+
+    @classmethod
+    def manifest(cls) -> ConnectorManifest:
+        declarations = {
+            ConnectorCapability.IDENTITY_DISCOVERY: (
+                "supported",
+                "Collects Entra users and groups.",
+            ),
+            ConnectorCapability.PAGINATION: (
+                "supported",
+                "Follows trusted Microsoft pagination links.",
+            ),
+            ConnectorCapability.INCREMENTAL_CURSORS: (
+                "unsupported",
+                "Performs full snapshots and does not consume Microsoft delta cursors.",
+            ),
+            ConnectorCapability.RETRIES: (
+                "unsupported",
+                "Fails closed on API errors; retry orchestration is external.",
+            ),
+            ConnectorCapability.COLLECTION_FRESHNESS: (
+                "partial",
+                "Synchronization records observation time outside the collector snapshot.",
+            ),
+            ConnectorCapability.AUTHORIZATION_INHERITANCE: (
+                "partial",
+                "Preserves RBAC scopes but does not expand every inherited effective permission.",
+            ),
+            ConnectorCapability.NESTED_GROUPS: (
+                "partial",
+                "Collects direct group member IDs without recursively resolving nesting.",
+            ),
+            ConnectorCapability.DENY_RULES: (
+                "unsupported",
+                "Does not collect Azure deny assignments.",
+            ),
+            ConnectorCapability.PRIVILEGED_ELIGIBILITY: (
+                "unsupported",
+                "Does not collect Microsoft Entra PIM eligibility schedules.",
+            ),
+            ConnectorCapability.MACHINE_IDENTITIES: (
+                "supported",
+                "Collects service principals, managed identity type, owners, and credentials.",
+            ),
+            ConnectorCapability.ACTIVITY_SIGNALS: (
+                "unsupported",
+                "Does not collect sign-in or resource activity logs.",
+            ),
+        }
+        return ConnectorManifest(
+            connector_id="azure",
+            display_name="Microsoft Entra ID and Azure RBAC",
+            provider="Microsoft Azure",
+            capabilities={
+                capability: ConnectorCapabilityDeclaration(
+                    support=CapabilitySupport(support), detail=detail
+                )
+                for capability, (support, detail) in declarations.items()
+            },
+        )
 
     def __init__(
         self,

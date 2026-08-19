@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Universal telemetry portability
+**Active milestone:** Vendor-neutral IAM connector SDK
 
 **Completed:**
 
@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Define the vendor-neutral IAM connector SDK contract and capability manifest
-without changing existing connector behavior.
+**Next outcome:** Define the first OSCAL-compatible compliance framework contracts while preserving
+the current deterministic NIST control evidence.
 
 ## Roadmap
 
@@ -97,6 +97,34 @@ without changing existing connector behavior.
 | 27. Signed webhook normalization | HMAC authentication and replay protection | Complete |
 | 28. JSON telemetry export | Deterministic packages and offline integrity verification | Complete |
 | 29. OTLP/JSON telemetry export | Stable OpenTelemetry log requests with explicit mapping loss | Complete |
+| 30. IAM connector SDK contract | Read-only provider manifests and conformance rules | Complete |
+
+## Milestone 30: vendor-neutral IAM connector SDK contract
+
+Added connector contract `1.0` with a frozen, secret-free `ConnectorManifest`, a structural
+`IAMConnector` protocol, and mandatory capability declarations. Manifests are always read-only and
+evidence-only and must explicitly describe identity discovery, pagination, incremental cursors,
+retries, collection freshness, authorization inheritance, nested groups, deny rules, privileged
+eligibility, machine identities, and activity signals as supported, partial, or unsupported.
+
+GitHub, Microsoft Azure, and Keycloak now publish honest manifests without changing their existing
+collection signatures, snapshots, authentication, synchronization, or persistence behavior.
+Conformance tests require complete declarations, reject write authority, verify known limitations,
+and ensure serialized manifests contain no token-bearing fields. The compatibility matrix documents
+that capability claims describe Athena's current adapter, not the provider's entire product.
+
+This milestone adds no endpoint, credential handling, network call, retry behavior, dependency,
+migration, or evidence-store write. Snapshot, cursor, freshness, and retry execution contracts
+remain later reviewed slices.
+
+Validation evidence:
+
+- focused connector contract and regression tests: 13 passed;
+- full automated Python suite: 161 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 29: deterministic OTLP/HTTP JSON telemetry export
 

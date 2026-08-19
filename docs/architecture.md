@@ -110,6 +110,13 @@ a collector durably accepted the request.
 
 Every effective entitlement must identify its source. Approval, business justification, and expiration are first-class governance attributes; required missing attributes create an ungoverned-access finding.
 
+IAM integrations expose a versioned, provider-neutral capability manifest alongside their existing
+provider-specific collection results. The manifest requires explicit support levels and limitation
+text for discovery, pagination, cursors, retries, freshness, inheritance, nested groups, deny rules,
+privileged eligibility, machine identities, and activity signals. It is always read-only and
+evidence-only; it cannot grant authority or hide an incomplete-data boundary. See the
+[connector SDK contract](connector-sdk.md).
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

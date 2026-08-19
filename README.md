@@ -90,6 +90,7 @@ flowchart LR
 | Security telemetry | OpenTelemetry envelope with JSON, OTLP, syslog, and signed webhook adapters |
 | Telemetry export | Deterministic vendor-neutral JSON packages with offline integrity verification |
 | OTLP telemetry export | Deterministic OTLP/HTTP JSON requests with explicit mapping-loss warnings |
+| Connector portability | Versioned read-only capability manifests for GitHub, Azure, and Keycloak |
 
 ## Authorization Provenance
 
@@ -301,6 +302,7 @@ Athena/
 - [x] Signed generic webhook normalization with replay protection
 - [x] Deterministic vendor-neutral JSON telemetry export
 - [x] Deterministic OTLP/HTTP JSON telemetry export
+- [x] Vendor-neutral IAM connector capability contract
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
