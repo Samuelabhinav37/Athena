@@ -1467,3 +1467,64 @@ At the end of each meaningful change:
 - add exact validation evidence;
 - list known warnings or incomplete checks; and
 - define the next smallest end-to-end outcome.
+
+## Vendor-neutral platform roadmap
+
+### Objective
+
+Evolve Athena into a portable identity-governance platform whose evidence, policy, review, and
+remediation boundaries do not depend on a single AI provider, IAM vendor, log platform, or
+compliance framework. Azure AI will be the first hosted demonstration adapter, while Ollama remains
+the local/private adapter. Neither provider may influence deterministic policy decisions or approve
+access changes.
+
+### Architectural direction
+
+- Define versioned contracts for AI providers, IAM connectors, log receivers/exporters, policy
+  engines, compliance-framework packs, and documentation renderers.
+- Preserve one canonical Athena identity and authorization graph with source provenance, collection
+  freshness, capability metadata, and explicit incomplete-data warnings.
+- Use open standards at integration boundaries: OIDC and SAML for federation, SCIM for identity
+  provisioning, SPIFFE for workload identity, OpenTelemetry/OTLP for telemetry, and OSCAL for
+  machine-readable control and assessment information.
+- Keep OPA/Rego as the initial authoritative policy engine. Additional engines, such as Cedar, must
+  be isolated behind adapters and conformance tests because policy semantics cannot be assumed to
+  be interchangeable.
+- Treat all ingested IAM records, logs, policy text, and model responses as untrusted data. Provider
+  output remains advisory presentation and is excluded from authoritative evidence facts.
+
+### Phased delivery plan
+
+1. **Architecture and contracts** — document schemas, capability manifests, trust boundaries,
+   compatibility rules, conformance tests, and threat models.
+2. **AI portability** — introduce a provider-neutral `AIProvider` contract, move the existing
+   Ollama explanation path behind it, and add Azure AI with bounded redacted requests, structured
+   response validation, safe authentication, timeouts, safety handling, and audit metadata.
+3. **AI boundary verification** — test provider switching, fallback, prompt injection, malformed
+   output, secret exclusion, and the invariant that model output cannot alter OPA decisions,
+   evidence facts, or remediation state.
+4. **Universal telemetry** — define an OpenTelemetry-aligned security-event envelope, then add OTLP,
+   syslog, JSON, and webhook receivers plus vendor-neutral exporters without losing original-event
+   provenance.
+5. **IAM connector SDK** — standardize discovery, pagination, cursors, retries, freshness, read-only
+   behavior, and capability reporting; require every connector to declare support for inheritance,
+   nested groups, deny rules, privileged eligibility, machine identities, and activity signals.
+6. **Framework engine** — adopt OSCAL-compatible catalogs, mappings, implementation statements,
+   evidence links, assessment results, and versioning; expand from NIST to ISO 27001, SOC 2, CIS,
+   PCI DSS, HIPAA, SOX, and organization-defined controls where licensing permits.
+7. **Policy interoperability** — formalize a canonical principal-action-resource-context request,
+   retain OPA as the default authority, and evaluate additional engines through explicit adapters
+   and semantic conformance suites rather than lossy policy translation.
+8. **Portable reporting** — render the same verified evidence package as Markdown, JSON, OSCAL,
+   PDF, and Word while keeping generated AI prose separate from authoritative facts.
+9. **Enterprise hardening** — add tenant isolation, SSO and delegated RBAC, data-residency controls,
+   high availability, disaster recovery, signed extensions, observability, scale tests, and a
+   published compatibility matrix.
+
+### First implementation milestone
+
+The next smallest end-to-end outcome is the AI portability slice: document the provider contract,
+migrate Ollama without changing behavior, add the guarded Azure AI adapter, and prove through tests
+that both providers return the same Athena-owned response schema while policy and evidence results
+remain unchanged. This roadmap records intent only; implementation and dependency choices require
+their own reviewed change.
