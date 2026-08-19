@@ -16,7 +16,7 @@ from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollecto
 from athena.config import get_settings
 from athena.database import get_session_factory
 from athena.models import Identity, ReviewDecision
-from athena.policy.opa import OpaClient, OpaEvaluationError
+from athena.policy.opa import OpaAuthorizationAdapter, OpaClient, OpaEvaluationError
 from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
 from athena.services.azure_sync import AzureSyncService
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
@@ -113,9 +113,9 @@ def evaluate_policies(username: str) -> int:
                     file=sys.stderr,
                 )
                 return 1
-            with OpaClient(settings.opa_url) as engine:
+            with OpaClient(settings.opa_url) as opa_client:
                 result = PolicyEvaluationService(
-                    session, engine, settings.policy_directory
+                    session, OpaAuthorizationAdapter(opa_client), settings.policy_directory
                 ).evaluate_identity(identity)
     except (FileNotFoundError, SQLAlchemyError, ValueError) as error:
         print(f"Policy evaluation failed: {error}", file=sys.stderr)
@@ -311,7 +311,9 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
                 return {"active_entitlements": len(entitlements)}
 
             def policies() -> dict:
-                service = PolicyEvaluationService(session, engine, settings.policy_directory)
+                service = PolicyEvaluationService(
+                    session, OpaAuthorizationAdapter(engine), settings.policy_directory
+                )
                 return asdict(service.evaluate_identity(identity()))
 
             def risk() -> dict:
