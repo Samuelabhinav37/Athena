@@ -10,8 +10,8 @@ findings. It does not rotate credentials, disable identities, change access, or 
 maximum page size of 200. Each record includes identity type, source, accountable owner when known,
 active and privileged entitlement counts, latest observed use, and bounded finding summaries.
 
-The API intentionally excludes raw source metadata, trust policies, access-key identifiers, tokens,
-and credentials.
+The API intentionally excludes raw source metadata, key and credential identifiers, tokens, and
+credentials.
 
 ## Initial findings
 
@@ -21,6 +21,8 @@ and credentials.
 | `usage_unknown` | An active identity has no last-used evidence. |
 | `stale_usage` | Latest observed use is older than 90 days. |
 | `stale_credential` | An active credential is reported older than 90 days. |
+| `expired_credential` | A normalized Entra application credential expiration is in the past. |
+| `credential_expiring` | A normalized Entra application credential expires within 30 days. |
 | `ungoverned_access` | Active entitlements lack required approval, reason, policy, or expiry evidence. |
 
 These findings are evidence summaries, not policy decisions. OPA remains the deterministic decision
@@ -28,10 +30,10 @@ engine, and any destructive response requires human review plus separately autho
 
 ## Current evidence limits
 
-AWS IAM roles are normalized as service accounts. The read-only collector uses `GetRole` to reduce
-recognized `Owner` or `athena:owner` tags into the accountable-owner field and records AWS-reported
-last-used time and region. Raw tags and role responses are not exposed. Missing owner or usage data
-remains visible rather than inferred, including when AWS does not return role-use history.
+Microsoft Entra service principals are normalized as applications and managed identities as
+workloads. The read-only collector reduces owners and credential expiration times into bounded
+metadata without persisting key IDs, secrets, certificates, or tokens. Missing owner and usage data
+remains visible rather than inferred.
 
 Future connectors may normalize additional platform-specific ownership and workload activity into
 the same contract without exposing secret material.

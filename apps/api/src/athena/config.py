@@ -40,9 +40,11 @@ class Settings(BaseSettings):
     github_api_version: str = "2026-03-10"
     github_org: str = ""
     github_token: SecretStr = SecretStr("")
-    aws_enabled: bool = False
-    aws_profile: str = ""
-    aws_region: str = "us-east-1"
+    azure_enabled: bool = False
+    azure_tenant_id: str = ""
+    azure_subscription_id: str = ""
+    azure_graph_url: str = "https://graph.microsoft.com"
+    azure_management_url: str = "https://management.azure.com"
     auth_required: bool = True
     oidc_issuer: str = "http://localhost:8080/realms/athena"
     oidc_audience: str = "athena-api"

@@ -46,7 +46,7 @@ Athena outcome      Explain → Evaluate → Score → Review → Preserve evide
 
 ```mermaid
 flowchart LR
-    Sources["Identity & Access Sources<br/>Keycloak · GitHub · AWS IAM"] --> Collect["Read-only Collectors"]
+    Sources["Identity & Access Sources<br/>Keycloak · GitHub · Microsoft Azure"] --> Collect["Read-only Collectors"]
     Collect --> Normalize["Canonical Identity Model"]
     Normalize --> DB[(PostgreSQL<br/>Evidence System of Record)]
 
@@ -74,7 +74,7 @@ flowchart LR
 
 | Capability | Delivered behavior |
 |---|---|
-| Identity ingestion | Keycloak, GitHub organization, and AWS IAM authorization data |
+| Identity ingestion | Keycloak, GitHub organization, Microsoft Entra ID, and Azure RBAC evidence |
 | Authorization provenance | Ordered explanation of how an identity received each effective permission |
 | Governance detection | Missing approval, business justification, expiration, and incomplete lineage |
 | Policy as code | Deterministic OPA/Rego allow and deny decisions with versioned evidence |
@@ -207,27 +207,27 @@ python -m athena.cli sync-github
 
 The connector uses API-version headers, pagination, ETags, cached checkpoints, content fingerprints, and revocation detection. Never commit `.env` or production credentials.
 
-## AWS IAM Connector
+## Microsoft Azure Connector
 
-Athena uses the standard AWS credential chain, so credentials stay in AWS-supported environment,
-profile, workload-role, or instance-role providers. Configure an optional profile and region:
+Athena uses `DefaultAzureCredential` so authentication can come from environment credentials,
+workload identity, managed identity, Azure CLI, or approved local developer credentials:
 
 ```dotenv
-ATHENA_AWS_PROFILE=athena-read-only
-ATHENA_AWS_REGION=us-east-1
-ATHENA_AWS_ENABLED=true
+ATHENA_AZURE_ENABLED=true
+ATHENA_AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
+ATHENA_AZURE_SUBSCRIPTION_ID=00000000-0000-0000-0000-000000000000
 ```
 
 Run a read-only synchronization:
 
 ```bash
-python -m athena.cli sync-aws-iam
+python -m athena.cli sync-azure
 ```
 
-The connector collects users, groups, roles, role trust policies, managed and inline policies, and
-access-key status and age. It normalizes Allow actions over AWS resource patterns, detects removed
-grants, and skips unchanged snapshots. See the [AWS IAM connector guide](docs/aws-iam.md) for the
-minimum collector policy and authorization limitations.
+The connector collects Entra users, groups, service principals, managed identities, Azure RBAC role
+assignments, role definitions, scopes, conditions, owners, and credential expirations. It detects
+removed grants and skips unchanged snapshots. See the [Azure connector guide](docs/azure.md) for
+least-privilege permissions and authorization limitations.
 
 ## API Evidence
 
@@ -283,10 +283,10 @@ Athena/
 - [x] Human remediation workflow
 - [x] Durable continuous monitoring
 - [x] Incremental GitHub authorization connector
-- [x] Incremental AWS IAM authorization connector
+- [x] Incremental Microsoft Entra ID and Azure RBAC connector
 - [x] Athena OIDC token validation and role-based API authorization
 - [x] Authorized remediation execution framework
-- [ ] GitHub and AWS write adapters for approved remediation
+- [ ] GitHub and Azure write adapters for approved remediation
 - [x] React identity, risk, review, and audit dashboard
 - [x] Local Ollama explanations
 - [x] Production deployment and recovery hardening
@@ -294,7 +294,7 @@ Athena/
 - [x] Authenticated attack-path dashboard presentation
 - [x] Machine and workload identity posture foundation
 - [x] Authenticated machine identity posture dashboard
-- [x] AWS role owner and last-used lifecycle evidence
+- [x] Azure service-principal owner and credential-expiration evidence
 
 ## Documentation
 
@@ -302,7 +302,7 @@ Athena/
 - [Complete project journal](docs/project-journal.md)
 - [Branch protection recommendations](docs/branch-protection.md)
 - [Keycloak identity lab](infra/keycloak/README.md)
-- [AWS IAM connector](docs/aws-iam.md)
+- [Microsoft Entra ID and Azure RBAC connector](docs/azure.md)
 - [OIDC authentication and API roles](docs/authentication.md)
 - [Local Ollama explanation boundary](docs/ollama-explanations.md)
 - [Authorization evidence reports](docs/evidence-reports.md)

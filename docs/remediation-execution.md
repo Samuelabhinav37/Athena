@@ -74,5 +74,5 @@ class RemediationAdapter(Protocol):
 ```
 
 Athena currently provides the durable framework and deterministic adapter tests, not production
-GitHub or AWS write adapters. Those adapters require separately managed least-privilege credentials,
+GitHub or Azure write adapters. Those adapters require separately managed least-privilege credentials,
 upstream API-specific idempotency behavior, and live verification before they can be enabled.

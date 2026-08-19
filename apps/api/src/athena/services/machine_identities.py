@@ -18,6 +18,7 @@ MACHINE_IDENTITY_TYPES = (
 )
 STALE_USAGE_DAYS = 90
 STALE_CREDENTIAL_DAYS = 90
+CREDENTIAL_EXPIRY_WARNING_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,19 @@ def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
                 f"Active credential exceeds {STALE_CREDENTIAL_DAYS} days",
             )
         )
+    expiry_days = _credential_expiry_days(metadata)
+    if expiry_days is not None and expiry_days < 0:
+        findings.append(
+            MachineIdentityFinding("expired_credential", "high", "A credential has expired")
+        )
+    elif expiry_days is not None and expiry_days <= CREDENTIAL_EXPIRY_WARNING_DAYS:
+        findings.append(
+            MachineIdentityFinding(
+                "credential_expiring",
+                "medium",
+                f"A credential expires within {CREDENTIAL_EXPIRY_WARNING_DAYS} days",
+            )
+        )
     ungoverned = sum(bool(governance_gaps(item.grant)) for item in entitlements)
     if ungoverned:
         findings.append(
@@ -149,3 +163,19 @@ def _metadata_datetime(value: object) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _credential_expiry_days(metadata: dict) -> int | None:
+    expirations = metadata.get("credential_expirations", [])
+    if not isinstance(expirations, list):
+        return None
+    parsed = [_metadata_datetime(value) for value in expirations]
+    dates = [value for value in parsed if value is not None]
+    if not dates:
+        return None
+    return min(_age_from_now(value) for value in dates)
+
+
+def _age_from_now(value: datetime) -> int:
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return (aware - datetime.now(UTC)).days

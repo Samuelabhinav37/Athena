@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from athena.collectors.aws_iam import AwsIamCollectionError, AwsIamCollector
+from athena.collectors.azure import AzureCollectionError, AzureCollector
 from athena.collectors.github import GitHubCollectionError, GitHubCollector
 from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollector
 from athena.config import get_settings
@@ -18,7 +18,7 @@ from athena.database import get_session_factory
 from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaClient, OpaEvaluationError
 from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
-from athena.services.aws_iam_sync import AwsIamSyncService
+from athena.services.azure_sync import AzureSyncService
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
 from athena.services.github_sync import GitHubSyncService
@@ -63,15 +63,15 @@ def sync_github() -> int:
     return 0
 
 
-def sync_aws_iam() -> int:
+def sync_azure() -> int:
     try:
         settings = get_settings()
         with get_session_factory()() as session:
-            with AwsIamCollector(settings) as collector:
+            with AzureCollector(settings) as collector:
                 snapshot = collector.collect()
-            result = AwsIamSyncService(session).sync(snapshot)
-    except (AwsIamCollectionError, SQLAlchemyError, ValueError) as error:
-        print(f"AWS IAM synchronization failed: {error}", file=sys.stderr)
+            result = AzureSyncService(session).sync(snapshot)
+    except (AzureCollectionError, SQLAlchemyError, ValueError) as error:
+        print(f"Azure synchronization failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(asdict(result), sort_keys=True))
     return 0
@@ -301,9 +301,9 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
                 with GitHubCollector(settings) as github:
                     return asdict(service.sync(github.collect(cache)))
 
-            def synchronize_aws_iam() -> dict:
-                with AwsIamCollector(settings) as aws:
-                    return asdict(AwsIamSyncService(session).sync(aws.collect()))
+            def synchronize_azure() -> dict:
+                with AzureCollector(settings) as azure:
+                    return asdict(AzureSyncService(session).sync(azure.collect()))
 
             def provenance() -> dict:
                 entitlements = ProvenanceService(session).materialize_identity(identity())
@@ -344,15 +344,15 @@ def run_monitoring_slot(username: str, schedule_key: str, requested_by: str) -> 
             ]
             if settings.github_org and settings.github_token.get_secret_value():
                 operations.append(("github_sync", synchronize_github))
-            if settings.aws_enabled:
-                operations.append(("aws_iam_sync", synchronize_aws_iam))
+            if settings.azure_enabled:
+                operations.append(("azure_rbac_sync", synchronize_azure))
             operations.extend([
                 ("provenance", provenance), ("policy_evaluation", policies),
                 ("risk_assessment", risk), ("peer_anomaly", anomaly), ("review", review),
             ])
             result = MonitoringService(session).run(schedule_key, requested_by, operations)
     except (
-        AwsIamCollectionError,
+        AzureCollectionError,
         KeycloakCollectionError,
         MonitoringError,
         OpaEvaluationError,
@@ -395,7 +395,7 @@ def main() -> int:
         "sync-github", help="Synchronize GitHub organization repository permissions"
     )
     subcommands.add_parser(
-        "sync-aws-iam", help="Synchronize AWS IAM identities and policy permissions"
+        "sync-azure", help="Synchronize Microsoft Entra identities and Azure RBAC assignments"
     )
     subcommands.add_parser(
         "seed-provenance-demo", help="Seed and materialize Alice's authorization scenario"
@@ -457,8 +457,8 @@ def main() -> int:
         return sync_keycloak()
     if arguments.command == "sync-github":
         return sync_github()
-    if arguments.command == "sync-aws-iam":
-        return sync_aws_iam()
+    if arguments.command == "sync-azure":
+        return sync_azure()
     if arguments.command == "seed-provenance-demo":
         return seed_provenance_demo()
     if arguments.command == "project-attack-graph":

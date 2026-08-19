@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Human review workflow presentation
+**Active milestone:** Microsoft Azure identity and authorization replacement
 
 **Completed:**
 
@@ -49,7 +49,7 @@ The governing safety rule is:
 - Human remediation review workflow
 - Durable continuous monitoring
 - Incremental GitHub authorization connector
-- Incremental AWS IAM authorization connector
+- Incremental Microsoft Entra ID and Azure RBAC connector
 - Keycloak OIDC authentication and role-based API authorization
 - Authorized remediation execution framework
 - Guarded local Ollama evidence explanations
@@ -58,10 +58,10 @@ The governing safety rule is:
 - Authenticated attack-path dashboard presentation
 - Machine and workload identity posture foundation
 - Authenticated machine identity posture dashboard
-- AWS role owner and last-used lifecycle evidence
+- Azure service-principal owner and credential-expiration evidence
 
-**Next outcome:** Expose review assignment and human decision forms without allowing the UI to
-bypass policy evaluation or the separately authorized execution boundary.
+**Next outcome:** Merge the completed human review workflow presentation, then add frontend
+component and accessibility testing after explicit dependency approval.
 
 ## Roadmap
 
@@ -76,7 +76,7 @@ bypass policy evaluation or the separately authorized execution boundary.
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Complete |
 | 7. Remediation and monitoring | Human decisions and durable scheduled evidence | Complete |
 | 8. GitHub connector | Incremental organization authorization evidence | Complete |
-| 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
+| 9. Azure connector | Incremental Entra identity and Azure RBAC evidence | Complete |
 | 10. API access control | OIDC authentication and role-based authorization | Complete |
 | 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
 | 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
@@ -85,11 +85,29 @@ bypass policy evaluation or the separately authorized execution boundary.
 | 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | Complete |
 | 16. Machine identity governance | Owner, usage, credential, and access posture | Complete |
 | 17. Machine identity presentation | Searchable posture inventory and evidence detail console | Complete |
-| 18. AWS role lifecycle evidence | Read-only owner and role-use posture enrichment | Complete |
+| 18. Azure workload lifecycle evidence | Owner and credential-expiration posture | Complete |
+| 20. Azure replacement | Remove AWS runtime and make Azure the cloud authorization source | Complete |
+
+## Milestone 20: Microsoft Azure replacement
+
+Replaced Athena's AWS runtime integration with Microsoft Entra ID and Azure RBAC:
+
+- stable `azure-identity` authentication through `DefaultAzureCredential`;
+- separately scoped Microsoft Graph and Azure Resource Manager tokens;
+- users, groups, memberships, applications, service principals, and managed identities;
+- role assignments, definitions, actions, scopes, and assignment conditions;
+- owner and credential-expiration evidence without key identifiers or secret material;
+- trusted-origin pagination, deterministic fingerprints, removed-assignment detection, and audit
+  evidence; and
+- `sync-azure` plus optional continuous-monitoring integration.
+
+The former AWS collector, synchronization service, tests, dependency, configuration, CLI command,
+and operating guide were removed. Historical AWS milestones below remain only as a record of earlier
+development and are not current Athena capabilities.
 
 ## Milestone 17: Machine identity dashboard presentation
 
-Added an authenticated, AWS-console-inspired machine identity workspace to the React dashboard:
+Added an authenticated, cloud-console-inspired machine identity workspace to the React dashboard:
 
 - summary cards expose identity totals, high-severity findings, missing owners, and privileged access;
 - search and deterministic type/finding filters make the inventory easier to navigate;
@@ -166,14 +184,12 @@ Validation evidence:
 - deterministic security gate: four fixtures and three control mappings passed; and
 - development and demo Compose configuration plus diff checks: passed.
 
-## Milestone 18: AWS role lifecycle evidence
+## Milestone 18: Azure workload lifecycle evidence
 
-Extended the read-only AWS IAM collector with `GetRole` evidence for machine identities. Athena now
-normalizes recognized owner tags and AWS-reported role last-used time and region into the existing
-bounded identity metadata, allowing the posture service to use connector evidence when canonical
-access observations are absent. Raw tags, role responses, access-key identifiers, and credentials
-remain excluded from the posture API. This extension required no dependency or schema migration and
-does not perform an AWS or Athena access change.
+The Azure replacement supersedes the former AWS role-lifecycle slice. Athena now normalizes Entra
+service-principal owners and credential expiration timestamps into bounded machine-identity metadata.
+Raw credentials, key identifiers, certificates, and tokens remain excluded from the posture API.
+This evidence does not perform an Azure or Athena access change.
 
 ## Work completed
 
@@ -964,7 +980,7 @@ No application behavior changed.
 - README redesign commit: `5f1d0f4`
 - Hosted GitHub Actions run `31996341828`: success
 
-## Milestone 10: AWS IAM authorization connector
+## Retired milestone 10: former AWS IAM authorization connector
 
 Delivered Athena's first cloud authorization connector:
 
@@ -1154,7 +1170,7 @@ then correctly failed on the two new tables and was updated to include them.
 
 ### Known limitations
 
-- Production GitHub and AWS write adapters are intentionally not implemented or enabled.
+- Production GitHub and Azure write adapters are intentionally not implemented or enabled.
 - A separate worker process, credential delivery mechanism, leasing, and crash recovery are still
   required before production execution.
 - Live PostgreSQL trigger and migration validation depend on hosted CI while Docker Desktop is
@@ -1416,7 +1432,7 @@ reported no schema operations, and all five Rego tests passed. Running the secur
 the production API image initially reported missing test-evidence paths because that minimal image
 does not package the repository's `tests/` directory. The CI-equivalent retry mounted only that
 directory read-only into an ephemeral API container and passed all four fixtures and all three
-control mappings. No GitHub/AWS collection, access execution, deletion, downgrade, backup, restore,
+control mappings. No GitHub/cloud collection, access execution, deletion, downgrade, backup, restore,
 or remediation action was performed.
 
 ## Repository guardrails for coding agents
