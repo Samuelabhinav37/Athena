@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Portable evidence reporting
+**Active milestone:** Enterprise tenant isolation
 
 **Completed:**
 
@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Begin enterprise hardening with a versioned tenant-isolation contract and threat
-model before making any database, authentication, or authorization change.
+**Next outcome:** Design the reviewed bootstrap-tenant backfill and schema transition sequence;
+database and authentication implementation requires explicit approval.
 
 ## Roadmap
 
@@ -102,6 +102,32 @@ model before making any database, authentication, or authorization change.
 | 32. Policy interoperability contract | Canonical requests and an explicit OPA adapter | Complete |
 | 33. Portable report renderer contract | Digest-verified deterministic JSON and Markdown | Complete |
 | 34. Report format readiness | Explicit OSCAL, PDF, and Word implementation gates | Complete |
+| 35. Tenant-isolation contract | Default-deny scope contract and threat model | Complete |
+
+## Milestone 35: tenant-isolation contract and threat model
+
+Documented Athena's current single-tenant state and added contract `1.0` for canonical tenant
+contexts, tenant-scoped object references, and default-deny access comparison. The frozen design
+plan forbids a global-administrator bypass and enumerates isolation invariants, every affected data
+family, and the preconditions for a future shared-database row-isolation implementation.
+
+The threat model covers forged scope selection, missing filters and unsafe joins, connection-pool
+leakage, cache/job/idempotency collisions, connector scope confusion, export and error leakage,
+cross-tenant graph edges, and backup/residency violations. Provider tenant identifiers explicitly
+remain evidence attributes and cannot authorize an Athena tenant.
+
+This phase makes no authentication, authorization, model, query, database, migration, token,
+connector, cache, graph, backup, or runtime behavior change. Existing deployments remain
+single-tenant, and no production isolation claim is made.
+
+Validation evidence:
+
+- focused tenant-isolation contract tests: 3 passed;
+- full automated Python suite: 173 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 34: portable report format readiness
 

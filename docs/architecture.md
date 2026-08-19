@@ -140,6 +140,12 @@ renderer registry only when every declared context, dependency, security, and ve
 satisfied. Installing a library alone cannot promote OSCAL Assessment Results, PDF, or Word output
 to supported status.
 
+Athena remains single-tenant at runtime. Tenant contract `1.0` defines a future non-null tenant key
+for every business and evidence row, a validated context for every request and job, default-deny
+cross-tenant references, tenant-aware constraints and row-level security, and no administrator
+bypass. Provider tenant IDs are provenance rather than platform authority. See the
+[tenant-isolation threat model](tenant-isolation.md).
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

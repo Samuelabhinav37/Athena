@@ -95,6 +95,7 @@ flowchart LR
 | Policy interoperability | Canonical principal-action-resource-context requests with OPA as authority |
 | Portable reporting | Digest-verified deterministic JSON and Markdown renderer contracts |
 | Report readiness | Explicit OSCAL, PDF, and Word context, security, and verification gates |
+| Tenant isolation | Versioned default-deny contract and threat model; runtime integration pending |
 
 ## Authorization Provenance
 
@@ -311,6 +312,7 @@ Athena/
 - [x] Canonical policy request and explicit OPA adapter
 - [x] Portable JSON and Markdown evidence renderer contract
 - [x] Portable report format readiness manifests
+- [x] Tenant-isolation contract and threat model
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
