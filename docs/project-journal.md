@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Add the first bounded JSON security-event receiver adapter with explicit
-authentication, rate limits, malformed-input handling, and original-byte provenance preservation.
+**Next outcome:** Add an OTLP log receiver adapter that maps supported OpenTelemetry records into
+the canonical envelope while preserving the serialized source record and explicit loss warnings.
 
 ## Roadmap
 
@@ -91,6 +91,31 @@ authentication, rate limits, malformed-input handling, and original-byte provena
 | 21. AI portability | Provider-neutral explanation contract with Ollama and Azure AI adapters | Complete |
 | 22. AI boundary verification | Provider conformance, failure, isolation, and state invariants | Complete |
 | 23. Security-event envelope | OpenTelemetry-aligned contract and original provenance | Complete |
+| 24. JSON telemetry receiver | Authenticated bounded normalization without persistence | Complete |
+
+## Milestone 24: bounded JSON security-event receiver
+
+Added administrator-protected `POST /v1/telemetry/events/json` as Athena's first receiver adapter.
+The endpoint accepts only JSON, stream-reads no more than 1 MiB, applies the canonical envelope's
+independent normalized-content limits, derives its transport locator and format, preserves the
+SHA-256 digest and byte count of the exact request body, and returns generic errors without echoing
+untrusted content.
+
+A bounded process-local limiter permits 60 requests per authenticated subject per 60-second window,
+caps tracked subjects at 10,000, and returns `429` with `Retry-After`. Successful responses disable
+caching and use `200` to mean validation and normalization only. This slice creates no database
+record, queue item, audit fact, exporter call, dependency, or migration; distributed deployments
+still require a reviewed shared limiter before exposing the endpoint.
+
+Validation evidence:
+
+- focused telemetry contract and JSON receiver tests: 23 passed;
+- full automated Python suite: 116 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 23: vendor-neutral security-event envelope
 

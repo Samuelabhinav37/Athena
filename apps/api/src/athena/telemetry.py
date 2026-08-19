@@ -163,6 +163,24 @@ class SecurityEventEnvelope(BaseModel):
         return self
 
 
+class JSONSecurityEventInput(BaseModel):
+    """Caller-supplied normalized fields; transport provenance is derived by Athena."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_name: str = Field(min_length=1, max_length=128)
+    source_event_id: str | None = Field(default=None, min_length=1, max_length=255)
+    event_name: str
+    occurred_at: datetime
+    severity_number: int = Field(ge=1, le=24)
+    severity_text: str = Field(min_length=1, max_length=24)
+    body: dict[str, JsonValue]
+    attributes: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    resource: TelemetryResource
+    trace_id: str | None = None
+    span_id: str | None = None
+
+
 def build_security_event(
     *,
     original_bytes: bytes,

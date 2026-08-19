@@ -66,6 +66,11 @@ the original source type, locator, event identifier, format, receive time, exact
 SHA-256 digest so vendor-specific input cannot erase source provenance. Telemetry is not a policy
 decision and does not become authoritative evidence merely because it was received.
 
+The initial JSON adapter terminates at this normalization boundary: it authenticates an Athena
+administrator, bounds and validates source bytes, derives transport provenance, and returns the
+envelope without writing to PostgreSQL or forwarding it. Durable ingestion remains a separate
+future boundary.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.

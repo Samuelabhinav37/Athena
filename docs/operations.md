@@ -26,6 +26,10 @@ bytes. The contract does not yet enable a listener, durable telemetry store, or 
 Operators must not expose an ingestion port or forward events until the corresponding adapter,
 authentication, rate limiting, retention, and failure behavior have been reviewed.
 
+The initial JSON normalization endpoint is administrator-protected and process-rate-limited, but it
+does not persist events. Do not treat `200` as durable ingestion. Multi-worker deployments must add
+an authenticated gateway or shared limiter because the built-in 60-request window is process-local.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before

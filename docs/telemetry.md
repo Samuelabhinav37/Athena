@@ -37,6 +37,21 @@ The envelope is not authoritative policy or authorization evidence by itself. In
 storage, retention, export, and any mapping into Athena's append-only evidence store require
 separate reviewed adapters and threat models.
 
+## JSON receiver
+
+`POST /v1/telemetry/events/json` provides the first bounded normalization adapter. It requires the
+existing Athena administrator role, accepts only `application/json`, stream-reads at most 1 MiB,
+and applies the envelope's independent normalized-content validation. Transport provenance is
+derived by Athena; callers cannot supply a locator or source format. Invalid input returns a generic
+error that never echoes source content.
+
+The receiver permits 60 requests per authenticated subject per 60-second window and returns `429`
+with `Retry-After` when exceeded. The limiter is bounded to 10,000 subjects and is intentionally
+process-local; production multi-worker or distributed deployments require an external shared rate
+limit before exposing this endpoint. Successful responses use `Cache-Control: no-store` and return
+the normalized envelope with the original-byte digest. A `200` response means validation and
+normalization succeeded—it does not mean the event was queued, persisted, or exported.
+
 ## Planned adapters
 
 Future receivers may accept OTLP, syslog, JSON, or authenticated webhooks. Future exporters may emit
