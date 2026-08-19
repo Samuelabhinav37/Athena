@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Add an OTLP log receiver adapter that maps supported OpenTelemetry records into
-the canonical envelope while preserving the serialized source record and explicit loss warnings.
+**Next outcome:** Define a bounded syslog normalization adapter with explicit RFC framing,
+structured-data handling, source authentication boundaries, and original-message provenance.
 
 ## Roadmap
 
@@ -92,6 +92,36 @@ the canonical envelope while preserving the serialized source record and explici
 | 22. AI boundary verification | Provider conformance, failure, isolation, and state invariants | Complete |
 | 23. Security-event envelope | OpenTelemetry-aligned contract and original provenance | Complete |
 | 24. JSON telemetry receiver | Authenticated bounded normalization without persistence | Complete |
+| 25. OTLP/JSON normalization | Stable log mapping with explicit loss and provenance | Complete |
+
+## Milestone 25: OTLP/HTTP JSON log normalization
+
+Added administrator-protected `POST /v1/telemetry/events/otlp-json` for the JSON protobuf form of
+OTLP `ExportLogsServiceRequest`. The dependency-free adapter walks resource, instrumentation-scope,
+and log-record groups; decodes supported `AnyValue` forms; retains nanosecond timestamps; normalizes
+hexadecimal trace context; and maps resource, event, body, severity, and scope fields into Athena's
+canonical envelope.
+
+The response records the exact request byte count and SHA-256 digest, while each event records a
+digest of its canonical serialized resource/scope/record tuple. Unknown protobuf fields are ignored
+with bounded warnings, non-scalar attributes produce loss warnings, duplicate keys reject a record,
+and missing timestamps or event names receive explicit fallback warnings. A batch accepts at most
+100 records and 1 MiB and reports accepted and rejected counts without echoing source content.
+
+Athena does not mount this adapter at standard `/v1/logs` or return an OTLP acceptance response,
+because no durable receiver exists yet. Binary protobuf, gzip, gRPC, storage, queues, retry state,
+and exporters remain out of scope. No dependency, migration, or authoritative evidence write was
+introduced.
+
+Validation evidence:
+
+- focused telemetry and OTLP/JSON tests: 32 passed;
+- full automated Python suite: 125 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 24: bounded JSON security-event receiver
 

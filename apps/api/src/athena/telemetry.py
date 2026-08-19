@@ -181,6 +181,17 @@ class JSONSecurityEventInput(BaseModel):
     span_id: str | None = None
 
 
+class OTLPNormalizationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    request_sha256: str
+    request_byte_count: int
+    accepted_log_records: int
+    rejected_log_records: int
+    warnings: list[str]
+    events: list[SecurityEventEnvelope]
+
+
 def build_security_event(
     *,
     original_bytes: bytes,

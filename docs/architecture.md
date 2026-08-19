@@ -71,6 +71,11 @@ administrator, bounds and validates source bytes, derives transport provenance, 
 envelope without writing to PostgreSQL or forwarding it. Durable ingestion remains a separate
 future boundary.
 
+The OTLP/JSON adapter maps stable protobuf JSON log structures into this same boundary. It preserves
+the exact request digest and a canonical per-record provenance digest, surfaces ignored or lossy
+fields as bounded warnings, and partially rejects invalid records. It intentionally does not expose
+the standard OTLP `/v1/logs` contract until Athena can provide honest durable acceptance semantics.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.

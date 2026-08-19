@@ -12,9 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import ValidationError
 
 from athena.auth import AdministratorPrincipal, require_administrator
+from athena.services.otlp import OTLPJSONLogAdapter, OTLPMappingError
 from athena.telemetry import (
     MAX_ORIGINAL_EVENT_BYTES,
     JSONSecurityEventInput,
+    OTLPNormalizationResponse,
     SecurityEventEnvelope,
     build_security_event,
 )
@@ -152,3 +154,35 @@ async def receive_json_security_event(
         ) from error
     response.headers["Cache-Control"] = "no-store"
     return envelope
+
+
+@router.post("/otlp-json", response_model=OTLPNormalizationResponse, status_code=status.HTTP_200_OK)
+async def receive_otlp_json_logs(
+    request: Request,
+    response: Response,
+    principal: AdministratorPrincipal,
+    limiter: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+) -> OTLPNormalizationResponse:
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="OTLP/JSON Content-Type must be application/json",
+        )
+    retry_after = limiter.check(principal.subject)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Telemetry receiver rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+    original_bytes = await _bounded_body(request)
+    try:
+        result = OTLPJSONLogAdapter().normalize(original_bytes)
+    except OTLPMappingError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid OTLP/JSON logs request",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return result

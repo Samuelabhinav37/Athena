@@ -52,9 +52,31 @@ limit before exposing this endpoint. Successful responses use `Cache-Control: no
 the normalized envelope with the original-byte digest. A `200` response means validation and
 normalization succeeded—it does not mean the event was queued, persisted, or exported.
 
+## OTLP/HTTP JSON normalization
+
+`POST /v1/telemetry/events/otlp-json` accepts the JSON protobuf representation of an OTLP
+`ExportLogsServiceRequest`. It follows the stable OTLP log hierarchy
+`resourceLogs → scopeLogs → logRecords`, accepts decimal strings or integers for 64-bit
+nanosecond fields, requires integer severity enums, and normalizes hexadecimal trace and span IDs.
+Unknown protobuf fields are ignored as OTLP requires, but Athena returns bounded warnings so mapping
+loss remains visible.
+
+The adapter supports scalar resource and record attributes plus structured `AnyValue` log bodies.
+Non-scalar attributes are dropped with warnings, duplicate attribute keys reject the record, and
+missing event names or timestamps receive explicit documented fallback values. Each event carries a
+digest of its canonical serialized resource/scope/record tuple; the response separately carries the
+SHA-256 digest and exact byte count of the complete request. Up to 100 records and 1 MiB are accepted
+per request. Records that violate Athena's envelope are rejected individually without echoing their
+content.
+
+This is deliberately not mounted at the standard OTLP `/v1/logs` path and does not return an
+`ExportLogsServiceResponse`: Athena has no durable telemetry acceptance boundary yet. It is an
+authenticated normalization and compatibility endpoint, not a production OpenTelemetry Collector.
+Binary protobuf, gzip, gRPC, persistence, retries, and export are not supported in this slice.
+
 ## Planned adapters
 
-Future receivers may accept OTLP, syslog, JSON, or authenticated webhooks. Future exporters may emit
+Future receivers may accept syslog or authenticated webhooks. Future exporters may emit
 OTLP or bounded vendor-neutral JSON. Every adapter must preserve the original digest and provenance,
 declare its supported capabilities, reject malformed or oversized input, and prove through
 conformance tests that vendor-specific fields cannot replace Athena's canonical semantics.

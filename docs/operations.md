@@ -30,6 +30,11 @@ The initial JSON normalization endpoint is administrator-protected and process-r
 does not persist events. Do not treat `200` as durable ingestion. Multi-worker deployments must add
 an authenticated gateway or shared limiter because the built-in 60-request window is process-local.
 
+The OTLP/JSON endpoint shares the same administrator authentication, process-local limiter, 1 MiB
+request bound, no-store response policy, and non-persistence boundary. It is not a standard
+`/v1/logs` collector endpoint. Configure test clients with Athena's explicit normalization URL and
+do not interpret accepted-record counts as durable storage acknowledgements.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before
