@@ -192,6 +192,16 @@ class OTLPNormalizationResponse(BaseModel):
     events: list[SecurityEventEnvelope]
 
 
+class SyslogNormalizationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    request_sha256: str
+    request_byte_count: int
+    framing: Literal["octet-counted", "unframed"]
+    warnings: list[str]
+    event: SecurityEventEnvelope
+
+
 def build_security_event(
     *,
     original_bytes: bytes,

@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Define a bounded syslog normalization adapter with explicit RFC framing,
-structured-data handling, source authentication boundaries, and original-message provenance.
+**Next outcome:** Add a signed webhook normalization contract with replay protection, bounded
+provider mappings, explicit capability metadata, and original-request provenance.
 
 ## Roadmap
 
@@ -93,6 +93,34 @@ structured-data handling, source authentication boundaries, and original-message
 | 23. Security-event envelope | OpenTelemetry-aligned contract and original provenance | Complete |
 | 24. JSON telemetry receiver | Authenticated bounded normalization without persistence | Complete |
 | 25. OTLP/JSON normalization | Stable log mapping with explicit loss and provenance | Complete |
+| 26. Syslog normalization | RFC 5424 parsing and explicit transport boundary | Complete |
+
+## Milestone 26: RFC 5424 syslog normalization
+
+Added administrator-protected `POST /v1/telemetry/events/syslog` for one UTF-8 RFC 5424 message.
+The dependency-free adapter validates PRI, version 1, restricted RFC 3339 timestamps, bounded header
+fields, structured-data elements and escapes, and message content. It accepts an unframed HTTP body
+or one exact RFC 6587 octet-counted frame and rejects delimiter framing, legacy RFC 3164 guessing,
+multiple frames, invalid priorities, and malformed structured data.
+
+Facility and severity, source header fields, structured data, and message text map into the canonical
+envelope. The response preserves exact request provenance plus the enclosed message digest for
+octet-counted input. Missing timestamps use receipt time with a warning. HOSTNAME remains untrusted
+message data and never becomes authenticated peer identity.
+
+This slice does not bind a UDP/TCP port, terminate TLS, authenticate devices, persist messages,
+acknowledge durable delivery, or add a dependency or migration. A real syslog listener requires a
+separately reviewed TLS transport and peer-identity boundary.
+
+Validation evidence:
+
+- focused telemetry and syslog tests: 44 passed;
+- full automated Python suite: 137 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 25: OTLP/HTTP JSON log normalization
 

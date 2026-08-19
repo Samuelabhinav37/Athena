@@ -87,7 +87,7 @@ flowchart LR
 | Machine identities | Deterministic owner, usage, credential-age, and access-governance posture |
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
 | AI explanations | Provider-neutral advisory explanations through local Ollama or guarded Azure AI |
-| Security telemetry | OpenTelemetry-aligned envelope with bounded JSON and OTLP/JSON normalization |
+| Security telemetry | OpenTelemetry envelope with JSON, OTLP/JSON, and RFC 5424 normalization |
 
 ## Authorization Provenance
 
@@ -295,6 +295,7 @@ Athena/
 - [x] Vendor-neutral security-event envelope
 - [x] Bounded authenticated JSON security-event receiver
 - [x] OTLP/HTTP JSON log normalization with explicit mapping-loss warnings
+- [x] RFC 5424 syslog normalization with octet-count framing
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

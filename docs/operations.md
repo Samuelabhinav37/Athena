@@ -35,6 +35,11 @@ request bound, no-store response policy, and non-persistence boundary. It is not
 `/v1/logs` collector endpoint. Configure test clients with Athena's explicit normalization URL and
 do not interpret accepted-record counts as durable storage acknowledgements.
 
+The syslog endpoint accepts a single RFC 5424 message for authenticated normalization. It does not
+open a syslog socket, accept UDP, terminate TLS, or authenticate the HOSTNAME embedded in a message.
+Do not expose port 514 or route device traffic directly to Athena. Production syslog transport
+requires a separately reviewed TLS listener or authenticated gateway that supplies peer identity.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before

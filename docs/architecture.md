@@ -76,6 +76,11 @@ the exact request digest and a canonical per-record provenance digest, surfaces 
 fields as bounded warnings, and partially rejects invalid records. It intentionally does not expose
 the standard OTLP `/v1/logs` contract until Athena can provide honest durable acceptance semantics.
 
+The syslog adapter parses a single RFC 5424 message and optional RFC 6587 octet-counted frame behind
+Athena administrator authentication. Header HOSTNAME remains untrusted event data; it is not peer
+identity. Network listeners, device authentication, TLS termination, and durable acknowledgement
+remain outside the API normalization boundary.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.

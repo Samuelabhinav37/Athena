@@ -74,9 +74,29 @@ This is deliberately not mounted at the standard OTLP `/v1/logs` path and does n
 authenticated normalization and compatibility endpoint, not a production OpenTelemetry Collector.
 Binary protobuf, gzip, gRPC, persistence, retries, and export are not supported in this slice.
 
+## RFC 5424 syslog normalization
+
+`POST /v1/telemetry/events/syslog` accepts one UTF-8 RFC 5424 message using
+`application/syslog` or `text/plain`. It supports either an unframed message body or one exact RFC
+6587 octet-counted frame. Delimiter framing, multiple frames, RFC 3164 guessing, invalid priorities,
+non-version-1 headers, timestamps beyond RFC 5424's six fractional digits, and malformed structured
+data fail closed.
+
+The adapter maps facility, severity, timestamp, hostname, application, process, message ID,
+structured-data elements, and message text into the canonical envelope. RFC severity is mapped to
+the corresponding OpenTelemetry severity band. The response preserves the digest and byte count of
+the complete request and, for octet-counted input, separately preserves the enclosed RFC 5424
+message digest. NIL timestamps use receipt time with an explicit warning.
+
+This HTTP endpoint requires an Athena administrator token and shares the bounded process-local
+limiter. It is a parser and normalization boundary—not a UDP/TCP syslog listener. Athena does not
+bind port 514, terminate syslog TLS, authenticate devices, persist messages, or acknowledge durable
+delivery. A future network listener must use a reviewed TLS transport and bind authenticated peer
+identity to provenance rather than trusting the message's HOSTNAME.
+
 ## Planned adapters
 
-Future receivers may accept syslog or authenticated webhooks. Future exporters may emit
+Future receivers may accept authenticated webhooks. Future exporters may emit
 OTLP or bounded vendor-neutral JSON. Every adapter must preserve the original digest and provenance,
 declare its supported capabilities, reject malformed or oversized input, and prove through
 conformance tests that vendor-specific fields cannot replace Athena's canonical semantics.

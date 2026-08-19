@@ -13,11 +13,13 @@ from pydantic import ValidationError
 
 from athena.auth import AdministratorPrincipal, require_administrator
 from athena.services.otlp import OTLPJSONLogAdapter, OTLPMappingError
+from athena.services.syslog import SyslogAdapter, SyslogMappingError
 from athena.telemetry import (
     MAX_ORIGINAL_EVENT_BYTES,
     JSONSecurityEventInput,
     OTLPNormalizationResponse,
     SecurityEventEnvelope,
+    SyslogNormalizationResponse,
     build_security_event,
 )
 
@@ -183,6 +185,38 @@ async def receive_otlp_json_logs(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid OTLP/JSON logs request",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post("/syslog", response_model=SyslogNormalizationResponse, status_code=status.HTTP_200_OK)
+async def receive_syslog_message(
+    request: Request,
+    response: Response,
+    principal: AdministratorPrincipal,
+    limiter: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+) -> SyslogNormalizationResponse:
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type not in {"application/syslog", "text/plain"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Syslog Content-Type must be application/syslog or text/plain",
+        )
+    retry_after = limiter.check(principal.subject)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Telemetry receiver rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+    request_bytes = await _bounded_body(request)
+    try:
+        result = SyslogAdapter().normalize(request_bytes)
+    except (SyslogMappingError, ValidationError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid RFC 5424 syslog message",
         ) from error
     response.headers["Cache-Control"] = "no-store"
     return result
