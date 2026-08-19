@@ -51,6 +51,12 @@ export packages as sensitive because normalized event bodies and provenance may 
 security context. Operators must choose an approved encrypted destination and independently verify
 the package digest before retention or onward transfer.
 
+The deterministic OTLP/HTTP JSON exporter has the same in-memory boundary. Review every returned
+mapping warning before transmission; a null body value is omitted and an integer outside signed
+64-bit range is converted to a decimal string. The adapter does not configure TLS, credentials,
+collector allowlists, retries, queues, or delivery acknowledgement. Those controls are required in
+a separately reviewed transport before any production destination is used.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before

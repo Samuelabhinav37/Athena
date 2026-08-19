@@ -89,6 +89,7 @@ flowchart LR
 | AI explanations | Provider-neutral advisory explanations through local Ollama or guarded Azure AI |
 | Security telemetry | OpenTelemetry envelope with JSON, OTLP, syslog, and signed webhook adapters |
 | Telemetry export | Deterministic vendor-neutral JSON packages with offline integrity verification |
+| OTLP telemetry export | Deterministic OTLP/HTTP JSON requests with explicit mapping-loss warnings |
 
 ## Authorization Provenance
 
@@ -299,6 +300,7 @@ Athena/
 - [x] RFC 5424 syslog normalization with octet-count framing
 - [x] Signed generic webhook normalization with replay protection
 - [x] Deterministic vendor-neutral JSON telemetry export
+- [x] Deterministic OTLP/HTTP JSON telemetry export
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

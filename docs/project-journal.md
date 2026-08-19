@@ -2,7 +2,7 @@
 
 This document is Athena's living engineering record. Update it whenever a milestone changes the architecture, introduces a decision, encounters a meaningful problem, or produces new validation evidence.
 
-Last updated: August 18, 2026
+Last updated: August 19, 2026
 
 ## Project objective
 
@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Vendor-neutral AI provider architecture
+**Active milestone:** Universal telemetry portability
 
 **Completed:**
 
@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Add a deterministic OTLP/JSON exporter mapping canonical envelopes into stable
-OpenTelemetry log records with explicit unsupported-field warnings and no network transmission.
+**Next outcome:** Define the vendor-neutral IAM connector SDK contract and capability manifest
+without changing existing connector behavior.
 
 ## Roadmap
 
@@ -96,6 +96,30 @@ OpenTelemetry log records with explicit unsupported-field warnings and no networ
 | 26. Syslog normalization | RFC 5424 parsing and explicit transport boundary | Complete |
 | 27. Signed webhook normalization | HMAC authentication and replay protection | Complete |
 | 28. JSON telemetry export | Deterministic packages and offline integrity verification | Complete |
+| 29. OTLP/JSON telemetry export | Stable OpenTelemetry log requests with explicit mapping loss | Complete |
+
+## Milestone 29: deterministic OTLP/HTTP JSON telemetry export
+
+Added a pure `OTLPJSONExporter` that maps revalidated canonical envelopes into byte-stable JSON
+protobuf `ExportLogsServiceRequest` payloads. It rejects duplicate IDs, sorts records by timestamp
+and ID, caps input at 1,000 events and output at 8 MiB, and returns the exact request digest.
+
+Canonical resource, scope, body, severity, timestamp, and trace fields retain their OpenTelemetry
+meanings. Athena event identity and complete original-event provenance use namespaced attributes.
+Unsupported JSON nulls are omitted with path-specific warnings, while integers outside signed
+64-bit range become decimal strings with warnings; warnings are deterministic and capped at 100.
+
+The adapter performs no network request, authentication, collector selection, persistence, queueing,
+retry, compression, signing, or acknowledgement and adds no dependency or migration.
+
+Validation evidence:
+
+- focused OTLP exporter tests: 3 passed;
+- full automated Python suite: 156 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 28: deterministic vendor-neutral JSON telemetry export
 

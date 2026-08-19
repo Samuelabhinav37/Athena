@@ -132,9 +132,27 @@ upload artifacts, contact a destination, sign content, encrypt data, or claim du
 placement, transport, signing, encryption, retention, and destination acknowledgement require
 separate reviewed adapters.
 
+## Deterministic OTLP/HTTP JSON export
+
+`OTLPJSONExporter` maps up to 1,000 canonical envelopes into the JSON protobuf representation of an
+OTLP `ExportLogsServiceRequest`. Events are revalidated, deduplicated, and sorted by timestamp and
+event ID. Each event becomes one stable resource/scope/log-record hierarchy. Athena's event ID,
+event name, and complete original-event provenance are retained as namespaced log attributes;
+resource identity, structured bodies, timestamps, severity, scope schema URL, and paired trace
+context retain their OpenTelemetry meanings.
+
+The result contains canonical compact ASCII request bytes, their SHA-256 digest, the mapped event
+count, and bounded mapping warnings. JSON null has no OTLP `AnyValue` representation and is omitted
+with a path-specific warning. Integers outside signed 64-bit range become decimal strings with a
+warning. Warnings are capped at 100 and output at 8 MiB.
+
+This adapter only constructs request bytes. It does not open a connection, choose or authenticate a
+collector, retry, persist, queue, compress, sign, or interpret an OTLP acknowledgement. Transport
+and durable delivery remain separate reviewed boundaries.
+
 ## Planned adapters
 
-Future receivers may accept authenticated webhooks. Future exporters may emit
-OTLP or bounded vendor-neutral JSON. Every adapter must preserve the original digest and provenance,
+Future receivers may add provider-specific authenticated mappings. Future exporters may add
+reviewed transports. Every adapter must preserve the original digest and provenance,
 declare its supported capabilities, reject malformed or oversized input, and prove through
 conformance tests that vendor-specific fields cannot replace Athena's canonical semantics.

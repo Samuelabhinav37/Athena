@@ -91,6 +91,11 @@ serializes already-validated envelopes, preserves original provenance, and cover
 a content digest. It performs no record selection, file write, network call, or delivery
 acknowledgement.
 
+The OTLP/HTTP JSON exporter applies the same boundary to OpenTelemetry interoperability. It creates
+stable `ExportLogsServiceRequest` bytes, retains canonical identity and original provenance in
+namespaced attributes, and reports every unsupported conversion. It does not transmit or claim that
+a collector durably accepted the request.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.
