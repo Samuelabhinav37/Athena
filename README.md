@@ -88,6 +88,7 @@ flowchart LR
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
 | AI explanations | Provider-neutral advisory explanations through local Ollama or guarded Azure AI |
 | Security telemetry | OpenTelemetry envelope with JSON, OTLP, syslog, and signed webhook adapters |
+| Telemetry export | Deterministic vendor-neutral JSON packages with offline integrity verification |
 
 ## Authorization Provenance
 
@@ -297,6 +298,7 @@ Athena/
 - [x] OTLP/HTTP JSON log normalization with explicit mapping-loss warnings
 - [x] RFC 5424 syslog normalization with octet-count framing
 - [x] Signed generic webhook normalization with replay protection
+- [x] Deterministic vendor-neutral JSON telemetry export
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

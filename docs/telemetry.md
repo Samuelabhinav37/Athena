@@ -115,6 +115,23 @@ The HMAC secret must contain at least 32 characters and must be provisioned sepa
 authorized sender. This slice does not provide secret rotation overlap, provider-specific mappings,
 mutual TLS, persistence, queues, or durable delivery acknowledgement.
 
+## Deterministic JSON export
+
+`TelemetryJSONExporter` renders up to 1,000 canonical envelopes as
+`athena.telemetry+json` version `1.0`. Events are revalidated, deduplicated by event ID, and sorted
+by event timestamp and ID. The exporter preserves every normalized and original-provenance field,
+uses stable key ordering and compact ASCII JSON, appends one newline, and limits output to 8 MiB.
+
+The package's `content_sha256` covers its schema URL, version, format, event count, and ordered event
+facts. Offline verification revalidates every envelope, checks event count and uniqueness,
+recomputes the digest with constant-time comparison, and rejects noncanonical serialization. The
+package intentionally excludes generation time so unchanged events produce byte-identical output.
+
+This is an in-memory serializer and verifier. It does not select database records, write files,
+upload artifacts, contact a destination, sign content, encrypt data, or claim durable export. File
+placement, transport, signing, encryption, retention, and destination acknowledgement require
+separate reviewed adapters.
+
 ## Planned adapters
 
 Future receivers may accept authenticated webhooks. Future exporters may emit

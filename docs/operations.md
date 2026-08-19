@@ -46,6 +46,11 @@ request content. The built-in five-minute freshness check and replay cache are p
 Production multi-worker deployments require an external atomic replay store, gateway rate limit,
 and an explicit secret-rotation procedure before enabling the endpoint.
 
+The deterministic JSON exporter returns bytes to its caller but does not write or send them. Treat
+export packages as sensitive because normalized event bodies and provenance may contain identity or
+security context. Operators must choose an approved encrypted destination and independently verify
+the package digest before retention or onward transfer.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before

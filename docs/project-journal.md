@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Add a deterministic vendor-neutral JSON exporter that preserves envelope schema,
-provenance, and integrity digests without sending data to an external destination.
+**Next outcome:** Add a deterministic OTLP/JSON exporter mapping canonical envelopes into stable
+OpenTelemetry log records with explicit unsupported-field warnings and no network transmission.
 
 ## Roadmap
 
@@ -95,6 +95,33 @@ provenance, and integrity digests without sending data to an external destinatio
 | 25. OTLP/JSON normalization | Stable log mapping with explicit loss and provenance | Complete |
 | 26. Syslog normalization | RFC 5424 parsing and explicit transport boundary | Complete |
 | 27. Signed webhook normalization | HMAC authentication and replay protection | Complete |
+| 28. JSON telemetry export | Deterministic packages and offline integrity verification | Complete |
+
+## Milestone 28: deterministic vendor-neutral JSON telemetry export
+
+Added a pure `TelemetryJSONExporter` for versioned `athena.telemetry+json` packages. It revalidates
+every envelope, rejects duplicate IDs, sorts by timestamp and ID, preserves all original-event
+provenance, emits stable compact ASCII JSON with one trailing newline, and caps packages at 1,000
+events and 8 MiB.
+
+The content digest covers schema metadata, format, count, and ordered event facts. Offline
+verification checks the schema, count, uniqueness, envelope validity, constant-time digest match,
+and canonical bytes. Generation time is deliberately absent, so identical inputs produce identical
+packages regardless of input order or export time. Revalidation also prevents a caller from adding
+secret-bearing keys through a mutable nested structure after initial envelope construction.
+
+This slice performs no database selection, file write, network request, external delivery,
+signature, encryption, or acknowledgement and adds no dependency or migration.
+
+Validation evidence:
+
+- focused deterministic exporter tests: 5 passed;
+- full automated Python suite: 153 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 27: signed generic webhook normalization
 

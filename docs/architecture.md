@@ -86,6 +86,11 @@ an HMAC over timestamp, delivery ID, and exact body before parsing, then atomica
 ID in a bounded replay cache. Its process-local cache is sufficient only for controlled single-process
 use; distributed durable ingestion requires a shared replay store and independent rate limit.
 
+Export is also separated from transport. The first vendor-neutral JSON exporter deterministically
+serializes already-validated envelopes, preserves original provenance, and covers package facts with
+a content digest. It performs no record selection, file write, network call, or delivery
+acknowledgement.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.

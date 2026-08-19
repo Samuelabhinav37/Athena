@@ -221,6 +221,24 @@ class WebhookNormalizationResponse(BaseModel):
     event: SecurityEventEnvelope
 
 
+class TelemetryJSONExportPackage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_url: Literal["https://athena.example/schemas/telemetry-export/1.0"]
+    schema_version: Literal["1.0"]
+    export_format: Literal["athena.telemetry+json"]
+    event_count: int = Field(ge=0, le=1000)
+    events: list[SecurityEventEnvelope]
+    content_sha256: str
+
+    @field_validator("content_sha256")
+    @classmethod
+    def validate_content_digest(cls, value: str) -> str:
+        if SHA256.fullmatch(value) is None:
+            raise ValueError("content_sha256 must be a lowercase SHA-256 digest")
+        return value
+
+
 def build_security_event(
     *,
     original_bytes: bytes,
