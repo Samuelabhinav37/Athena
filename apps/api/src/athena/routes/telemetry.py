@@ -12,14 +12,22 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import ValidationError
 
 from athena.auth import AdministratorPrincipal, require_administrator
+from athena.config import Settings, get_settings
 from athena.services.otlp import OTLPJSONLogAdapter, OTLPMappingError
 from athena.services.syslog import SyslogAdapter, SyslogMappingError
+from athena.services.webhook import (
+    SignedWebhookAdapter,
+    WebhookAuthenticationError,
+    WebhookReplayCache,
+    WebhookReplayError,
+)
 from athena.telemetry import (
     MAX_ORIGINAL_EVENT_BYTES,
     JSONSecurityEventInput,
     OTLPNormalizationResponse,
     SecurityEventEnvelope,
     SyslogNormalizationResponse,
+    WebhookNormalizationResponse,
     build_security_event,
 )
 
@@ -73,6 +81,12 @@ router = APIRouter(
     tags=["telemetry"],
     dependencies=[Depends(require_administrator)],
 )
+webhook_router = APIRouter(prefix="/v1/telemetry/webhooks", tags=["telemetry"])
+
+
+@lru_cache
+def get_webhook_replay_cache() -> WebhookReplayCache:
+    return WebhookReplayCache()
 
 
 async def _bounded_body(request: Request) -> bytes:
@@ -185,6 +199,53 @@ async def receive_otlp_json_logs(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid OTLP/JSON logs request",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@webhook_router.post(
+    "/athena-generic", response_model=WebhookNormalizationResponse, status_code=status.HTTP_200_OK
+)
+async def receive_signed_webhook(
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+    replay_cache: Annotated[WebhookReplayCache, Depends(get_webhook_replay_cache)],
+) -> WebhookNormalizationResponse:
+    if not settings.webhook_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Webhook Content-Type must be application/json",
+        )
+    original_bytes = await _bounded_body(request)
+    timestamp_header = request.headers.get("x-athena-webhook-timestamp", "")
+    delivery_id = request.headers.get("x-athena-webhook-id", "")
+    signature_header = request.headers.get("x-athena-webhook-signature", "")
+    try:
+        result = SignedWebhookAdapter(settings, replay_cache).normalize(
+            original_bytes=original_bytes,
+            timestamp_header=timestamp_header,
+            delivery_id=delivery_id,
+            signature_header=signature_header,
+        )
+    except WebhookAuthenticationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook authentication",
+        ) from error
+    except WebhookReplayError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Webhook delivery already received",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid signed webhook event",
         ) from error
     response.headers["Cache-Control"] = "no-store"
     return result

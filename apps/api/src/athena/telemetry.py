@@ -202,6 +202,25 @@ class SyslogNormalizationResponse(BaseModel):
     event: SecurityEventEnvelope
 
 
+class WebhookEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = "1.0"
+    mapping: Literal["athena.generic.v1"]
+    event: JSONSecurityEventInput
+
+
+class WebhookNormalizationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    request_sha256: str
+    request_byte_count: int
+    delivery_id: str
+    mapping: Literal["athena.generic.v1"]
+    capabilities: tuple[str, ...]
+    event: SecurityEventEnvelope
+
+
 def build_security_event(
     *,
     original_bytes: bytes,

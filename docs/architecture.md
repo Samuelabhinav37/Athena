@@ -81,6 +81,11 @@ Athena administrator authentication. Header HOSTNAME remains untrusted event dat
 identity. Network listeners, device authentication, TLS termination, and durable acknowledgement
 remain outside the API normalization boundary.
 
+The generic webhook adapter is a separate machine-to-machine authentication boundary. It verifies
+an HMAC over timestamp, delivery ID, and exact body before parsing, then atomically marks the delivery
+ID in a bounded replay cache. Its process-local cache is sufficient only for controlled single-process
+use; distributed durable ingestion requires a shared replay store and independent rate limit.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.

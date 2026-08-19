@@ -94,6 +94,27 @@ bind port 514, terminate syslog TLS, authenticate devices, persist messages, or 
 delivery. A future network listener must use a reviewed TLS transport and bind authenticated peer
 identity to provenance rather than trusting the message's HOSTNAME.
 
+## Signed generic webhook normalization
+
+`POST /v1/telemetry/webhooks/athena-generic` is disabled by default. When enabled, it authenticates
+the exact JSON request body with `HMAC-SHA256(secret, timestamp + "." + delivery_id + "." + body)`
+using `X-Athena-Webhook-Timestamp`, `X-Athena-Webhook-ID`, and
+`X-Athena-Webhook-Signature: sha256=<lowercase-hex>`. Timestamps must be canonical Unix seconds
+within the configured five-minute window, delivery IDs are bounded safe identifiers, and signature
+comparison is constant-time.
+
+The only supported mapping is `athena.generic.v1`. Its response declares capabilities for structured
+body, scalar attributes, resource identity, trace context, and original-request digest. Unknown
+mappings and fields fail closed. Exact body bytes become webhook provenance; secrets and signatures
+are never returned. A verified delivery ID is consumed even when its signed payload fails schema
+validation, preventing repeated processing attempts with the same authenticated delivery.
+
+Replay tracking is bounded to 10,000 IDs but is process-local. Multi-worker or multi-instance
+deployments must use a shared atomic replay store and gateway rate limit before enabling this route.
+The HMAC secret must contain at least 32 characters and must be provisioned separately to each
+authorized sender. This slice does not provide secret rotation overlap, provider-specific mappings,
+mutual TLS, persistence, queues, or durable delivery acknowledgement.
+
 ## Planned adapters
 
 Future receivers may accept authenticated webhooks. Future exporters may emit

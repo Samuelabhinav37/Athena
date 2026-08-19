@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Add a signed webhook normalization contract with replay protection, bounded
-provider mappings, explicit capability metadata, and original-request provenance.
+**Next outcome:** Add a deterministic vendor-neutral JSON exporter that preserves envelope schema,
+provenance, and integrity digests without sending data to an external destination.
 
 ## Roadmap
 
@@ -94,6 +94,35 @@ provider mappings, explicit capability metadata, and original-request provenance
 | 24. JSON telemetry receiver | Authenticated bounded normalization without persistence | Complete |
 | 25. OTLP/JSON normalization | Stable log mapping with explicit loss and provenance | Complete |
 | 26. Syslog normalization | RFC 5424 parsing and explicit transport boundary | Complete |
+| 27. Signed webhook normalization | HMAC authentication and replay protection | Complete |
+
+## Milestone 27: signed generic webhook normalization
+
+Added disabled-by-default `POST /v1/telemetry/webhooks/athena-generic` as a distinct
+machine-to-machine authentication boundary. It verifies an HMAC-SHA256 signature over the canonical
+decimal timestamp header, bounded delivery ID, and exact request bytes before parsing. Requests must
+fall within a configurable 30–900 second freshness window, with five minutes as the default.
+
+A lock-protected replay cache atomically consumes verified delivery IDs, expires entries, and caps
+cardinality at 10,000. The initial `athena.generic.v1` mapping declares its supported body,
+attribute, resource, trace, and provenance capabilities; all unknown mappings or fields fail closed.
+Responses contain exact request digests without secrets, signatures, or echoed invalid payloads.
+
+The route requires a separately provisioned secret of at least 32 characters and is hidden while
+disabled. The replay cache is process-local, so multi-worker deployment still requires a shared
+atomic store and gateway rate limit. Secret rotation overlap, provider-specific mappings, mutual
+TLS, persistence, queues, and durable acknowledgement remain out of scope. No dependency or
+migration was introduced.
+
+Validation evidence:
+
+- focused telemetry and signed-webhook tests: 55 passed;
+- full automated Python suite: 148 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 26: RFC 5424 syslog normalization
 

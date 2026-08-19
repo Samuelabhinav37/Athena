@@ -40,6 +40,12 @@ open a syslog socket, accept UDP, terminate TLS, or authenticate the HOSTNAME em
 Do not expose port 514 or route device traffic directly to Athena. Production syslog transport
 requires a separately reviewed TLS listener or authenticated gateway that supplies peer identity.
 
+The generic webhook route remains hidden unless `ATHENA_WEBHOOK_ENABLED=true`. Configure a distinct
+secret of at least 32 characters through `ATHENA_WEBHOOK_SECRET`; never place it in source control or
+request content. The built-in five-minute freshness check and replay cache are process-local.
+Production multi-worker deployments require an external atomic replay store, gateway rate limit,
+and an explicit secret-rotation procedure before enabling the endpoint.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     azure_ai_deployment: str = ""
     azure_ai_api_version: str = "2024-10-21"
     azure_ai_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
+    webhook_enabled: bool = False
+    webhook_secret: SecretStr = SecretStr("")
+    webhook_max_age_seconds: int = Field(default=300, ge=30, le=900)
     policy_directory: Path = Path("policies")
     control_directory: Path = Path("controls")
     github_api_url: str = "https://api.github.com"
@@ -106,6 +109,12 @@ class Settings(BaseSettings):
             not self.azure_ai_endpoint or not self.azure_ai_deployment
         ):
             raise ValueError("Azure AI provider requires an endpoint and deployment")
+        return self
+
+    @model_validator(mode="after")
+    def validate_webhook_configuration(self) -> "Settings":
+        if self.webhook_enabled and len(self.webhook_secret.get_secret_value()) < 32:
+            raise ValueError("Webhook receiver requires a secret of at least 32 characters")
         return self
 
     @model_validator(mode="after")
