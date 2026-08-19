@@ -11,15 +11,17 @@ from athena.services.explanations import (
     AIProviderResult,
     AzureAIProvider,
     ExplanationService,
+    ExplanationUnavailable,
     InvalidExplanation,
     OllamaAIProvider,
     OllamaExplanationService,
     build_ai_provider,
 )
 from azure.core.credentials import AccessToken
+from azure.core.exceptions import ClientAuthenticationError
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -216,6 +218,7 @@ def test_azure_ai_uses_managed_auth_redacts_identifiers_and_returns_audit_metada
 
     user_prompt = captured["body"]["messages"][1]["content"]
     assert captured["authorization"] == "Bearer test-token"
+    assert "test-token" not in json.dumps(captured["body"])
     assert "alice" not in user_prompt
     assert "Alice" not in user_prompt
     assert "private reason" not in user_prompt
@@ -224,6 +227,119 @@ def test_azure_ai_uses_managed_auth_redacts_identifiers_and_returns_audit_metada
     assert captured["body"]["response_format"]["json_schema"]["strict"] is True
     assert "api-version=2024-10-21" in captured["url"]
     assert result.metadata == {"finish_reason": "stop", "request_id": "request-123"}
+
+
+def test_ollama_and_azure_ai_conform_to_the_same_athena_response_without_writes(
+    session_factory: sessionmaker[Session], alice: Identity
+) -> None:
+    content = json.dumps(
+        {"summary": "Shared summary", "findings": ["Shared finding"], "limitations": []}
+    )
+    ollama_transport = httpx.MockTransport(
+        lambda request: httpx.Response(  # noqa: ARG005
+            200, json={"message": {"content": content}, "done_reason": "stop"}
+        )
+    )
+    azure_transport = httpx.MockTransport(
+        lambda request: httpx.Response(  # noqa: ARG005
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": content}, "finish_reason": "stop"}
+                ]
+            },
+        )
+    )
+
+    class Credential:
+        def get_token(self, *scopes: str, **kwargs: object) -> AccessToken:  # noqa: ARG002
+            return AccessToken("credential-not-prompt-data", 4_102_444_800)
+
+    with session_factory() as session:
+        identity = session.get(Identity, alice.id)
+        assert identity is not None
+        counts_before = {
+            table.name: session.scalar(select(func.count()).select_from(table))
+            for table in Base.metadata.sorted_tables
+        }
+        ollama = ExplanationService(
+            session,
+            OllamaAIProvider(
+                Settings(ollama_model="local-model"),
+                client_factory=lambda: httpx.Client(transport=ollama_transport),
+            ),
+        ).explain(identity)
+        azure = ExplanationService(
+            session,
+            AzureAIProvider(
+                Settings(
+                    ai_provider="azure_ai",
+                    azure_ai_endpoint="https://athena.openai.azure.com",
+                    azure_ai_deployment="hosted-model",
+                ),
+                credential=Credential(),
+                client_factory=lambda: httpx.Client(transport=azure_transport),
+            ),
+        ).explain(identity)
+        counts_after = {
+            table.name: session.scalar(select(func.count()).select_from(table))
+            for table in Base.metadata.sorted_tables
+        }
+
+    assert set(ollama.model_dump()) == set(azure.model_dump())
+    assert ollama.summary == azure.summary == "Shared summary"
+    assert ollama.evidence_digest == azure.evidence_digest
+    assert ollama.provider == "ollama"
+    assert azure.provider == "azure_ai"
+    assert counts_after == counts_before
+
+
+def test_azure_ai_authentication_failure_fails_closed_without_fallback() -> None:
+    class FailedCredential:
+        def get_token(self, *scopes: str, **kwargs: object) -> AccessToken:  # noqa: ARG002
+            raise ClientAuthenticationError("credential unavailable")
+
+    provider = AzureAIProvider(
+        Settings(
+            ai_provider="azure_ai",
+            azure_ai_endpoint="https://athena.openai.azure.com",
+            azure_ai_deployment="hosted-model",
+        ),
+        credential=FailedCredential(),
+        client_factory=lambda: pytest.fail("HTTP must not run after authentication failure"),
+    )
+
+    with pytest.raises(ExplanationUnavailable, match="Azure AI explanation service"):
+        provider.generate("{}", {"type": "object"})
+
+
+def test_azure_ai_safety_refusal_without_structured_content_fails_closed() -> None:
+    class Credential:
+        def get_token(self, *scopes: str, **kwargs: object) -> AccessToken:  # noqa: ARG002
+            return AccessToken("test-token", 4_102_444_800)
+
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(  # noqa: ARG005
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": None}, "finish_reason": "content_filter"}
+                ]
+            },
+        )
+    )
+    provider = AzureAIProvider(
+        Settings(
+            ai_provider="azure_ai",
+            azure_ai_endpoint="https://athena.openai.azure.com",
+            azure_ai_deployment="hosted-model",
+        ),
+        credential=Credential(),
+        client_factory=lambda: httpx.Client(transport=transport),
+    )
+
+    with pytest.raises(InvalidExplanation, match="no explanation content"):
+        provider.generate("{}", {"type": "object"})
 
 
 def test_provider_output_is_validated_by_athena_and_does_not_mutate_evidence(

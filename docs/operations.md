@@ -17,6 +17,15 @@ Recommended alerts include sustained readiness failures, elevated 5xx rates, pol
 failed monitoring runs, connector checkpoint staleness, review deadline breaches, and remediation
 verification failures. Do not place secrets or full source payloads in labels or log fields.
 
+## Security-event envelope
+
+Athena's receiver-neutral security-event contract is documented in [telemetry.md](telemetry.md).
+It aligns normalized timestamps, severity, resource, attributes, and trace context with
+OpenTelemetry log concepts while retaining a digest and bounded provenance for the original source
+bytes. The contract does not yet enable a listener, durable telemetry store, or external exporter.
+Operators must not expose an ingestion port or forward events until the corresponding adapter,
+authentication, rate limiting, retention, and failure behavior have been reviewed.
+
 ## Backup policy
 
 PostgreSQL is Athena's system of record. Define recovery point and recovery time objectives before

@@ -87,6 +87,7 @@ flowchart LR
 | Machine identities | Deterministic owner, usage, credential-age, and access-governance posture |
 | Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
 | AI explanations | Provider-neutral advisory explanations through local Ollama or guarded Azure AI |
+| Security telemetry | Versioned OpenTelemetry-aligned envelope with original-event provenance |
 
 ## Authorization Provenance
 
@@ -291,6 +292,7 @@ Athena/
 - [x] React identity, risk, review, and audit dashboard
 - [x] Local Ollama explanations
 - [x] Vendor-neutral AIProvider contract with Ollama and Azure AI adapters
+- [x] Vendor-neutral security-event envelope
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
@@ -312,6 +314,7 @@ Athena/
 - [Machine and workload identity governance](docs/machine-identities.md)
 - [Deployment and controlled demonstration](docs/deployment.md)
 - [Operations, observability, backup, and recovery](docs/operations.md)
+- [Vendor-neutral security-event telemetry](docs/telemetry.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

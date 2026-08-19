@@ -60,6 +60,12 @@ PostgreSQL is authoritative. Neo4j receives an explicit, one-way projection of a
 and serves only bounded advisory attack-path queries; graph output cannot drive policy or access
 execution.
 
+Security telemetry crosses a separate normalization boundary. Athena's versioned security-event
+envelope follows OpenTelemetry log concepts while remaining transport-neutral. Normalization keeps
+the original source type, locator, event identifier, format, receive time, exact byte count, and
+SHA-256 digest so vendor-specific input cannot erase source provenance. Telemetry is not a policy
+decision and does not become authoritative evidence merely because it was received.
+
 ## Canonical concepts
 
 - **Identity:** a human, service account, workload, application, API client, or agent.
@@ -70,6 +76,7 @@ execution.
 - **Policy evaluation:** a reproducible decision with policy and input versions.
 - **Review:** a human decision about a finding or proposed remediation.
 - **Audit event:** an append-only record of a meaningful action or state transition.
+- **Security event envelope:** bounded normalized telemetry plus immutable original-event provenance.
 
 Every effective entitlement must identify its source. Approval, business justification, and expiration are first-class governance attributes; required missing attributes create an ungoverned-access finding.
 

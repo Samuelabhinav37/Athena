@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Complete AI boundary verification across provider switching, failure handling,
-prompt injection, secret exclusion, and authoritative-state invariants.
+**Next outcome:** Add the first bounded JSON security-event receiver adapter with explicit
+authentication, rate limits, malformed-input handling, and original-byte provenance preservation.
 
 ## Roadmap
 
@@ -89,6 +89,51 @@ prompt injection, secret exclusion, and authoritative-state invariants.
 | 18. Azure workload lifecycle evidence | Owner and credential-expiration posture | Complete |
 | 20. Azure replacement | Remove AWS runtime and make Azure the cloud authorization source | Complete |
 | 21. AI portability | Provider-neutral explanation contract with Ollama and Azure AI adapters | Complete |
+| 22. AI boundary verification | Provider conformance, failure, isolation, and state invariants | Complete |
+| 23. Security-event envelope | OpenTelemetry-aligned contract and original provenance | Complete |
+
+## Milestone 23: vendor-neutral security-event envelope
+
+Defined a frozen, versioned `SecurityEventEnvelope` aligned with OpenTelemetry log concepts for
+timestamps, severity, body, attributes, resource identity, instrumentation scope, and paired trace
+context. The envelope remains independent of receivers, exporters, storage engines, and vendor
+SDKs.
+
+Every normalized event carries original source type, source name, locator, optional source event
+identifier, format, receive time, exact byte count, and SHA-256 digest. Source bytes and normalized
+content have independent limits; distinct source bytes retain distinct provenance even when their
+normalized semantics match. Normalized fields reject secret-bearing keys, unknown contract fields,
+invalid semantic event names, naive timestamps, invalid severity values, and malformed trace
+context. This milestone adds no listener, database write, migration, dependency, or exporter.
+
+Validation evidence:
+
+- focused telemetry contract and security tests: 13 passed;
+- full automated Python suite: 106 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 22: AI boundary verification
+
+Extended the provider suite to execute Ollama and Azure AI through the same Athena explanation
+service and assert identical response fields, canonical evidence digests, and contract versions.
+The suite also proves that Azure credential failure does not make an HTTP request or fall back to
+Ollama, safety-filter responses without valid structured content fail closed, bearer credentials
+never enter prompt bodies, hosted direct identifiers remain redacted, and successful or malformed
+provider output creates no database record or authoritative state transition.
+
+Validation evidence:
+
+- focused AI boundary tests: 11 passed;
+- full automated Python suite: 93 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
 
 ## Milestone 21: vendor-neutral AI provider architecture
 
