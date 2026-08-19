@@ -135,6 +135,11 @@ content digest and format manifest. AI prose is not an input. OSCAL assessment, 
 unregistered until their required context and reviewed generation workflows exist. See
 [portable evidence renderers](portable-reports.md).
 
+Known report formats also have machine-readable readiness declarations. A format enters the active
+renderer registry only when every declared context, dependency, security, and verification gate is
+satisfied. Installing a library alone cannot promote OSCAL Assessment Results, PDF, or Word output
+to supported status.
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

@@ -19,3 +19,18 @@ OSCAL, PDF, and Word appear in the format vocabulary but are not registered as i
 renderers. OSCAL Assessment Results require portable assessment-plan and system context. PDF and
 Word require reviewed generation dependencies plus render-and-visual-verification workflows. The
 contract does not write files, select destinations, sign artifacts, or change retention policy.
+
+## Format readiness
+
+`RENDERER_READINESS` makes the distinction between known and implemented formats machine-readable.
+JSON and Markdown are `ready` because their source-digest verification requirement is satisfied.
+The registry validator fails if a ready declaration and an actual renderer ever diverge.
+
+| Format | Status | Required before implementation |
+|---|---|---|
+| OSCAL Assessment Results | Blocked | Assessment Plan reference, assessed-system context, pinned official schema validation |
+| PDF | Blocked | Approved pinned generator, active-content policy, page-by-page render verification |
+| Word (`.docx`) | Blocked | Approved pinned generator, macro/external-content-free template, page render verification |
+
+A blocked requirement cannot be marked ready merely because a library is installed. Its context,
+security, and verification requirements must all be satisfied and covered by tests.

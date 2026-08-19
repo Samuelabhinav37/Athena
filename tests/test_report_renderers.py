@@ -5,10 +5,12 @@ import pytest
 from athena.models import Base, Identity, IdentityType
 from athena.services.evidence_report import EvidenceReportService
 from athena.services.report_renderers import (
+    RENDERER_READINESS,
     RENDERERS,
     EvidenceRenderError,
     JSONEvidenceRenderer,
     MarkdownEvidenceRenderer,
+    validate_renderer_registry,
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -54,6 +56,26 @@ def test_renderers_reject_tampered_authoritative_facts(evidence_report) -> None:
 
 
 def test_registry_declares_only_implemented_formats() -> None:
+    validate_renderer_registry()
     assert set(RENDERERS) == {"json", "markdown"}
     assert all(renderer.manifest.deterministic for renderer in RENDERERS.values())
     assert all(renderer.manifest.authoritative_facts_only for renderer in RENDERERS.values())
+
+
+def test_unimplemented_formats_declare_concrete_blockers() -> None:
+    assert set(RENDERER_READINESS) == {"json", "markdown", "oscal", "pdf", "docx"}
+    for name in ("oscal", "pdf", "docx"):
+        readiness = RENDERER_READINESS[name]
+        assert readiness.status == "blocked"
+        assert readiness.requirements
+        assert all(not requirement.satisfied for requirement in readiness.requirements)
+
+    assert {item.category for item in RENDERER_READINESS["oscal"].requirements} == {
+        "context",
+        "verification",
+    }
+    assert {item.category for item in RENDERER_READINESS["pdf"].requirements} == {
+        "dependency",
+        "security",
+        "verification",
+    }

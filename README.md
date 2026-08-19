@@ -94,6 +94,7 @@ flowchart LR
 | Framework portability | Deterministic NIST mappings rendered as an OSCAL-compatible component definition |
 | Policy interoperability | Canonical principal-action-resource-context requests with OPA as authority |
 | Portable reporting | Digest-verified deterministic JSON and Markdown renderer contracts |
+| Report readiness | Explicit OSCAL, PDF, and Word context, security, and verification gates |
 
 ## Authorization Provenance
 
@@ -309,6 +310,7 @@ Athena/
 - [x] OSCAL-compatible compliance framework contract
 - [x] Canonical policy request and explicit OPA adapter
 - [x] Portable JSON and Markdown evidence renderer contract
+- [x] Portable report format readiness manifests
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

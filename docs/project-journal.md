@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Review the context and dependency requirements for OSCAL assessment, PDF, and
-Word renderers before implementing another portable report format.
+**Next outcome:** Begin enterprise hardening with a versioned tenant-isolation contract and threat
+model before making any database, authentication, or authorization change.
 
 ## Roadmap
 
@@ -101,6 +101,33 @@ Word renderers before implementing another portable report format.
 | 31. Compliance framework contract | Deterministic NIST pack and OSCAL component definition | Complete |
 | 32. Policy interoperability contract | Canonical requests and an explicit OPA adapter | Complete |
 | 33. Portable report renderer contract | Digest-verified deterministic JSON and Markdown | Complete |
+| 34. Report format readiness | Explicit OSCAL, PDF, and Word implementation gates | Complete |
+
+## Milestone 34: portable report format readiness
+
+Added machine-readable readiness manifests for every known report format. JSON and Markdown are
+ready and must exactly match the active renderer registry. OSCAL Assessment Results, PDF, and Word
+remain blocked with explicit context, dependency, security, and verification requirements. A
+registry conformance check fails if declarations and implementations diverge or if status disagrees
+with requirement completion.
+
+OSCAL requires an Assessment Plan reference, assessed-system context, and pinned official schema
+validation. PDF requires an approved pinned generator, an active-content policy, and page rendering
+verification. Word requires an approved pinned generator, a macro/external-content-free local
+template, and page rendering verification. Installing a package alone satisfies none of these
+gates.
+
+This slice adds no dependency, renderer, endpoint, file output, template, assessment assertion,
+database operation, or evidence change.
+
+Validation evidence:
+
+- focused renderer-readiness and evidence-report tests: 7 passed;
+- full automated Python suite: 170 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 33: portable evidence renderer contract
 
@@ -123,8 +150,7 @@ Validation evidence:
 - full automated Python suite including pending policy changes: 169 passed with the existing
   Starlette deprecation warning;
 - Ruff linting and diff checks: passed; and
-- frontend TypeScript check and production build: passed.
-
+- frontend TypeScript check and production build: passed;
 - Rego policy tests: 5/5 passed; and
 - deterministic security gate: four fixtures and three control mappings passed.
 
@@ -150,8 +176,7 @@ Validation evidence:
 - focused policy contract, evaluation, monitoring, and CLI tests: 10 passed;
 - full automated Python suite: 166 passed with the existing Starlette deprecation warning; and
 - Ruff linting: passed; and
-- frontend TypeScript check and production build: passed.
-
+- frontend TypeScript check and production build: passed;
 - Rego policy tests: 5/5 passed; and
 - deterministic security gate: four fixtures and three control mappings passed.
 
@@ -176,8 +201,7 @@ Validation evidence:
 - focused framework contract tests: 3 passed;
 - full automated Python suite: 164 passed with the existing Starlette deprecation warning;
 - Ruff linting and diff checks: passed; and
-- frontend TypeScript check and production build: passed.
-
+- frontend TypeScript check and production build: passed;
 - Rego policy tests: 5/5 passed; and
 - deterministic security gate: four fixtures and three control mappings passed.
 

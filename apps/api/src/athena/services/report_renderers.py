@@ -25,6 +25,24 @@ class RendererManifest(BaseModel):
     authoritative_facts_only: Literal[True] = True
 
 
+class RendererRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requirement_id: str
+    category: Literal["context", "dependency", "security", "verification"]
+    description: str
+    satisfied: bool
+
+
+class RendererReadiness(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract_version: Literal["1.0"] = "1.0"
+    format: Literal["json", "markdown", "oscal", "pdf", "docx"]
+    status: Literal["ready", "blocked"]
+    requirements: tuple[RendererRequirement, ...]
+
+
 @dataclass(frozen=True)
 class RenderedEvidenceArtifact:
     manifest: RendererManifest
@@ -129,3 +147,129 @@ RENDERERS: dict[str, EvidenceRenderer] = {
     "json": JSONEvidenceRenderer(),
     "markdown": MarkdownEvidenceRenderer(),
 }
+
+
+def _requirement(
+    requirement_id: str,
+    category: Literal["context", "dependency", "security", "verification"],
+    description: str,
+    *,
+    satisfied: bool,
+) -> RendererRequirement:
+    return RendererRequirement(
+        requirement_id=requirement_id,
+        category=category,
+        description=description,
+        satisfied=satisfied,
+    )
+
+
+RENDERER_READINESS: dict[str, RendererReadiness] = {
+    "json": RendererReadiness(
+        format="json",
+        status="ready",
+        requirements=(
+            _requirement(
+                "source-digest-verification",
+                "verification",
+                "Revalidate the source schema and authoritative evidence digest.",
+                satisfied=True,
+            ),
+        ),
+    ),
+    "markdown": RendererReadiness(
+        format="markdown",
+        status="ready",
+        requirements=(
+            _requirement(
+                "source-digest-verification",
+                "verification",
+                "Revalidate the source schema and authoritative evidence digest.",
+                satisfied=True,
+            ),
+        ),
+    ),
+    "oscal": RendererReadiness(
+        format="oscal",
+        status="blocked",
+        requirements=(
+            _requirement(
+                "assessment-plan-reference",
+                "context",
+                "Provide a versioned OSCAL Assessment Plan reference.",
+                satisfied=False,
+            ),
+            _requirement(
+                "assessed-system-context",
+                "context",
+                "Identify the assessed system, subjects, activities, observations, and findings.",
+                satisfied=False,
+            ),
+            _requirement(
+                "official-schema-validation",
+                "verification",
+                "Validate exact output against a pinned official OSCAL JSON schema.",
+                satisfied=False,
+            ),
+        ),
+    ),
+    "pdf": RendererReadiness(
+        format="pdf",
+        status="blocked",
+        requirements=(
+            _requirement(
+                "approved-pdf-generator",
+                "dependency",
+                "Select and approve a pinned PDF generation dependency.",
+                satisfied=False,
+            ),
+            _requirement(
+                "pdf-active-content-policy",
+                "security",
+                "Forbid scripts, external references, attachments, and untrusted active content.",
+                satisfied=False,
+            ),
+            _requirement(
+                "pdf-render-verification",
+                "verification",
+                "Render every page and verify layout, text, pagination, and digest presentation.",
+                satisfied=False,
+            ),
+        ),
+    ),
+    "docx": RendererReadiness(
+        format="docx",
+        status="blocked",
+        requirements=(
+            _requirement(
+                "approved-docx-generator",
+                "dependency",
+                "Select and approve a pinned Word document generation dependency.",
+                satisfied=False,
+            ),
+            _requirement(
+                "docx-template-policy",
+                "security",
+                "Use a reviewed local template with no macros, external links, or "
+                "embedded objects.",
+                satisfied=False,
+            ),
+            _requirement(
+                "docx-render-verification",
+                "verification",
+                "Render the document to pages and verify layout, text, tables, and digest display.",
+                satisfied=False,
+            ),
+        ),
+    ),
+}
+
+
+def validate_renderer_registry() -> None:
+    ready = {name for name, item in RENDERER_READINESS.items() if item.status == "ready"}
+    if ready != set(RENDERERS):
+        raise EvidenceRenderError("Renderer registry does not match ready format declarations")
+    for name, readiness in RENDERER_READINESS.items():
+        satisfied = all(item.satisfied for item in readiness.requirements)
+        if satisfied != (readiness.status == "ready"):
+            raise EvidenceRenderError(f"Renderer readiness is inconsistent for {name}")
