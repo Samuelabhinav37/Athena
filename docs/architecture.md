@@ -146,6 +146,11 @@ cross-tenant references, tenant-aware constraints and row-level security, and no
 bypass. Provider tenant IDs are provenance rather than platform authority. See the
 [tenant-isolation threat model](tenant-isolation.md).
 
+The bootstrap transition is a separate reviewed contract, not an implicit migration default. It
+requires approved counts for all 25 current tables and aborts if observed inventory differs. Its
+six ordered phases preserve immutable evidence, introduce tenant-aware integrity and RLS, propagate
+context to every runtime boundary, and defer enablement until isolation and recovery gates pass.
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

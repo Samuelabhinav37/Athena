@@ -50,3 +50,21 @@ keys. No guessed backfill is permitted.
 Authentication and database changes are deliberately absent from this phase. Production tenancy
 must not be enabled until API, ORM, direct SQL, background jobs, exports, Neo4j projections,
 connectors, caches, backup/restore, and residency controls all pass cross-tenant denial tests.
+
+## Bootstrap transition plan
+
+`BootstrapTenantApproval` requires an explicit tenant ID, approver, approval reference,
+timezone-aware approval time, and expected row count for every one of Athena's 25 tables. Missing,
+extra, negative, or changed inventory fails closed. `build_tenant_transition_plan` produces a
+content-digested six-phase plan:
+
+1. freeze writers, compare exact inventory, and confirm recoverable backup evidence;
+2. add the approved bootstrap key without ORM mutation of immutable evidence;
+3. replace global references and uniqueness with tenant-aware integrity constraints;
+4. add fail-closed PostgreSQL row-level security and pooled-session isolation;
+5. propagate validated context through APIs, jobs, connectors, caches, exports, and graph; and
+6. enforce non-null keys and enable tenancy only after every isolation and recovery gate passes.
+
+The plan is `review_required`; it is not executable migration code. Observed inventory must match
+the approved counts immediately before any database mutation, preventing a stale approval from
+silently assigning newly created evidence to the bootstrap tenant.

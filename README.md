@@ -313,6 +313,7 @@ Athena/
 - [x] Portable JSON and Markdown evidence renderer contract
 - [x] Portable report format readiness manifests
 - [x] Tenant-isolation contract and threat model
+- [x] Reviewed bootstrap-tenant transition-plan contract
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

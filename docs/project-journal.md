@@ -2,7 +2,7 @@
 
 This document is Athena's living engineering record. Update it whenever a milestone changes the architecture, introduces a decision, encounters a meaningful problem, or produces new validation evidence.
 
-Last updated: August 19, 2026
+Last updated: August 20, 2026
 
 ## Project objective
 
@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Design the reviewed bootstrap-tenant backfill and schema transition sequence;
-database and authentication implementation requires explicit approval.
+**Next outcome:** Implement the first additive tenant schema migration only after concrete bootstrap
+approval is supplied.
 
 ## Roadmap
 
@@ -103,6 +103,32 @@ database and authentication implementation requires explicit approval.
 | 33. Portable report renderer contract | Digest-verified deterministic JSON and Markdown | Complete |
 | 34. Report format readiness | Explicit OSCAL, PDF, and Word implementation gates | Complete |
 | 35. Tenant-isolation contract | Default-deny scope contract and threat model | Complete |
+| 36. Tenant transition plan | Approved inventory guard and ordered schema transition | Complete |
+
+## Milestone 36: reviewed bootstrap-tenant transition plan
+
+Added a deterministic, content-digested transition plan covering every one of Athena's 25 model
+tables and all immutable evidence families. Bootstrap approval requires a canonical tenant ID,
+display name, approval reference, named approver, timezone-aware approval time, and exact expected
+row counts for every table. Missing, extra, negative, or stale inventory fails closed.
+
+The plan orders six gates: freeze and inventory; add bootstrap scope without ORM evidence updates;
+install tenant-aware integrity; add fail-closed PostgreSQL RLS; propagate validated context through
+all application boundaries; and enable non-null tenancy only after isolation, backup, restore, and
+security checks pass. The output remains `review_required` and cannot execute SQL.
+
+This phase adds no model column, migration, database query or mutation, token claim, RLS policy,
+runtime tenant selection, or production enablement. A concrete bootstrap approval is still required
+before implementing the first additive schema step.
+
+Validation evidence:
+
+- focused transition-plan tests: 3 passed;
+- full automated Python suite: 176 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed; and
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
 
 ## Milestone 35: tenant-isolation contract and threat model
 
