@@ -36,3 +36,22 @@ def test_tenant_inventory_command_dispatches_read_only_inventory(monkeypatch) ->
     monkeypatch.setattr(cli, "tenant_inventory", lambda: 17)
 
     assert cli.main() == 17
+
+
+def test_tenant_backfill_plan_command_dispatches_approval_file(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["athena", "tenant-backfill-plan", "--approval-file", "approved.json"],
+    )
+    observed = None
+
+    def plan(approval_file):
+        nonlocal observed
+        observed = approval_file
+        return 19
+
+    monkeypatch.setattr(cli, "tenant_backfill_plan", plan)
+
+    assert cli.main() == 19
+    assert observed == cli.Path("approved.json")

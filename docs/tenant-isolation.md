@@ -87,3 +87,14 @@ constraint replacement, RLS policy, token handling, or runtime selection. Existi
 unassigned and Athena remains single-tenant. Applying this schema step does not authorize the later
 backfill; that operation must re-capture inventory, verify the approved digest, and receive its own
 explicit execution approval.
+
+## Bootstrap backfill dry-run
+
+`python -m athena.cli tenant-backfill-plan --approval-file tenancy/bootstrap-approval.json` reads
+the approved artifact, recaptures all 25 table counts, verifies the inventory digest, and checks
+that the bootstrap tenant does not yet exist and every scoped row remains unassigned. It emits a
+deterministic plan digest and proposed operation counts with `database_mutation: false`.
+
+The dry-run cannot create a tenant or update a row. An executable backfill remains a separately
+reviewed implementation and requires fresh explicit approval before it may run against the local
+evidence store.

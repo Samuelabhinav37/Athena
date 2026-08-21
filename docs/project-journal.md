@@ -61,7 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Build a separately approved digest-verified bootstrap backfill command.
+**Next outcome:** Review an executable, transactionally verified bootstrap backfill implementation;
+execution remains separately approved.
 
 ## Roadmap
 
@@ -105,6 +106,29 @@ The governing safety rule is:
 | 36. Tenant transition plan | Approved inventory guard and ordered schema transition | Complete |
 | 37. Bootstrap inventory | Read-only complete table counts and approval digest | Complete |
 | 38. Additive tenant schema | Registry and nullable tenant keys without backfill | Complete |
+| 39. Bootstrap backfill dry-run | Digest-verified, deterministic, non-mutating plan | Complete |
+
+## Milestone 39: digest-verified bootstrap backfill dry-run
+
+Added `tenant-backfill-plan`, a read-only command that loads the reviewed approval artifact,
+recaptures the canonical 25-table inventory, verifies exact counts and digest, and fails closed if
+the bootstrap tenant already exists or any scoped row is already assigned. The returned plan is
+deterministic, declares `database_mutation: false`, and identifies immutable evidence families.
+
+The planner ran successfully against the local PostgreSQL database: all 614 rows still match digest
+`22171f72521d682c73ebdcdf8aad035a5bb643c04449026aeee29f2c48825cac`; its plan digest is
+`c9ec5582876176fd0e4e23d43cd0f0b50805245a086c44353ae6fd040ec721a3`. No tenant record or row
+assignment was written. Executable backfill code and execution remain separately reviewed and
+approved work.
+
+Validation evidence:
+
+- focused tenant backfill, inventory, transition, and CLI tests: 13 passed;
+- full automated Python suite: 188 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
 
 ## Milestone 38: additive tenant schema foundation
 

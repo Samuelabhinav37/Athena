@@ -30,7 +30,12 @@ from athena.services.provenance import ProvenanceService
 from athena.services.remediation import RemediationService, load_case
 from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
+from athena.services.tenant_backfill import (
+    build_bootstrap_backfill_plan,
+    load_bootstrap_approval,
+)
 from athena.services.tenant_inventory import TenantInventoryError, capture_tenant_inventory
+from athena.tenant_transition import TenantTransitionError
 
 
 def sync_keycloak() -> int:
@@ -401,6 +406,24 @@ def tenant_inventory() -> int:
     return 0
 
 
+def tenant_backfill_plan(approval_file: Path) -> int:
+    try:
+        approval = load_bootstrap_approval(approval_file)
+        with get_session_factory()() as session:
+            plan = build_bootstrap_backfill_plan(session, approval)
+    except (
+        OSError,
+        ValueError,
+        SQLAlchemyError,
+        TenantInventoryError,
+        TenantTransitionError,
+    ) as error:
+        print(f"Tenant backfill plan failed: {error}", file=sys.stderr)
+        return 1
+    print(plan.model_dump_json())
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -468,6 +491,12 @@ def main() -> int:
     subcommands.add_parser(
         "tenant-inventory", help="Read table counts for bootstrap-tenant approval"
     )
+    backfill_parser = subcommands.add_parser(
+        "tenant-backfill-plan", help="Validate and print a dry-run bootstrap backfill plan"
+    )
+    backfill_parser.add_argument(
+        "--approval-file", type=Path, default=Path("tenancy/bootstrap-approval.json")
+    )
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -507,6 +536,8 @@ def main() -> int:
         )
     if arguments.command == "tenant-inventory":
         return tenant_inventory()
+    if arguments.command == "tenant-backfill-plan":
+        return tenant_backfill_plan(arguments.approval_file)
     return 2
 
 

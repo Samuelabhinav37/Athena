@@ -210,6 +210,16 @@ python -m athena.cli tenant-inventory
 The command returns counts and a digest only. It does not return row content, assign a tenant, or
 modify the database.
 
+Validate the approved artifact and preview the bootstrap assignment without changing any row:
+
+```bash
+python -m athena.cli tenant-backfill-plan \
+  --approval-file tenancy/bootstrap-approval.json
+```
+
+The planner fails closed if the inventory changed, the bootstrap tenant already exists, or any
+scoped row is already assigned. Its output always declares `database_mutation: false`.
+
 ## GitHub Connector
 
 Configure a least-privilege, read-only token in your local `.env`:
@@ -326,6 +336,7 @@ Athena/
 - [x] Reviewed bootstrap-tenant transition-plan contract
 - [x] Read-only bootstrap tenant inventory command
 - [x] Additive nullable tenant schema migration
+- [x] Digest-verified bootstrap backfill dry-run
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
