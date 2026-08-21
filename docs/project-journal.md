@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Implement the first additive tenant schema migration only after concrete bootstrap
-approval is supplied.
+**Next outcome:** Capture and approve a concrete bootstrap inventory, then implement the first
+additive tenant schema migration.
 
 ## Roadmap
 
@@ -104,6 +104,32 @@ approval is supplied.
 | 34. Report format readiness | Explicit OSCAL, PDF, and Word implementation gates | Complete |
 | 35. Tenant-isolation contract | Default-deny scope contract and threat model | Complete |
 | 36. Tenant transition plan | Approved inventory guard and ordered schema transition | Complete |
+| 37. Bootstrap inventory | Read-only complete table counts and approval digest | Complete |
+
+## Milestone 37: read-only bootstrap tenant inventory
+
+Added `tenant-inventory` as a read-only CLI command covering the exact 25-table transition surface.
+It rejects sessions with pending changes, verifies that the transition table list still matches
+SQLAlchemy metadata, counts rows without autoflush, and returns only observation time, table counts,
+total rows, and a deterministic digest. It exposes no row content and commits no transaction.
+
+The digest excludes observation time, so unchanged counts remain stable for approval. Any added or
+removed row changes the facts and prevents the observed inventory from matching a stale bootstrap
+approval. This command does not choose a tenant, approve a backfill, add a column, or execute a
+migration.
+
+Validation evidence:
+
+- focused tenant-inventory and CLI tests: 5 passed;
+- full automated Python suite: 180 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+The first live inventory invocation could not reach the configured local database and was stopped
+without output or mutation. A concrete bootstrap inventory remains pending until PostgreSQL and its
+configured credentials are available.
 
 ## Milestone 36: reviewed bootstrap-tenant transition plan
 

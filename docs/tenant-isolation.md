@@ -68,3 +68,9 @@ content-digested six-phase plan:
 The plan is `review_required`; it is not executable migration code. Observed inventory must match
 the approved counts immediately before any database mutation, preventing a stale approval from
 silently assigning newly created evidence to the bootstrap tenant.
+
+Run `python -m athena.cli tenant-inventory` to capture the approval inventory. The command checks
+that its SQLAlchemy session has no pending changes, counts all 25 known tables using model metadata,
+and emits a timestamp, total, per-table counts, and deterministic digest. It never returns row
+content or commits a transaction. Repeating it with unchanged counts produces the same digest; any
+count change invalidates the previously approved bootstrap inventory.

@@ -29,3 +29,10 @@ def test_sync_command_reports_collection_failure_without_traceback(
         "Keycloak synchronization failed: request failed without credentials\n"
     )
     assert "Traceback" not in captured.err
+
+
+def test_tenant_inventory_command_dispatches_read_only_inventory(monkeypatch) -> None:
+    monkeypatch.setattr(cli.sys, "argv", ["athena", "tenant-inventory"])
+    monkeypatch.setattr(cli, "tenant_inventory", lambda: 17)
+
+    assert cli.main() == 17

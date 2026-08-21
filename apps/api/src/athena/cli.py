@@ -30,6 +30,7 @@ from athena.services.provenance import ProvenanceService
 from athena.services.remediation import RemediationService, load_case
 from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
+from athena.services.tenant_inventory import TenantInventoryError, capture_tenant_inventory
 
 
 def sync_keycloak() -> int:
@@ -389,6 +390,17 @@ def monitoring_loop(username: str, interval_seconds: int, requested_by: str) -> 
         time.sleep(interval_seconds)
 
 
+def tenant_inventory() -> int:
+    try:
+        with get_session_factory()() as session:
+            snapshot = capture_tenant_inventory(session)
+    except (SQLAlchemyError, TenantInventoryError) as error:
+        print(f"Tenant inventory failed: {error}", file=sys.stderr)
+        return 1
+    print(snapshot.model_dump_json())
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -453,6 +465,9 @@ def main() -> int:
     loop_parser.add_argument("--username", default="alice")
     loop_parser.add_argument("--interval-seconds", type=int, default=300)
     loop_parser.add_argument("--requested-by", default="athena-scheduler")
+    subcommands.add_parser(
+        "tenant-inventory", help="Read table counts for bootstrap-tenant approval"
+    )
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -490,6 +505,8 @@ def main() -> int:
         return monitoring_loop(
             arguments.username, arguments.interval_seconds, arguments.requested_by
         )
+    if arguments.command == "tenant-inventory":
+        return tenant_inventory()
     return 2
 
 

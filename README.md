@@ -200,6 +200,15 @@ python -m athena.cli security-gate \
   --output-directory artifacts/security-gate
 ```
 
+Capture the read-only table-count inventory required for bootstrap-tenant approval:
+
+```bash
+python -m athena.cli tenant-inventory
+```
+
+The command returns counts and a digest only. It does not return row content, assign a tenant, or
+modify the database.
+
 ## GitHub Connector
 
 Configure a least-privilege, read-only token in your local `.env`:
@@ -314,6 +323,7 @@ Athena/
 - [x] Portable report format readiness manifests
 - [x] Tenant-isolation contract and threat model
 - [x] Reviewed bootstrap-tenant transition-plan contract
+- [x] Read-only bootstrap tenant inventory command
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
