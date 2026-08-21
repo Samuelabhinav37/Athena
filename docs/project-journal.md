@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Review an executable, transactionally verified bootstrap backfill implementation;
-execution remains separately approved.
+**Next outcome:** Obtain explicit operator approval for the reviewed bootstrap plan before executing
+it against the local evidence store; then rerun tenant-integrity before constraint design.
 
 ## Roadmap
 
@@ -107,6 +107,56 @@ execution remains separately approved.
 | 37. Bootstrap inventory | Read-only complete table counts and approval digest | Complete |
 | 38. Additive tenant schema | Registry and nullable tenant keys without backfill | Complete |
 | 39. Bootstrap backfill dry-run | Digest-verified, deterministic, non-mutating plan | Complete |
+| 40. Bootstrap backfill executor | Locked, atomic assignment with immutable controls restored | Complete |
+| 41. Tenant integrity readiness | Metadata-derived assignment, relationship, and uniqueness checks | Complete |
+
+## Milestone 41: tenant integrity readiness inspection
+
+Added `tenant-integrity`, a read-only metadata-derived inspection across all scoped tables and
+foreign keys. It reports unassigned rows, cross-tenant relationship counts, global unique
+constraints that still require tenant scope, and a fail-closed readiness result. Sessions with
+pending ORM changes are rejected.
+
+The local report found zero mismatches across all 32 scoped relationships and identified 15 global
+unique constraints for later conversion. Readiness remains false, as designed, because all 614
+approved rows are still unassigned pending separately authorized backfill execution.
+
+Validation evidence:
+
+- focused integrity, backfill, and CLI tests: 13 passed;
+- full automated Python suite: 194 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 40: transactional bootstrap backfill executor
+
+Added `tenant-backfill`, which requires both the reviewed approval artifact and exact dry-run plan
+digest. It exclusively locks the full transition surface, repeats the inventory and assignment
+guards, creates the approved tenant, assigns only null tenant keys, and verifies per-table counts in
+one transaction. Any mismatch rolls back the complete operation.
+
+Immutable PostgreSQL trigger functions remain installed throughout the operation. Inside the
+transaction they accept only a null-to-approved-tenant change when every other row field is equal,
+then their unconditional rejection bodies are restored before commit. A disposable PostgreSQL test
+proved assignment of an append-only audit row, preservation of its fields, and rejection of a later
+content update. The disposable database was removed and confirmed absent.
+
+The executable has not been run against the local 614-row database. Doing so remains a separately
+authorized database mutation.
+
+Validation evidence:
+
+- focused executor and CLI tests: 9 passed with the PostgreSQL-only case correctly skipped;
+- the PostgreSQL-only executor case passed independently on a migrated disposable database;
+- full automated Python suite: 190 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
 
 ## Milestone 39: digest-verified bootstrap backfill dry-run
 

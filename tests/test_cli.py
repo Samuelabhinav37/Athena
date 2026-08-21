@@ -55,3 +55,36 @@ def test_tenant_backfill_plan_command_dispatches_approval_file(monkeypatch) -> N
 
     assert cli.main() == 19
     assert observed == cli.Path("approved.json")
+
+
+def test_tenant_backfill_command_requires_and_dispatches_plan_digest(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "athena",
+            "tenant-backfill",
+            "--approval-file",
+            "approved.json",
+            "--confirm-plan-sha256",
+            "a" * 64,
+        ],
+    )
+    observed = None
+
+    def execute(approval_file, confirmed_plan_sha256):
+        nonlocal observed
+        observed = (approval_file, confirmed_plan_sha256)
+        return 23
+
+    monkeypatch.setattr(cli, "tenant_backfill", execute)
+
+    assert cli.main() == 23
+    assert observed == (cli.Path("approved.json"), "a" * 64)
+
+
+def test_tenant_integrity_command_dispatches_read_only_inspection(monkeypatch) -> None:
+    monkeypatch.setattr(cli.sys, "argv", ["athena", "tenant-integrity"])
+    monkeypatch.setattr(cli, "tenant_integrity", lambda: 29)
+
+    assert cli.main() == 29

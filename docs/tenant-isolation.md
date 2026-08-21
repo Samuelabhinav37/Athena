@@ -98,3 +98,30 @@ deterministic plan digest and proposed operation counts with `database_mutation:
 The dry-run cannot create a tenant or update a row. An executable backfill remains a separately
 reviewed implementation and requires fresh explicit approval before it may run against the local
 evidence store.
+
+## Transactional bootstrap executor
+
+`tenant-backfill` requires the approval artifact and the exact digest emitted by the dry-run. It
+takes exclusive locks on the tenant registry and all 25 scoped tables before recapturing inventory,
+so writers cannot invalidate approval between verification and assignment. A mismatch, an existing
+bootstrap tenant, a preassigned row, or a changed plan digest aborts the transaction.
+
+During that same transaction, existing immutable trigger functions temporarily accept only a
+`tenant_id` transition from null to the transaction-local approved tenant when every other row
+field is identical. Deletes, content changes, and later tenant changes remain rejected. The command
+restores the original trigger bodies before verifying counts and committing; any error rolls back
+the tenant record, assignments, and trigger definitions together.
+
+The executor has been exercised only on a disposable PostgreSQL database. It has not been run on
+the local 614-row evidence store and its implementation does not constitute execution approval.
+
+## Tenant integrity readiness
+
+`python -m athena.cli tenant-integrity` derives its coverage from SQLAlchemy metadata and performs
+no writes. It counts unassigned rows, checks each scoped foreign-key join for differing tenant
+ownership, and inventories unique constraints that still have global scope. Readiness is false if
+any scoped row is unassigned or any relationship crosses tenants.
+
+On the current local database, all 32 scoped relationships have zero mismatches, but readiness is
+false because the 614 approved rows remain unassigned. The report also identifies 15 global unique
+constraints that require a separately approved tenant-aware schema migration after backfill.

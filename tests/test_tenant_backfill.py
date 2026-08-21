@@ -2,7 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 from athena.models import Base, Identity, IdentityType, Tenant
-from athena.services.tenant_backfill import build_bootstrap_backfill_plan
+from athena.services.tenant_backfill import (
+    build_bootstrap_backfill_plan,
+    execute_bootstrap_backfill,
+)
 from athena.tenant_transition import (
     TENANT_TABLES,
     BootstrapTenantApproval,
@@ -114,4 +117,20 @@ def test_backfill_plan_rejects_preassigned_rows() -> None:
         )
     with factory() as session, pytest.raises(TenantTransitionError, match="unassigned"):
         build_bootstrap_backfill_plan(session, _approval(counts))
+    engine.dispose()
+
+
+def test_executable_backfill_rejects_non_postgresql_without_writing() -> None:
+    engine, factory = _database()
+    counts = {table: 0 for table in TENANT_TABLES}
+    with factory.begin() as session, pytest.raises(
+        TenantTransitionError, match="requires PostgreSQL"
+    ):
+        execute_bootstrap_backfill(
+            session,
+            _approval(counts),
+            confirmed_plan_sha256="a" * 64,
+        )
+    with factory() as session:
+        assert session.get(Tenant, "athena-local") is None
     engine.dispose()

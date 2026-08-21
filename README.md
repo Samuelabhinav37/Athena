@@ -220,6 +220,28 @@ python -m athena.cli tenant-backfill-plan \
 The planner fails closed if the inventory changed, the bootstrap tenant already exists, or any
 scoped row is already assigned. Its output always declares `database_mutation: false`.
 
+After separately reviewing and authorizing the exact plan digest, an operator can execute the
+transactional bootstrap assignment:
+
+```bash
+python -m athena.cli tenant-backfill \
+  --approval-file tenancy/bootstrap-approval.json \
+  --confirm-plan-sha256 <reviewed-plan-sha256>
+```
+
+This command mutates the database. It takes exclusive locks, repeats every dry-run check, assigns
+only previously unassigned `tenant_id` fields, verifies all counts, and restores immutable evidence
+triggers before committing. Preparing the command does not authorize running it.
+
+Inspect assignment and relationship readiness without changing the database:
+
+```bash
+python -m athena.cli tenant-integrity
+```
+
+The report covers every scoped foreign key, lists remaining unassigned rows and global unique
+constraints, and declares whether tenant-aware constraint migration is ready.
+
 ## GitHub Connector
 
 Configure a least-privilege, read-only token in your local `.env`:
@@ -337,6 +359,8 @@ Athena/
 - [x] Read-only bootstrap tenant inventory command
 - [x] Additive nullable tenant schema migration
 - [x] Digest-verified bootstrap backfill dry-run
+- [x] Transactionally verified bootstrap backfill executor
+- [x] Read-only tenant integrity readiness inspection
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

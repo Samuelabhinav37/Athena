@@ -32,8 +32,10 @@ from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
 from athena.services.tenant_backfill import (
     build_bootstrap_backfill_plan,
+    execute_bootstrap_backfill,
     load_bootstrap_approval,
 )
+from athena.services.tenant_integrity import TenantIntegrityError, inspect_tenant_integrity
 from athena.services.tenant_inventory import TenantInventoryError, capture_tenant_inventory
 from athena.tenant_transition import TenantTransitionError
 
@@ -424,6 +426,39 @@ def tenant_backfill_plan(approval_file: Path) -> int:
     return 0
 
 
+def tenant_backfill(approval_file: Path, confirmed_plan_sha256: str) -> int:
+    try:
+        approval = load_bootstrap_approval(approval_file)
+        with get_session_factory().begin() as session:
+            result = execute_bootstrap_backfill(
+                session,
+                approval,
+                confirmed_plan_sha256=confirmed_plan_sha256,
+            )
+    except (
+        OSError,
+        ValueError,
+        SQLAlchemyError,
+        TenantInventoryError,
+        TenantTransitionError,
+    ) as error:
+        print(f"Tenant backfill failed: {error}", file=sys.stderr)
+        return 1
+    print(result.model_dump_json())
+    return 0
+
+
+def tenant_integrity() -> int:
+    try:
+        with get_session_factory()() as session:
+            report = inspect_tenant_integrity(session)
+    except (SQLAlchemyError, TenantIntegrityError) as error:
+        print(f"Tenant integrity inspection failed: {error}", file=sys.stderr)
+        return 1
+    print(report.model_dump_json())
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -497,6 +532,16 @@ def main() -> int:
     backfill_parser.add_argument(
         "--approval-file", type=Path, default=Path("tenancy/bootstrap-approval.json")
     )
+    execute_backfill_parser = subcommands.add_parser(
+        "tenant-backfill", help="Execute an approved bootstrap tenant assignment"
+    )
+    execute_backfill_parser.add_argument(
+        "--approval-file", type=Path, default=Path("tenancy/bootstrap-approval.json")
+    )
+    execute_backfill_parser.add_argument("--confirm-plan-sha256", required=True)
+    subcommands.add_parser(
+        "tenant-integrity", help="Inspect tenant assignment and relationship readiness"
+    )
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -538,6 +583,10 @@ def main() -> int:
         return tenant_inventory()
     if arguments.command == "tenant-backfill-plan":
         return tenant_backfill_plan(arguments.approval_file)
+    if arguments.command == "tenant-backfill":
+        return tenant_backfill(arguments.approval_file, arguments.confirm_plan_sha256)
+    if arguments.command == "tenant-integrity":
+        return tenant_integrity()
     return 2
 
 
