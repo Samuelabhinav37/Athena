@@ -61,8 +61,7 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Capture and approve a concrete bootstrap inventory, then implement the first
-additive tenant schema migration.
+**Next outcome:** Build a separately approved digest-verified bootstrap backfill command.
 
 ## Roadmap
 
@@ -105,6 +104,37 @@ additive tenant schema migration.
 | 35. Tenant-isolation contract | Default-deny scope contract and threat model | Complete |
 | 36. Tenant transition plan | Approved inventory guard and ordered schema transition | Complete |
 | 37. Bootstrap inventory | Read-only complete table counts and approval digest | Complete |
+| 38. Additive tenant schema | Registry and nullable tenant keys without backfill | Complete |
+
+## Milestone 38: additive tenant schema foundation
+
+Recorded the approved `athena-local` bootstrap artifact with all 25 table counts, 614 total rows,
+inventory digest `22171f72521d682c73ebdcdf8aad035a5bb643c04449026aeee29f2c48825cac`,
+approval `LOCAL-BOOTSTRAP-2026-001`, and approver `samue`. Approval validation recomputes the digest
+from the counts and fails closed on any mismatch.
+
+Added global `tenants` metadata and nullable, indexed tenant foreign keys to all 25 scoped model
+tables. Migration `20260820_10` performs only those additive schema operations. It contains no SQL
+backfill, row update, RLS policy, non-null enforcement, tenant-aware constraint replacement, token
+change, or runtime selection. Existing rows and behavior remain single-tenant and unassigned.
+
+The complete migration chain applied successfully to a named disposable PostgreSQL database and
+`alembic check` reported no schema drift. The disposable database was removed and confirmed absent.
+After explicit operator approval, migration `20260820_10` was applied to the local PostgreSQL
+database. Alembic reports the database at head with no schema drift, and a post-migration inventory
+confirmed all 614 scoped rows and the approved digest
+`22171f72521d682c73ebdcdf8aad035a5bb643c04449026aeee29f2c48825cac` remain unchanged.
+
+Validation evidence:
+
+- focused tenant migration, transition, inventory, and model tests: 10 passed;
+- full automated Python suite: 183 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- the complete migration chain and `alembic check` passed on a disposable PostgreSQL database, which
+  was then removed and confirmed absent;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
 
 ## Milestone 37: read-only bootstrap tenant inventory
 

@@ -117,6 +117,7 @@ class ExecutionStatus(StrEnum):
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
+    Column("tenant_id", String(63), ForeignKey("tenants.id"), nullable=True, index=True),
     Column("identity_id", Uuid, ForeignKey("identities.id", ondelete="CASCADE"), primary_key=True),
     Column("group_id", Uuid, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
 )
@@ -125,6 +126,7 @@ identity_groups = Table(
 identity_roles = Table(
     "identity_roles",
     Base.metadata,
+    Column("tenant_id", String(63), ForeignKey("tenants.id"), nullable=True, index=True),
     Column("identity_id", Uuid, ForeignKey("identities.id", ondelete="CASCADE"), primary_key=True),
     Column("role_id", Uuid, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
 )
@@ -137,7 +139,24 @@ class TimestampMixin:
     )
 
 
-class Identity(TimestampMixin, Base):
+class TenantScopedMixin:
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(63), ForeignKey("tenants.id"), nullable=True, index=True
+    )
+
+
+class Tenant(TimestampMixin, Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(63), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    approval_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    authorized_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    inventory_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class Identity(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "identities"
     __table_args__ = (
         CheckConstraint(
@@ -179,7 +198,7 @@ class Identity(TimestampMixin, Base):
     )
 
 
-class Group(TimestampMixin, Base):
+class Group(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "groups"
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_group_source_external"),)
 
@@ -195,7 +214,7 @@ class Group(TimestampMixin, Base):
     )
 
 
-class Role(TimestampMixin, Base):
+class Role(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "roles"
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_role_source_external"),)
 
@@ -211,7 +230,7 @@ class Role(TimestampMixin, Base):
     )
 
 
-class Resource(TimestampMixin, Base):
+class Resource(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "resources"
     __table_args__ = (
         UniqueConstraint("source", "external_id", name="uq_resource_source_external"),
@@ -246,7 +265,7 @@ class Resource(TimestampMixin, Base):
     )
 
 
-class Permission(TimestampMixin, Base):
+class Permission(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "permissions"
     __table_args__ = (
         UniqueConstraint("resource_id", "action", name="uq_permission_resource_action"),
@@ -265,7 +284,7 @@ class Permission(TimestampMixin, Base):
     grants: Mapped[list["AccessGrant"]] = relationship(back_populates="permission")
 
 
-class AccessGrant(TimestampMixin, Base):
+class AccessGrant(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "access_grants"
     __table_args__ = (
         CheckConstraint(
@@ -322,7 +341,7 @@ class AccessGrant(TimestampMixin, Base):
     approved_by: Mapped[Identity | None] = relationship(foreign_keys=[approved_by_identity_id])
 
 
-class EffectiveEntitlement(Base):
+class EffectiveEntitlement(TenantScopedMixin, Base):
     __tablename__ = "effective_entitlements"
     __table_args__ = (
         UniqueConstraint("identity_id", "grant_id", name="uq_entitlement_identity_grant"),
@@ -353,7 +372,7 @@ class EffectiveEntitlement(Base):
     )
 
 
-class ProvenanceEdge(Base):
+class ProvenanceEdge(TenantScopedMixin, Base):
     __tablename__ = "provenance_edges"
     __table_args__ = (
         UniqueConstraint("entitlement_id", "sequence", name="uq_provenance_edge_sequence"),
@@ -375,7 +394,7 @@ class ProvenanceEdge(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(back_populates="provenance_edges")
 
 
-class AuditEvent(Base):
+class AuditEvent(TenantScopedMixin, Base):
     __tablename__ = "audit_events"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -397,7 +416,7 @@ class AuditEvent(Base):
     model_version: Mapped[str | None] = mapped_column(String(255))
 
 
-class PolicyEvaluation(Base):
+class PolicyEvaluation(TenantScopedMixin, Base):
     __tablename__ = "policy_evaluations"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -428,7 +447,7 @@ class PolicyEvaluation(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
 
 
-class RoleTransition(Base):
+class RoleTransition(TenantScopedMixin, Base):
     __tablename__ = "role_transitions"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -448,7 +467,7 @@ class RoleTransition(Base):
     identity: Mapped[Identity] = relationship()
 
 
-class AccessObservation(Base):
+class AccessObservation(TenantScopedMixin, Base):
     __tablename__ = "access_observations"
     __table_args__ = (
         UniqueConstraint("source", "external_id", name="uq_access_observation_source_external"),
@@ -471,7 +490,7 @@ class AccessObservation(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship()
 
 
-class RiskAssessment(Base):
+class RiskAssessment(TenantScopedMixin, Base):
     __tablename__ = "risk_assessments"
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_assessment_score_range"),
@@ -507,7 +526,7 @@ class RiskAssessment(Base):
     )
 
 
-class RiskFinding(Base):
+class RiskFinding(TenantScopedMixin, Base):
     __tablename__ = "risk_findings"
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_finding_score_range"),
@@ -537,7 +556,7 @@ class RiskFinding(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
 
 
-class AnomalyModelRun(Base):
+class AnomalyModelRun(TenantScopedMixin, Base):
     __tablename__ = "anomaly_model_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -560,7 +579,7 @@ class AnomalyModelRun(Base):
     )
 
 
-class AnomalyResult(Base):
+class AnomalyResult(TenantScopedMixin, Base):
     __tablename__ = "anomaly_results"
     __table_args__ = (UniqueConstraint("run_id", "subject_key", name="uq_anomaly_result_subject"),)
 
@@ -583,7 +602,7 @@ class AnomalyResult(Base):
     identity: Mapped[Identity | None] = relationship()
 
 
-class ReviewCase(TimestampMixin, Base):
+class ReviewCase(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "review_cases"
     __table_args__ = (
         CheckConstraint(
@@ -626,7 +645,7 @@ class ReviewCase(TimestampMixin, Base):
     )
 
 
-class ReviewEvent(Base):
+class ReviewEvent(TenantScopedMixin, Base):
     __tablename__ = "review_events"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -657,7 +676,7 @@ class ReviewEvent(Base):
     case: Mapped[ReviewCase] = relationship(back_populates="events")
 
 
-class RemediationExecution(TimestampMixin, Base):
+class RemediationExecution(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "remediation_executions"
     __table_args__ = (
         UniqueConstraint("case_id", name="uq_remediation_execution_case"),
@@ -704,7 +723,7 @@ class RemediationExecution(TimestampMixin, Base):
     )
 
 
-class RemediationExecutionEvent(Base):
+class RemediationExecutionEvent(TenantScopedMixin, Base):
     __tablename__ = "remediation_execution_events"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -740,7 +759,7 @@ class RemediationExecutionEvent(Base):
     execution: Mapped[RemediationExecution] = relationship(back_populates="events")
 
 
-class MonitoringRun(Base):
+class MonitoringRun(TenantScopedMixin, Base):
     __tablename__ = "monitoring_runs"
     __table_args__ = (UniqueConstraint("schedule_key", name="uq_monitoring_run_schedule_key"),)
 
@@ -764,7 +783,7 @@ class MonitoringRun(Base):
     )
 
 
-class MonitoringStep(Base):
+class MonitoringStep(TenantScopedMixin, Base):
     __tablename__ = "monitoring_steps"
     __table_args__ = (
         UniqueConstraint("run_id", "sequence", name="uq_monitoring_step_sequence"),
@@ -789,7 +808,7 @@ class MonitoringStep(Base):
     run: Mapped[MonitoringRun] = relationship(back_populates="steps")
 
 
-class ConnectorCheckpoint(Base):
+class ConnectorCheckpoint(TenantScopedMixin, Base):
     __tablename__ = "connector_checkpoints"
     __table_args__ = (UniqueConstraint("connector", "scope", name="uq_connector_checkpoint"),)
 

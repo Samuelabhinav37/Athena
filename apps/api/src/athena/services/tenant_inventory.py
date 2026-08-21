@@ -1,5 +1,3 @@
-import hashlib
-import json
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -8,7 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from athena.models import Base
-from athena.tenant_transition import TENANT_TABLES
+from athena.tenant_transition import TENANT_TABLES, tenant_inventory_digest
+
+GLOBAL_TENANT_TABLES = ("tenants",)
 
 
 class TenantInventoryError(RuntimeError):
@@ -25,15 +25,11 @@ class TenantInventorySnapshot(BaseModel):
     inventory_sha256: str
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-
-
 def capture_tenant_inventory(session: Session) -> TenantInventorySnapshot:
     if session.new or session.dirty or session.deleted:
         raise TenantInventoryError("Tenant inventory requires a session with no pending changes")
     model_tables = set(Base.metadata.tables)
-    if model_tables != set(TENANT_TABLES):
+    if model_tables != set(TENANT_TABLES) | set(GLOBAL_TENANT_TABLES):
         raise TenantInventoryError("Tenant transition table coverage does not match model metadata")
 
     counts = {}
@@ -51,5 +47,5 @@ def capture_tenant_inventory(session: Session) -> TenantInventorySnapshot:
     return TenantInventorySnapshot(
         **facts,
         observed_at=datetime.now(UTC),
-        inventory_sha256=hashlib.sha256(_canonical(facts)).hexdigest(),
+        inventory_sha256=tenant_inventory_digest(counts),
     )

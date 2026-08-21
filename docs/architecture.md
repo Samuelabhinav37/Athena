@@ -151,6 +151,11 @@ requires approved counts for all 25 current tables and aborts if observed invent
 six ordered phases preserve immutable evidence, introduce tenant-aware integrity and RLS, propagate
 context to every runtime boundary, and defer enablement until isolation and recovery gates pass.
 
+The first schema increment adds only the global registry and nullable indexed tenant references.
+It neither assigns existing rows nor changes query behavior. Tenant-aware uniqueness, composite
+foreign keys, non-null enforcement, RLS, authenticated claim binding, and runtime enablement remain
+separate gated phases.
+
 ## MVP build order
 
 1. Controlled Keycloak identity lab

@@ -74,3 +74,16 @@ that its SQLAlchemy session has no pending changes, counts all 25 known tables u
 and emits a timestamp, total, per-table counts, and deterministic digest. It never returns row
 content or commits a transaction. Repeating it with unchanged counts produces the same digest; any
 count change invalidates the previously approved bootstrap inventory.
+
+## First additive schema step
+
+Migration `20260820_10` creates a global tenant registry and adds an indexed, nullable `tenant_id`
+foreign key to all 25 scoped tables. The approved local bootstrap record is versioned at
+`tenancy/bootstrap-approval.json` and binds tenant `athena-local` to the exact 614-row inventory
+digest approved under `LOCAL-BOOTSTRAP-2026-001` by `samue`.
+
+The migration deliberately performs no insert, update, backfill, non-null enforcement, composite
+constraint replacement, RLS policy, token handling, or runtime selection. Existing rows remain
+unassigned and Athena remains single-tenant. Applying this schema step does not authorize the later
+backfill; that operation must re-capture inventory, verify the approved digest, and receive its own
+explicit execution approval.

@@ -96,6 +96,7 @@ flowchart LR
 | Portable reporting | Digest-verified deterministic JSON and Markdown renderer contracts |
 | Report readiness | Explicit OSCAL, PDF, and Word context, security, and verification gates |
 | Tenant isolation | Versioned default-deny contract and threat model; runtime integration pending |
+| Tenant schema foundation | Global tenant registry and nullable scope keys; backfill/RLS disabled |
 
 ## Authorization Provenance
 
@@ -324,6 +325,7 @@ Athena/
 - [x] Tenant-isolation contract and threat model
 - [x] Reviewed bootstrap-tenant transition-plan contract
 - [x] Read-only bootstrap tenant inventory command
+- [x] Additive nullable tenant schema migration
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

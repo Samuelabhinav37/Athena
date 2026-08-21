@@ -8,6 +8,7 @@ from athena.tenant_transition import (
     BootstrapTenantApproval,
     TenantTransitionError,
     build_tenant_transition_plan,
+    tenant_inventory_digest,
     validate_observed_inventory,
 )
 from pydantic import ValidationError
@@ -25,6 +26,7 @@ def _approval() -> BootstrapTenantApproval:
         authorized_by="platform-owner",
         approved_at=datetime(2026, 8, 19, 21, 0, tzinfo=UTC),
         expected_preexisting_rows=_counts(),
+        inventory_sha256=tenant_inventory_digest(_counts()),
     )
 
 
@@ -32,7 +34,7 @@ def test_transition_plan_covers_every_model_table_and_is_deterministic() -> None
     first = build_tenant_transition_plan(_approval())
     second = build_tenant_transition_plan(_approval())
 
-    assert set(first.tables) == set(Base.metadata.tables)
+    assert set(first.tables) == set(Base.metadata.tables) - {"tenants"}
     assert first == second
     assert len(first.plan_sha256) == 64
     assert first.status == "review_required"
@@ -62,6 +64,7 @@ def test_approval_requires_complete_inventory_and_observed_counts_must_match() -
             authorized_by="platform-owner",
             approved_at=datetime(2026, 8, 19, 21, 0, tzinfo=UTC),
             expected_preexisting_rows=incomplete,
+            inventory_sha256=tenant_inventory_digest(incomplete),
         )
 
     observed = _counts()

@@ -65,6 +65,7 @@ class BootstrapTenantApproval(BaseModel):
     authorized_by: str = Field(min_length=1, max_length=255)
     approved_at: datetime
     expected_preexisting_rows: dict[str, int]
+    inventory_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("approved_at")
     @classmethod
@@ -83,6 +84,12 @@ class BootstrapTenantApproval(BaseModel):
         if any(isinstance(count, bool) or count < 0 for count in value.values()):
             raise ValueError("inventory counts must be non-negative integers")
         return dict(sorted(value.items()))
+
+    @model_validator(mode="after")
+    def require_matching_inventory_digest(self) -> "BootstrapTenantApproval":
+        if tenant_inventory_digest(self.expected_preexisting_rows) != self.inventory_sha256:
+            raise ValueError("inventory_sha256 does not match expected_preexisting_rows")
+        return self
 
 
 class TenantTransitionPhase(BaseModel):
@@ -118,6 +125,15 @@ class TenantTransitionPlan(BaseModel):
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+
+
+def tenant_inventory_digest(table_counts: dict[str, int]) -> str:
+    facts = {
+        "schema_version": "1.0",
+        "table_counts": dict(sorted(table_counts.items())),
+        "total_rows": sum(table_counts.values()),
+    }
+    return hashlib.sha256(_canonical(facts)).hexdigest()
 
 
 def build_tenant_transition_plan(bootstrap: BootstrapTenantApproval) -> TenantTransitionPlan:
