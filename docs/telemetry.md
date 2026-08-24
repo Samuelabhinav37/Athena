@@ -47,10 +47,12 @@ error that never echoes source content.
 
 The receiver permits 60 requests per authenticated subject per 60-second window and returns `429`
 with `Retry-After` when exceeded. The limiter is bounded to 10,000 subjects and is intentionally
-process-local; production multi-worker or distributed deployments require an external shared rate
-limit before exposing this endpoint. Successful responses use `Cache-Control: no-store` and return
-the normalized envelope with the original-byte digest. A `200` response means validation and
-normalization succeeded—it does not mean the event was queued, persisted, or exported.
+process-local. Startup requires declared API worker and replica counts of exactly one; deployments
+must set `ATHENA_API_WORKER_COUNT` and `ATHENA_API_REPLICA_COUNT` to match their actual topology.
+Multi-worker or distributed deployments remain blocked until Athena implements an external shared
+rate limit. Successful responses use `Cache-Control: no-store` and return the normalized envelope
+with the original-byte digest. A `200` response means validation and normalization succeeded—it
+does not mean the event was queued, persisted, or exported.
 
 ## OTLP/HTTP JSON normalization
 
@@ -110,7 +112,8 @@ are never returned. A verified delivery ID is consumed even when its signed payl
 validation, preventing repeated processing attempts with the same authenticated delivery.
 
 Replay tracking is bounded to 10,000 IDs but is process-local. Multi-worker or multi-instance
-deployments must use a shared atomic replay store and gateway rate limit before enabling this route.
+deployments are rejected by the declared topology settings and require a shared atomic replay store
+and gateway rate limit before that restriction can be removed.
 The HMAC secret must contain at least 32 characters and must be provisioned separately to each
 authorized sender. This slice does not provide secret rotation overlap, provider-specific mappings,
 mutual TLS, persistence, queues, or durable delivery acknowledgement.

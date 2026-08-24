@@ -77,6 +77,16 @@ def test_production_configuration_rejects_incomplete_tenant_isolation() -> None:
         )
 
 
+def test_configuration_rejects_multiple_api_workers_with_process_local_controls() -> None:
+    with pytest.raises(ValidationError, match="process-local telemetry controls require one API"):
+        Settings(api_worker_count=2)
+
+
+def test_configuration_rejects_multiple_api_replicas_with_process_local_controls() -> None:
+    with pytest.raises(ValidationError, match="process-local telemetry controls require one API"):
+        Settings(api_replica_count=2)
+
+
 def test_runtime_images_are_versioned_and_drop_root() -> None:
     api = Path("apps/api/Dockerfile").read_text(encoding="utf-8")
     web = Path("apps/web/Dockerfile").read_text(encoding="utf-8")

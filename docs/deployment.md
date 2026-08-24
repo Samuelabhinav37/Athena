@@ -96,3 +96,8 @@ and separately authorized. A production deployment must additionally provide:
 - immutable image digests, vulnerability and SBOM scanning, and a promotion process;
 - centralized logs, alerting, availability objectives, and incident response ownership; and
 - separately authorized migration, backup, restore, and remediation-executor procedures.
+
+All deployments must declare `ATHENA_API_WORKER_COUNT` and `ATHENA_API_REPLICA_COUNT` to match the
+actual process and platform topology. Both must remain `1` while telemetry rate limiting and webhook
+replay protection are process-local; startup rejects larger values until shared atomic controls are
+implemented.

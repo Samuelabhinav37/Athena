@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     webhook_enabled: bool = False
     webhook_secret: SecretStr = SecretStr("")
     webhook_max_age_seconds: int = Field(default=300, ge=30, le=900)
+    api_worker_count: int = Field(default=1, ge=1, le=1024)
+    api_replica_count: int = Field(default=1, ge=1, le=1024)
     policy_directory: Path = Path("policies")
     control_directory: Path = Path("controls")
     github_api_url: str = "https://api.github.com"
@@ -128,6 +130,14 @@ class Settings(BaseSettings):
     def validate_webhook_configuration(self) -> "Settings":
         if self.webhook_enabled and len(self.webhook_secret.get_secret_value()) < 32:
             raise ValueError("Webhook receiver requires a secret of at least 32 characters")
+        return self
+
+    @model_validator(mode="after")
+    def validate_process_local_telemetry_controls(self) -> "Settings":
+        if self.api_worker_count != 1 or self.api_replica_count != 1:
+            raise ValueError(
+                "process-local telemetry controls require one API worker and one API replica"
+            )
         return self
 
     @model_validator(mode="after")
