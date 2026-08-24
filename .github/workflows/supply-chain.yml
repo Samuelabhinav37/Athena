@@ -31,7 +31,7 @@ jobs:
           cyclonedx-bom==7.3.1
 
       - name: Audit Python dependencies
-        run: python -m pip_audit --strict --skip-editable
+        run: python -m pip_audit --strict .
 
       - name: Generate CycloneDX SBOM
         run: |
