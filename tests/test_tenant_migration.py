@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from athena.models import Base
@@ -19,6 +20,23 @@ def test_additive_tenant_schema_covers_every_scoped_table() -> None:
     for table_name in TENANT_TABLES:
         assert "tenant_id" in Base.metadata.tables[table_name].columns
     assert Base.metadata.tables["tenants"].columns["id"].nullable is False
+
+
+def test_rls_migration_history_covers_every_current_scoped_table() -> None:
+    protected_tables: set[str] = set()
+    for migration_path in Path("migrations/versions").glob("*.py"):
+        module = ast.parse(migration_path.read_text(encoding="utf-8"))
+        for statement in module.body:
+            if not isinstance(statement, ast.Assign):
+                continue
+            if not any(
+                isinstance(target, ast.Name) and target.id == "SCOPED_TABLES"
+                for target in statement.targets
+            ):
+                continue
+            protected_tables.update(ast.literal_eval(statement.value))
+
+    assert set(TENANT_TABLES) <= protected_tables
 
 
 def test_first_tenant_migration_is_nullable_and_performs_no_backfill() -> None:
