@@ -84,11 +84,10 @@ foreign key to all 25 scoped tables. The approved local bootstrap record is vers
 `tenancy/bootstrap-approval.json` and binds tenant `athena-local` to the exact 614-row inventory
 digest approved under `LOCAL-BOOTSTRAP-2026-001` by `samue`.
 
-The migration deliberately performs no insert, update, backfill, non-null enforcement, composite
-constraint replacement, RLS policy, token handling, or runtime selection. Existing rows remain
-unassigned and Athena remains single-tenant. Applying this schema step does not authorize the later
-backfill; that operation must re-capture inventory, verify the approved digest, and receive its own
-explicit execution approval.
+The migration deliberately performed no insert, update, backfill, non-null enforcement, composite
+constraint replacement, RLS policy, token handling, or runtime selection. Immediately after this
+schema step, existing rows remained unassigned and Athena remained single-tenant. The later
+backfill required its own inventory verification, approved digest, and explicit execution approval.
 
 ## Bootstrap backfill dry-run
 
@@ -97,9 +96,8 @@ the approved artifact, recaptures all 25 table counts, verifies the inventory di
 that the bootstrap tenant does not yet exist and every scoped row remains unassigned. It emits a
 deterministic plan digest and proposed operation counts with `database_mutation: false`.
 
-The dry-run cannot create a tenant or update a row. An executable backfill remains a separately
-reviewed implementation and requires fresh explicit approval before it may run against the local
-evidence store.
+The dry-run cannot create a tenant or update a row. It produced the separately approved local plan
+used by the transactional executor described below.
 
 ## Transactional bootstrap executor
 
@@ -114,8 +112,11 @@ field is identical. Deletes, content changes, and later tenant changes remain re
 restores the original trigger bodies before verifying counts and committing; any error rolls back
 the tenant record, assignments, and trigger definitions together.
 
-The executor has been exercised only on a disposable PostgreSQL database. It has not been run on
-the local 614-row evidence store and its implementation does not constitute execution approval.
+After disposable PostgreSQL verification, the executor ran against the local evidence store under
+explicit approval of plan digest
+`c9ec5582876176fd0e4e23d43cd0f0b50805245a086c44353ae6fd040ec721a3`. It created the approved
+`athena-local` tenant and assigned all 614 approved rows atomically; post-execution inventory and
+immutable-trigger checks passed.
 
 ## Tenant integrity readiness
 
@@ -124,9 +125,10 @@ no writes. It counts unassigned rows, checks each scoped foreign-key join for di
 ownership, and inventories unique constraints that still have global scope. Readiness is false if
 any scoped row is unassigned or any relationship crosses tenants.
 
-On the current local database, all 32 scoped relationships have zero mismatches, but readiness is
-false because the 614 approved rows remain unassigned. The report also identifies 15 global unique
-constraints that require a separately approved tenant-aware schema migration after backfill.
+On the current local database, all approved rows are assigned, all scoped relationships have zero
+mismatches, and no tenant-scoped uniqueness rule remains global. This integrity result allowed the
+separately approved constraint and RLS migrations; it does not by itself make the broader
+production-readiness manifest `ready`.
 
 ## Tenant-aware constraint plan
 
@@ -163,4 +165,7 @@ API sessions derive tenant authority only from the verified `athena_tenant_id` O
 background operations use the explicit `ATHENA_SYSTEM_TENANT_ID`. SQLAlchemy validates the context,
 sets it transaction-locally when work begins, and assigns it to new scoped ORM rows. Missing or
 invalid authority fails before API database access, while unset, empty, and stale pooled connection
-state remains fail closed.
+state remains fail closed. Corrective migration `20260824_13` provisions the non-owner runtime login,
+and migration `20260824_14` completes composite tenant ownership for requester and approver
+references. Administrative migration sessions are explicitly marked and tenant-domain query helpers
+reject them because they carry no tenant authority.

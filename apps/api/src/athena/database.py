@@ -45,7 +45,7 @@ def get_administrative_session_factory() -> sessionmaker[Session]:
         bind=get_administrative_engine(),
         autoflush=False,
         expire_on_commit=False,
-        info={},
+        info={"administrative_scope": "migration"},
     )
 
 

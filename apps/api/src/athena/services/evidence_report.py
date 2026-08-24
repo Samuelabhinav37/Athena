@@ -20,6 +20,7 @@ from athena.models import (
     RiskAssessment,
 )
 from athena.schemas import EvidenceControlResponse, EvidenceReportResponse
+from athena.tenant_queries import apply_tenant_scope
 
 AUTHORITATIVE_SOURCES = [
     "identities",
@@ -45,9 +46,7 @@ LIMITATIONS = [
 
 def _count(session: Session, model: type, *criteria: Any) -> int:
     statement = select(func.count()).select_from(model)
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(model.tenant_id == tenant_id)
+    statement = apply_tenant_scope(session, statement, model)
     if criteria:
         statement = statement.where(*criteria)
     return int(session.scalar(statement) or 0)
@@ -55,9 +54,7 @@ def _count(session: Session, model: type, *criteria: Any) -> int:
 
 def _enum_counts(session: Session, model: type, column: Any) -> dict[str, int]:
     statement = select(column, func.count()).select_from(model).group_by(column)
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(model.tenant_id == tenant_id)
+    statement = apply_tenant_scope(session, statement, model)
     rows = session.execute(statement)
     return {
         (value.value if hasattr(value, "value") else str(value)): int(count)
@@ -111,10 +108,9 @@ class EvidenceReportService:
         self.control_directory = control_directory
 
     def build(self) -> EvidenceReportResponse:
-        tenant_id = self.session.info.get("tenant_id")
-        maximum_risk = select(func.max(RiskAssessment.score))
-        if tenant_id is not None:
-            maximum_risk = maximum_risk.where(RiskAssessment.tenant_id == tenant_id)
+        maximum_risk = apply_tenant_scope(
+            self.session, select(func.max(RiskAssessment.score)), RiskAssessment
+        )
         inventory: dict[str, int | float | None] = {
             "identities": _count(self.session, Identity),
             "active_identities": _count(self.session, Identity, Identity.active.is_(True)),

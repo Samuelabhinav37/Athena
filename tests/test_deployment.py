@@ -163,7 +163,7 @@ def test_administrative_session_factory_uses_separate_migration_identity(monkeyp
         assert str(factory.kw["bind"].url).startswith(
             "postgresql+psycopg://athena_migrator:***@admin-db/athena"
         )
-        assert factory.kw["info"] == {}
+        assert factory.kw["info"] == {"administrative_scope": "migration"}
     finally:
         database.get_administrative_engine.cache_clear()
 
