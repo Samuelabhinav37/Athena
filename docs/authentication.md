@@ -68,11 +68,15 @@ ATHENA_SYSTEM_TENANT_ID=athena-local
 ATHENA_OIDC_ISSUER=http://localhost:8080/realms/athena
 ATHENA_OIDC_AUDIENCE=athena-api
 ATHENA_OIDC_JWKS_URL=
+ATHENA_OIDC_IDENTITY_SOURCE=keycloak
 ```
 
 When `ATHENA_OIDC_JWKS_URL` is empty, Athena derives the standard Keycloak certificate endpoint from
 the issuer. `ATHENA_AUTH_REQUIRED=false` exists only for isolated development and automated tests;
 production deployments must leave authentication enabled.
-`ATHENA_SYSTEM_TENANT_ID` is the explicit context for CLI commands and background jobs. The local
-default is forbidden in production, where operators must configure the deployment's canonical
-system tenant.
+`ATHENA_OIDC_IDENTITY_SOURCE` identifies the normalized connector source trusted for subject-to-
+tenant membership. It defaults to `keycloak`; deployments using another OIDC authority must set it
+to the matching normalized identity source, such as `azure_entra`. A matching subject from any other
+source does not establish membership.
+`ATHENA_SYSTEM_TENANT_ID` is used only by the explicit authentication-disabled development path.
+Tenant-scoped CLI commands and background jobs require their own `--tenant-id` argument.

@@ -91,6 +91,7 @@ services:
       ATHENA_OIDC_ISSUER: http://localhost:8080/realms/athena
       ATHENA_OIDC_JWKS_URL: http://keycloak:8080/realms/athena/protocol/openid-connect/certs
       ATHENA_OIDC_AUDIENCE: athena-api
+      ATHENA_OIDC_IDENTITY_SOURCE: keycloak
     depends_on:
       postgres:
         condition: service_healthy

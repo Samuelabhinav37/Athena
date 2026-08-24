@@ -189,6 +189,37 @@ def test_tenant_membership_requires_active_subject_in_claimed_tenant() -> None:
         assert captured.value.status_code == 403
 
 
+def test_tenant_membership_uses_configured_trusted_oidc_identity_source() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    settings = Settings(
+        database_url="sqlite://",
+        auth_required=True,
+        oidc_identity_source="azure_entra",
+    )
+    principal = Principal("entra-object-1", "alice", frozenset(), {})
+    context = TenantContext(
+        tenant_id="tenant-a", subject=principal.subject, source="oidc_claim"
+    )
+
+    with Session(engine) as session:
+        session.add(
+            Identity(
+                tenant_id="tenant-a",
+                source="azure_entra",
+                external_id=principal.subject,
+                username="alice@example.test",
+                identity_type=IdentityType.HUMAN,
+                display_name="Alice",
+                active=True,
+                source_metadata={},
+            )
+        )
+        session.flush()
+
+        authorize_tenant_membership(principal, context, settings, session)
+
+
 def test_protected_route_requires_bearer_token(keys: tuple[bytes, bytes]) -> None:
     private_key, public_key = keys
     application = FastAPI()

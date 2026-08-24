@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     oidc_issuer: str = "http://localhost:8080/realms/athena"
     oidc_audience: str = "athena-api"
     oidc_jwks_url: str = ""
+    oidc_identity_source: str = Field(
+        default="keycloak",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$",
+    )
 
     @field_validator("ollama_url")
     @classmethod

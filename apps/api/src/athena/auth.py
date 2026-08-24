@@ -162,7 +162,7 @@ def authorize_tenant_membership(
     identity_id = session.scalar(
         select(Identity.id).where(
             Identity.tenant_id == context.tenant_id,
-            Identity.source == "keycloak",
+            Identity.source == settings.oidc_identity_source,
             Identity.external_id == principal.subject,
             Identity.active.is_(True),
         )
