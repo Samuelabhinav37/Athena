@@ -3,11 +3,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import MonitoringRun, MonitoringStatus, MonitoringStep
+from athena.tenant_queries import tenant_select
 
 Operation = tuple[str, Callable[[], dict]]
 
@@ -36,9 +36,8 @@ class MonitoringService:
         if not schedule_key.strip():
             raise ValueError("schedule_key is required")
         run = self.session.scalar(
-            select(MonitoringRun)
+            tenant_select(self.session, MonitoringRun, MonitoringRun.schedule_key == schedule_key)
             .options(selectinload(MonitoringRun.steps))
-            .where(MonitoringRun.schedule_key == schedule_key)
         )
         if run is not None and run.status == MonitoringStatus.COMPLETED:
             return self._outcome(run, True)
@@ -118,11 +117,8 @@ class MonitoringService:
 
 def load_monitoring_runs(session: Session) -> list[MonitoringRun]:
     statement = (
-        select(MonitoringRun)
+        tenant_select(session, MonitoringRun)
         .options(selectinload(MonitoringRun.steps))
         .order_by(MonitoringRun.started_at.desc())
     )
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(MonitoringRun.tenant_id == tenant_id)
     return list(session.scalars(statement))

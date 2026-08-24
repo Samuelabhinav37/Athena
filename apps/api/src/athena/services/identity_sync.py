@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from athena.collectors.contracts import NormalizedGroup, NormalizedIdentity, NormalizedRole
 from athena.models import Group, Identity, Role, utc_now
+from athena.tenant_queries import tenant_select
 
 
 @dataclass(frozen=True)
@@ -25,12 +25,8 @@ class IdentitySyncService:
         group_keys: set[tuple[str, str]] = set()
         role_keys: set[tuple[str, str]] = set()
         sources = {record.source for record in records}
-        group_statement = select(Group).where(Group.source.in_(sources))
-        role_statement = select(Role).where(Role.source.in_(sources))
-        tenant_id = self.session.info.get("tenant_id")
-        if tenant_id is not None:
-            group_statement = group_statement.where(Group.tenant_id == tenant_id)
-            role_statement = role_statement.where(Role.tenant_id == tenant_id)
+        group_statement = tenant_select(self.session, Group, Group.source.in_(sources))
+        role_statement = tenant_select(self.session, Role, Role.source.in_(sources))
         self._groups = {
             (group.source, group.external_id): group
             for group in self.session.scalars(group_statement)
@@ -75,13 +71,12 @@ class IdentitySyncService:
         return SyncResult(created, updated, len(group_keys), len(role_keys))
 
     def _identity(self, source: str, external_id: str) -> Identity | None:
-        statement = select(Identity).where(
+        statement = tenant_select(
+            self.session,
+            Identity,
             Identity.source == source,
             Identity.external_id == external_id,
         )
-        tenant_id = self.session.info.get("tenant_id")
-        if tenant_id is not None:
-            statement = statement.where(Identity.tenant_id == tenant_id)
         return self.session.scalar(statement)
 
     def _upsert_group(self, source: str, record: NormalizedGroup) -> Group:

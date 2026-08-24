@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import AccessObservation, EffectiveEntitlement, Identity, IdentityType
 from athena.services.provenance import governance_gaps
+from athena.tenant_queries import tenant_select
 
 MACHINE_IDENTITY_TYPES = (
     IdentityType.SERVICE_ACCOUNT,
@@ -45,43 +45,32 @@ class MachineIdentityPosture:
 
 def load_machine_identity_posture(session: Session) -> list[MachineIdentityPosture]:
     statement = (
-        select(Identity)
-        .where(Identity.identity_type.in_(MACHINE_IDENTITY_TYPES))
+        tenant_select(session, Identity, Identity.identity_type.in_(MACHINE_IDENTITY_TYPES))
         .order_by(Identity.source, Identity.username, Identity.id)
     )
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(Identity.tenant_id == tenant_id)
     identities = session.scalars(statement).all()
     return [_posture(session, identity) for identity in identities]
 
 
 def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
     entitlement_statement = (
-        select(EffectiveEntitlement)
+        tenant_select(
+            session,
+            EffectiveEntitlement,
+            EffectiveEntitlement.identity_id == identity.id,
+            EffectiveEntitlement.active.is_(True),
+        )
         .options(
             selectinload(EffectiveEntitlement.provenance_edges),
             selectinload(EffectiveEntitlement.grant),
         )
-        .where(
-            EffectiveEntitlement.identity_id == identity.id,
-            EffectiveEntitlement.active.is_(True),
-        )
     )
     observation_statement = (
-        select(AccessObservation)
+        tenant_select(session, AccessObservation)
         .join(EffectiveEntitlement)
         .where(EffectiveEntitlement.identity_id == identity.id)
         .order_by(AccessObservation.last_used_at.desc())
     )
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        entitlement_statement = entitlement_statement.where(
-            EffectiveEntitlement.tenant_id == tenant_id
-        )
-        observation_statement = observation_statement.where(
-            AccessObservation.tenant_id == tenant_id
-        )
     entitlements = session.scalars(entitlement_statement).unique().all()
     observations = session.scalars(observation_statement).all()
     last_used_at = next(

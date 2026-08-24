@@ -5,7 +5,16 @@ from athena.collectors.github import GitHubCollector, GitHubSnapshot
 from athena.config import Settings
 from athena.database import get_db_session
 from athena.main import app
-from athena.models import AccessGrant, Base, ConnectorCheckpoint, EffectiveEntitlement, Identity
+from athena.models import (
+    AccessGrant,
+    Base,
+    ConnectorCheckpoint,
+    EffectiveEntitlement,
+    Identity,
+    Resource,
+    ResourceType,
+    Sensitivity,
+)
 from athena.services.github_sync import GitHubSyncService
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -240,6 +249,52 @@ def test_checkpoint_cache_is_not_reused_across_tenants() -> None:
         session.commit()
 
         assert GitHubSyncService(session).checkpoint("acme") is None
+
+    engine.dispose()
+
+
+def test_sync_does_not_reuse_another_tenants_repository() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "test-tenant"},
+    )
+    with factory() as session:
+        tenant_a_resource = Resource(
+            tenant_id="tenant-a",
+            source="github",
+            external_id="201",
+            name="tenant-a/athena",
+            resource_type=ResourceType.REPOSITORY,
+            sensitivity=Sensitivity.HIGH,
+        )
+        session.add(tenant_a_resource)
+        session.commit()
+        snapshot = GitHubSnapshot(
+            organization="acme",
+            members=[],
+            repositories=[{"id": 201, "name": "athena", "private": False}],
+            permissions=[],
+            endpoint_cache={},
+            fingerprint="e" * 64,
+        )
+
+        GitHubSyncService(session).sync(snapshot)
+
+        tenant_b_resource = session.scalar(
+            select(Resource).where(
+                Resource.tenant_id == "test-tenant",
+                Resource.source == "github",
+                Resource.external_id == "201",
+            )
+        )
+        assert tenant_b_resource is not None
+        assert tenant_b_resource.name == "athena"
+        assert tenant_a_resource.name == "tenant-a/athena"
+        assert tenant_a_resource.sensitivity == Sensitivity.HIGH
 
     engine.dispose()
 

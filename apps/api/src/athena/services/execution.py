@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import (
@@ -17,6 +16,7 @@ from athena.models import (
     ReviewStatus,
 )
 from athena.services.provenance import ProvenanceService
+from athena.tenant_queries import tenant_select
 
 
 class ExecutionError(RuntimeError):
@@ -57,7 +57,9 @@ class ExecutionService:
         if not key:
             raise ExecutionError("An idempotency key is required")
         existing = self.session.scalar(
-            select(RemediationExecution).where(
+            tenant_select(
+                self.session,
+                RemediationExecution,
                 (RemediationExecution.case_id == case.id)
                 | (RemediationExecution.idempotency_key == key)
             )
@@ -70,7 +72,13 @@ class ExecutionService:
             raise ExecutionError("Only a resolved revoke decision can create an execution")
         if case.entitlement_id is None:
             raise ExecutionError("The review does not identify an entitlement to revoke")
-        entitlement = self.session.get(EffectiveEntitlement, case.entitlement_id)
+        entitlement = self.session.scalar(
+            tenant_select(
+                self.session,
+                EffectiveEntitlement,
+                EffectiveEntitlement.id == case.entitlement_id,
+            )
+        )
         if entitlement is None or not entitlement.active:
             raise ExecutionError("The reviewed entitlement is not active")
         grant = self.session.get(AccessGrant, entitlement.grant_id)
@@ -215,23 +223,16 @@ class ExecutionService:
 
 def load_execution(session: Session, execution_id: uuid.UUID) -> RemediationExecution | None:
     statement = (
-        select(RemediationExecution)
+        tenant_select(session, RemediationExecution, RemediationExecution.id == execution_id)
         .options(selectinload(RemediationExecution.events))
-        .where(RemediationExecution.id == execution_id)
     )
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(RemediationExecution.tenant_id == tenant_id)
     return session.scalar(statement)
 
 
 def load_executions(session: Session) -> list[RemediationExecution]:
     statement = (
-        select(RemediationExecution)
+        tenant_select(session, RemediationExecution)
         .options(selectinload(RemediationExecution.events))
         .order_by(RemediationExecution.created_at.desc())
     )
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(RemediationExecution.tenant_id == tenant_id)
     return list(session.scalars(statement))

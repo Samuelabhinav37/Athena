@@ -4,11 +4,11 @@ from typing import Any
 
 from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError
-from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.config import Settings
 from athena.models import EffectiveEntitlement
+from athena.tenant_queries import tenant_select
 
 
 class AttackPathError(RuntimeError):
@@ -45,13 +45,9 @@ class AttackPath:
 
 def build_projection(session: Session) -> GraphProjection:
     statement = (
-        select(EffectiveEntitlement)
+        tenant_select(session, EffectiveEntitlement, EffectiveEntitlement.active.is_(True))
         .options(selectinload(EffectiveEntitlement.provenance_edges))
-        .where(EffectiveEntitlement.active.is_(True))
     )
-    tenant_id = session.info.get("tenant_id")
-    if tenant_id is not None:
-        statement = statement.where(EffectiveEntitlement.tenant_id == tenant_id)
     entitlements = session.scalars(statement).all()
     nodes: dict[str, GraphNode] = {}
     edges: dict[tuple[str, str, str, str], GraphEdge] = {}
