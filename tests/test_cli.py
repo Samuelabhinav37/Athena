@@ -1,3 +1,4 @@
+import pytest
 from athena import cli
 from athena.collectors.keycloak import KeycloakCollectionError
 
@@ -22,7 +23,7 @@ def test_sync_command_reports_collection_failure_without_traceback(
 
     monkeypatch.setattr(cli, "KeycloakCollector", FailingCollector)
 
-    assert cli.sync_keycloak() == 1
+    assert cli.sync_keycloak("tenant-a") == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == (
@@ -102,3 +103,70 @@ def test_tenant_rls_plan_command_dispatches_read_only_plan(monkeypatch) -> None:
     monkeypatch.setattr(cli, "tenant_rls_plan", lambda: 37)
 
     assert cli.main() == 37
+
+
+def test_tenant_scoped_command_requires_and_dispatches_explicit_tenant(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "sync_keycloak", lambda tenant_id: 41)
+    monkeypatch.setattr(cli.sys, "argv", ["athena", "sync-keycloak"])
+    with pytest.raises(SystemExit) as captured:
+        cli.main()
+    assert captured.value.code == 2
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["athena", "sync-keycloak", "--tenant-id", "tenant-a"],
+    )
+    observed = None
+
+    def synchronize(tenant_id: str) -> int:
+        nonlocal observed
+        observed = tenant_id
+        return 41
+
+    monkeypatch.setattr(cli, "sync_keycloak", synchronize)
+
+    assert cli.main() == 41
+    assert observed == "tenant-a"
+
+
+def test_monitor_loop_retains_explicit_tenant_for_each_slot(monkeypatch) -> None:
+    observed = None
+
+    def monitor(tenant_id: str, username: str, schedule_key: str, requested_by: str) -> int:
+        nonlocal observed
+        observed = (tenant_id, username, schedule_key, requested_by)
+        return 1
+
+    monkeypatch.setattr(cli, "run_monitoring_slot", monitor)
+
+    assert cli.monitoring_loop("tenant-a", "alice", 60, "scheduler") == 1
+    assert observed is not None
+    assert observed[0] == "tenant-a"
+    assert observed[1] == "alice"
+    assert observed[3] == "scheduler"
+
+
+def test_job_session_factory_receives_only_the_explicit_tenant(monkeypatch, capsys) -> None:
+    observed = None
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def scalar(self, *_: object):
+            return None
+
+    def factory(tenant_id: str):
+        nonlocal observed
+        observed = tenant_id
+        return Session
+
+    monkeypatch.setattr(cli, "get_session_factory", factory)
+
+    assert cli.assess_risk("tenant-b", "alice") == 1
+    assert observed == "tenant-b"
+    assert "identity alice was not found" in capsys.readouterr().err

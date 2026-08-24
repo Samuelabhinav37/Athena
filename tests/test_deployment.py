@@ -55,7 +55,8 @@ def test_production_configuration_rejects_development_security_defaults() -> Non
         Settings(env="production")
 
     message = str(captured.value)
-    assert "default database credential" in message
+    assert "default application database credential" in message
+    assert "default migration database credential" in message
     assert "default Keycloak collector secret" in message
     assert "OIDC issuer must use HTTPS" in message
 
@@ -63,7 +64,10 @@ def test_production_configuration_rejects_development_security_defaults() -> Non
 def test_production_configuration_accepts_explicit_secure_values() -> None:
     settings = Settings(
         env="production",
-        database_url="postgresql+psycopg://athena:strong-password@db:5432/athena",
+        database_url="postgresql+psycopg://athena_app:strong-app-password@db:5432/athena",
+        migration_database_url=(
+            "postgresql+psycopg://athena_migrator:strong-owner-password@db:5432/athena"
+        ),
         system_tenant_id="production-system",
         keycloak_client_secret="separately-provisioned-secret",
         oidc_issuer="https://identity.example.test/realms/athena",

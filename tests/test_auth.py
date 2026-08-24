@@ -7,13 +7,18 @@ from athena.auth import (
     TokenVerifier,
     ViewerPrincipal,
     authorize,
+    authorize_tenant_membership,
     get_tenant_context,
 )
 from athena.config import Settings
+from athena.models import Base, Identity, IdentityType
+from athena.tenancy import TenantContext
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture(scope="module")
@@ -125,6 +130,63 @@ def test_auth_disabled_uses_explicit_system_tenant() -> None:
 
     assert context.tenant_id == "local-test"
     assert context.source == "system_job"
+
+
+def test_tenant_membership_requires_active_subject_in_claimed_tenant() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    settings = Settings(database_url="sqlite://", auth_required=True)
+    principal = Principal("subject-1", "charlie", frozenset(), {})
+    claimed_tenant = TenantContext(
+        tenant_id="tenant-a", subject=principal.subject, source="oidc_claim"
+    )
+
+    with Session(engine) as session:
+        session.add_all(
+            [
+                Identity(
+                    tenant_id="tenant-a",
+                    source="keycloak",
+                    external_id="subject-1",
+                    username="charlie",
+                    identity_type=IdentityType.HUMAN,
+                    display_name="Charlie",
+                    active=True,
+                    source_metadata={},
+                ),
+                Identity(
+                    tenant_id="tenant-b",
+                    source="keycloak",
+                    external_id="other-subject",
+                    username="other",
+                    identity_type=IdentityType.HUMAN,
+                    display_name="Other",
+                    active=True,
+                    source_metadata={},
+                ),
+            ]
+        )
+        session.flush()
+
+        authorize_tenant_membership(principal, claimed_tenant, settings, session)
+
+        for tenant_id, subject in (
+            ("tenant-b", "subject-1"),
+            ("tenant-a", "unknown-subject"),
+        ):
+            with pytest.raises(HTTPException) as captured:
+                authorize_tenant_membership(
+                    Principal(subject, subject, frozenset(), {}),
+                    TenantContext(tenant_id=tenant_id, subject=subject, source="oidc_claim"),
+                    settings,
+                    session,
+                )
+            assert captured.value.status_code == 403
+
+        session.query(Identity).filter_by(external_id="subject-1").update({"active": False})
+        with pytest.raises(HTTPException) as captured:
+            authorize_tenant_membership(principal, claimed_tenant, settings, session)
+        assert captured.value.status_code == 403
 
 
 def test_protected_route_requires_bearer_token(keys: tuple[bytes, bytes]) -> None:

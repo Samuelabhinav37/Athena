@@ -17,7 +17,7 @@ stack keeps both ports private to its Compose network.
 After PostgreSQL synchronization and provenance materialization, explicitly project active lineage:
 
 ```bash
-python -m athena.cli project-attack-graph
+python -m athena.cli project-attack-graph --tenant-id athena-local
 ```
 
 The projection uses stable canonical UUIDs and idempotent `MERGE` operations. It never alters

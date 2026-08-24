@@ -381,13 +381,13 @@ class AccessGrant(TenantScopedMixin, TimestampMixin, Base):
             "requested_by_identity_id",
             "identities",
             "fk_access_grants_tenant_requested_by_identity_id_identities",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
         tenant_foreign_key(
             "approved_by_identity_id",
             "identities",
             "fk_access_grants_tenant_approved_by_identity_id_identities",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
     )
 

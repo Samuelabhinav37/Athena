@@ -34,7 +34,7 @@ ATHENA_AZURE_SUBSCRIPTION_ID=00000000-0000-0000-0000-000000000000
 Run a read-only synchronization:
 
 ```bash
-python -m athena.cli sync-azure
+python -m athena.cli sync-azure --tenant-id athena-local
 ```
 
 ## Collected evidence

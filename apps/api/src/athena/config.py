@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 
     env: str = "development"
     database_url: str = Field(
+        default="postgresql+psycopg://athena_app:athena-app-local@localhost:5432/athena",
+        min_length=1,
+    )
+    migration_database_url: str = Field(
         default="postgresql+psycopg://athena:athena@localhost:5432/athena",
         min_length=1,
     )
@@ -125,8 +129,10 @@ class Settings(BaseSettings):
         errors = []
         if not self.auth_required:
             errors.append("authentication must be enabled")
-        if "athena:athena@" in self.database_url:
-            errors.append("the default database credential is forbidden")
+        if "athena-app-local@" in self.database_url:
+            errors.append("the default application database credential is forbidden")
+        if "athena:athena@" in self.migration_database_url:
+            errors.append("the default migration database credential is forbidden")
         if self.system_tenant_id == "athena-local":
             errors.append("the default system tenant is forbidden")
         if self.keycloak_client_secret.get_secret_value() == "athena-local-collector-secret":

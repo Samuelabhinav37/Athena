@@ -175,20 +175,21 @@ token for the `athena-api` audience and a valid `athena_tenant_id` claim. See
 Run the complete Alice identity-drift story:
 
 ```bash
-python -m athena.cli sync-keycloak
-python -m athena.cli seed-provenance-demo
-python -m athena.cli project-attack-graph
-python -m athena.cli evaluate-policies --username alice
-python -m athena.cli apply-drift-demo
-python -m athena.cli assess-risk --username alice
-python -m athena.cli run-peer-anomaly --username alice
-python -m athena.cli open-review --username alice --actor athena-risk-engine --due-days 7
+python -m athena.cli sync-keycloak --tenant-id athena-local
+python -m athena.cli seed-provenance-demo --tenant-id athena-local
+python -m athena.cli project-attack-graph --tenant-id athena-local
+python -m athena.cli evaluate-policies --tenant-id athena-local --username alice
+python -m athena.cli apply-drift-demo --tenant-id athena-local
+python -m athena.cli assess-risk --tenant-id athena-local --username alice
+python -m athena.cli run-peer-anomaly --tenant-id athena-local --username alice
+python -m athena.cli open-review --tenant-id athena-local --username alice --actor athena-risk-engine --due-days 7
 ```
 
 Run the durable monitoring pipeline:
 
 ```bash
 python -m athena.cli monitor-once \
+  --tenant-id athena-local \
   --username alice \
   --schedule-key manual:demo
 ```
@@ -273,7 +274,7 @@ ATHENA_GITHUB_TOKEN=your-read-only-token
 Then synchronize organization members, teams, repositories, and effective repository permissions:
 
 ```bash
-python -m athena.cli sync-github
+python -m athena.cli sync-github --tenant-id athena-local
 ```
 
 The connector uses API-version headers, pagination, ETags, cached checkpoints, content fingerprints, and revocation detection. Never commit `.env` or production credentials.
@@ -292,7 +293,7 @@ ATHENA_AZURE_SUBSCRIPTION_ID=00000000-0000-0000-0000-000000000000
 Run a read-only synchronization:
 
 ```bash
-python -m athena.cli sync-azure
+python -m athena.cli sync-azure --tenant-id athena-local
 ```
 
 The connector collects Entra users, groups, service principals, managed identities, Azure RBAC role

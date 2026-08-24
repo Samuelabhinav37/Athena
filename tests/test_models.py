@@ -1,5 +1,5 @@
 from athena.models import Base
-from sqlalchemy import create_engine
+from sqlalchemy import ForeignKeyConstraint, create_engine
 
 
 def test_canonical_schema_contains_identity_backbone_tables() -> None:
@@ -34,3 +34,14 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
             "review_cases",
         "review_events",
     }
+
+
+def test_access_grant_requester_and_approver_references_restrict_identity_deletion() -> None:
+    constraints = {
+        constraint.name: constraint.ondelete
+        for constraint in Base.metadata.tables["access_grants"].constraints
+        if isinstance(constraint, ForeignKeyConstraint)
+    }
+
+    assert constraints["fk_access_grants_tenant_requested_by_identity_id_identities"] == "RESTRICT"
+    assert constraints["fk_access_grants_tenant_approved_by_identity_id_identities"] == "RESTRICT"

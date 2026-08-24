@@ -6,26 +6,20 @@ from fastapi import Depends
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from athena.auth import get_tenant_context
-from athena.config import get_settings
+from athena.auth import (
+    Principal,
+    authorize_tenant_membership,
+    get_current_principal,
+    get_tenant_context,
+)
+from athena.config import Settings, get_settings
 from athena.models import TenantScopedMixin
 from athena.tenancy import TenantContext
 
 
 @lru_cache
 def get_engine() -> Engine:
-    engine = create_engine(get_settings().database_url, pool_pre_ping=True)
-    if engine.dialect.name == "postgresql":
-        event.listen(engine, "connect", _assume_application_role)
-    return engine
-
-
-def _assume_application_role(dbapi_connection: object, _: object) -> None:
-    cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
-    try:
-        cursor.execute("SET ROLE athena_app")
-    finally:
-        cursor.close()
+    return create_engine(get_settings().database_url, pool_pre_ping=True)
 
 
 def get_session_factory(tenant_id: str | None = None) -> sessionmaker[Session]:
@@ -43,8 +37,11 @@ def get_system_session_factory() -> sessionmaker[Session]:
 
 def get_db_session(
     context: Annotated[TenantContext, Depends(get_tenant_context)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> Generator[Session]:
     with get_session_factory(context.tenant_id)() as session:
+        authorize_tenant_membership(principal, context, settings, session)
         yield session
 
 

@@ -9,8 +9,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError, PyJWKClientError
 from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from athena.config import Settings, get_settings
+from athena.models import Identity
 from athena.tenancy import TenantContext
 
 VIEWER = "athena-viewer"
@@ -146,6 +149,29 @@ def get_tenant_context(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access token is missing a valid Athena tenant claim",
         ) from error
+
+
+def authorize_tenant_membership(
+    principal: Principal,
+    context: TenantContext,
+    settings: Settings,
+    session: Session,
+) -> None:
+    if not settings.auth_required:
+        return
+    identity_id = session.scalar(
+        select(Identity.id).where(
+            Identity.tenant_id == context.tenant_id,
+            Identity.source == "keycloak",
+            Identity.external_id == principal.subject,
+            Identity.active.is_(True),
+        )
+    )
+    if identity_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authenticated identity is not an active member of the requested tenant",
+        )
 
 
 def authorize(principal: Principal, required_role: str) -> Principal:
