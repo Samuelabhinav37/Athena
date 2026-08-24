@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -24,16 +25,20 @@ def test_transactional_backfill_preserves_and_restores_immutable_controls() -> N
     with factory.begin() as session:
         # Recreate the pre-tenant state this transition test is specifically validating.
         session.execute(text("SET LOCAL session_replication_role = replica"))
-        session.add(
-            AuditEvent(
-                actor_type="test",
-                actor_id="operator",
-                action="seed",
-                entity_type="test",
-                entity_id="evidence-1",
-            )
+        session.execute(text("ALTER TABLE audit_events ALTER COLUMN tenant_id DROP NOT NULL"))
+        session.execute(
+            text(
+                """
+                INSERT INTO audit_events (
+                    id, occurred_at, actor_type, actor_id, action, entity_type, entity_id,
+                    tenant_id
+                ) VALUES (
+                    :id, now(), 'test', 'operator', 'seed', 'test', 'evidence-1', NULL
+                )
+                """
+            ),
+            {"id": uuid.uuid4()},
         )
-        session.flush()
         session.execute(text("SET LOCAL session_replication_role = origin"))
     with factory() as session:
         counts = capture_tenant_inventory(session).table_counts
@@ -53,6 +58,7 @@ def test_transactional_backfill_preserves_and_restores_immutable_controls() -> N
             approval,
             confirmed_plan_sha256=plan.plan_sha256,
         )
+        session.execute(text("ALTER TABLE audit_events ALTER COLUMN tenant_id SET NOT NULL"))
 
     assert result.assigned_rows == 1
     assert result.assigned_table_counts["audit_events"] == 1
