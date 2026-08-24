@@ -25,7 +25,10 @@ def test_additive_tenant_schema_covers_every_scoped_table() -> None:
 def test_rls_migration_history_covers_every_current_scoped_table() -> None:
     protected_tables: set[str] = set()
     for migration_path in Path("migrations/versions").glob("*.py"):
-        module = ast.parse(migration_path.read_text(encoding="utf-8"))
+        source = migration_path.read_text(encoding="utf-8")
+        if "CREATE POLICY" not in source:
+            continue
+        module = ast.parse(source)
         for statement in module.body:
             if not isinstance(statement, ast.Assign):
                 continue
@@ -35,6 +38,12 @@ def test_rls_migration_history_covers_every_current_scoped_table() -> None:
             ):
                 continue
             protected_tables.update(ast.literal_eval(statement.value))
+        assert "for table in SCOPED_TABLES:" in source
+        assert 'GRANT SELECT, INSERT, UPDATE, DELETE ON "{table}"' in source
+        assert 'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY' in source
+        assert 'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY' in source
+        assert 'CREATE POLICY "{table}_tenant_isolation"' in source
+        assert "USING ({TENANT_EXPRESSION}) WITH CHECK ({TENANT_EXPRESSION})" in source
 
     assert set(TENANT_TABLES) <= protected_tables
 
