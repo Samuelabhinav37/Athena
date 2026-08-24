@@ -214,18 +214,24 @@ class ExecutionService:
 
 
 def load_execution(session: Session, execution_id: uuid.UUID) -> RemediationExecution | None:
-    return session.scalar(
+    statement = (
         select(RemediationExecution)
         .options(selectinload(RemediationExecution.events))
         .where(RemediationExecution.id == execution_id)
     )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(RemediationExecution.tenant_id == tenant_id)
+    return session.scalar(statement)
 
 
 def load_executions(session: Session) -> list[RemediationExecution]:
-    return list(
-        session.scalars(
-            select(RemediationExecution)
-            .options(selectinload(RemediationExecution.events))
-            .order_by(RemediationExecution.created_at.desc())
-        )
+    statement = (
+        select(RemediationExecution)
+        .options(selectinload(RemediationExecution.events))
+        .order_by(RemediationExecution.created_at.desc())
     )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(RemediationExecution.tenant_id == tenant_id)
+    return list(session.scalars(statement))

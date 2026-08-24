@@ -154,16 +154,22 @@ class RemediationService:
 
 
 def load_case(session: Session, case_id: uuid.UUID) -> ReviewCase | None:
-    return session.scalar(
+    statement = (
         select(ReviewCase).options(selectinload(ReviewCase.events)).where(ReviewCase.id == case_id)
     )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(ReviewCase.tenant_id == tenant_id)
+    return session.scalar(statement)
 
 
 def load_cases(session: Session) -> list[ReviewCase]:
-    return list(
-        session.scalars(
-            select(ReviewCase)
-            .options(selectinload(ReviewCase.events))
-            .order_by(ReviewCase.created_at.desc())
-        )
+    statement = (
+        select(ReviewCase)
+        .options(selectinload(ReviewCase.events))
+        .order_by(ReviewCase.created_at.desc())
     )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(ReviewCase.tenant_id == tenant_id)
+    return list(session.scalars(statement))

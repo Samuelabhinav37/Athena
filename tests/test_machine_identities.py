@@ -101,6 +101,20 @@ def test_machine_identity_api_rejects_unbounded_limit(machine_session: Session) 
     assert response.status_code == 422
 
 
+def test_machine_identity_api_excludes_another_tenant_posture(
+    machine_session: Session,
+) -> None:
+    machine_session.info["tenant_id"] = "tenant-with-no-machine-identities"
+    app.dependency_overrides[get_db_session] = lambda: machine_session
+    try:
+        response = TestClient(app).get("/v1/machine-identities")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_machine_identity_uses_azure_credential_expiration_evidence(
     machine_session: Session,
 ) -> None:

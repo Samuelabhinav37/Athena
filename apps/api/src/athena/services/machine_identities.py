@@ -44,16 +44,20 @@ class MachineIdentityPosture:
 
 
 def load_machine_identity_posture(session: Session) -> list[MachineIdentityPosture]:
-    identities = session.scalars(
+    statement = (
         select(Identity)
         .where(Identity.identity_type.in_(MACHINE_IDENTITY_TYPES))
         .order_by(Identity.source, Identity.username, Identity.id)
-    ).all()
+    )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(Identity.tenant_id == tenant_id)
+    identities = session.scalars(statement).all()
     return [_posture(session, identity) for identity in identities]
 
 
 def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
-    entitlements = session.scalars(
+    entitlement_statement = (
         select(EffectiveEntitlement)
         .options(
             selectinload(EffectiveEntitlement.provenance_edges),
@@ -63,13 +67,23 @@ def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
             EffectiveEntitlement.identity_id == identity.id,
             EffectiveEntitlement.active.is_(True),
         )
-    ).unique().all()
-    observations = session.scalars(
+    )
+    observation_statement = (
         select(AccessObservation)
         .join(EffectiveEntitlement)
         .where(EffectiveEntitlement.identity_id == identity.id)
         .order_by(AccessObservation.last_used_at.desc())
-    ).all()
+    )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        entitlement_statement = entitlement_statement.where(
+            EffectiveEntitlement.tenant_id == tenant_id
+        )
+        observation_statement = observation_statement.where(
+            AccessObservation.tenant_id == tenant_id
+        )
+    entitlements = session.scalars(entitlement_statement).unique().all()
+    observations = session.scalars(observation_statement).all()
     last_used_at = next(
         (observation.last_used_at for observation in observations if observation.last_used_at), None
     )

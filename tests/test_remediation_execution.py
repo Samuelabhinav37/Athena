@@ -256,3 +256,22 @@ def test_execution_api_requires_administrator_and_uses_authenticated_actor(
     assert created.json()["status"] == "pending"
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [created.json()["id"]]
+
+
+def test_execution_detail_returns_not_found_for_another_tenant_execution_id(
+    risk_session: Session,
+) -> None:
+    case = approved_case(risk_session)
+    execution = ExecutionService(risk_session).request(case, "frank", "cross-tenant-lookup")
+    risk_session.info["tenant_id"] = "tenant-with-no-execution-evidence"
+    app.dependency_overrides[get_db_session] = lambda: risk_session
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        "user-frank", "frank", frozenset({"athena-administrator"}), {}
+    )
+    try:
+        response = TestClient(app).get(f"/v1/executions/{execution.id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Execution not found"}

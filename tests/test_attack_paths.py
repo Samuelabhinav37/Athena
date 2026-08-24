@@ -137,3 +137,19 @@ def test_attack_path_api_rejects_unbounded_depth(graph_session: Session) -> None
     app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_attack_path_api_returns_not_found_for_another_tenant_identity(
+    graph_session: Session,
+) -> None:
+    identity_id = graph_session.query(Identity.id).filter_by(username="alice").scalar()
+    assert identity_id is not None
+    graph_session.info["tenant_id"] = "tenant-with-no-graph-identities"
+    app.dependency_overrides[get_db_session] = lambda: graph_session
+    try:
+        response = TestClient(app).get(f"/v1/attack-paths/identities/{identity_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Identity not found"}

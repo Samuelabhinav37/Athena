@@ -297,6 +297,27 @@ def test_review_api_supports_open_assign_and_decide(risk_session: Session) -> No
     assert {event["actor"] for event in payload["events"]} == {"charlie"}
 
 
+def test_review_detail_returns_not_found_for_another_tenant_case_id(
+    risk_session: Session,
+) -> None:
+    DriftScenarioService(risk_session).apply()
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    assert alice is not None
+    RiskAnalyticsService(risk_session).assess(alice)
+    opened = RemediationService(risk_session).open_for_latest_evidence(
+        alice, actor="risk-engine"
+    )
+    risk_session.info["tenant_id"] = "tenant-with-no-review-evidence"
+    app.dependency_overrides[get_db_session] = lambda: risk_session
+    try:
+        response = TestClient(app).get(f"/v1/reviews/{opened.case_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Review not found"}
+
+
 def test_review_events_are_immutable(risk_session: Session) -> None:
     DriftScenarioService(risk_session).apply()
     alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))

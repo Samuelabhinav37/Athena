@@ -117,10 +117,12 @@ class MonitoringService:
 
 
 def load_monitoring_runs(session: Session) -> list[MonitoringRun]:
-    return list(
-        session.scalars(
-            select(MonitoringRun)
-            .options(selectinload(MonitoringRun.steps))
-            .order_by(MonitoringRun.started_at.desc())
-        )
+    statement = (
+        select(MonitoringRun)
+        .options(selectinload(MonitoringRun.steps))
+        .order_by(MonitoringRun.started_at.desc())
     )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(MonitoringRun.tenant_id == tenant_id)
+    return list(session.scalars(statement))

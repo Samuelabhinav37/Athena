@@ -103,3 +103,18 @@ def test_monitoring_api_returns_ordered_step_evidence(monitoring_session: Sessio
     assert payload["id"] == str(result.run_id)
     assert payload["status"] == "completed"
     assert [step["name"] for step in payload["steps"]] == ["sync", "policy"]
+
+
+def test_monitoring_api_excludes_another_tenant_runs(monitoring_session: Session) -> None:
+    MonitoringService(monitoring_session).run(
+        "daily:tenant-a", "scheduler", [("sync", lambda: {"records": 1})]
+    )
+    monitoring_session.info["tenant_id"] = "tenant-with-no-monitoring-evidence"
+    app.dependency_overrides[get_db_session] = lambda: monitoring_session
+    try:
+        response = TestClient(app).get("/v1/monitoring/runs")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []
