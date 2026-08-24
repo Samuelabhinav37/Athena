@@ -23,6 +23,8 @@ jobs:
       ATHENA_MIGRATION_DATABASE_URL: postgresql+psycopg://athena:athena@localhost:5432/athena
       ATHENA_TEST_DATABASE_URL: postgresql+psycopg://athena:athena@localhost:5432/athena
       ATHENA_POLICY_DIRECTORY: policies
+      ATHENA_API_WORKER_COUNT: "1"
+      ATHENA_API_REPLICA_COUNT: "1"
       NEO4J_AUTH: neo4j/ci-compose-validation
       NEO4J_PASSWORD: ci-compose-validation
     services:

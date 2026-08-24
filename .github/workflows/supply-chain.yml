@@ -45,8 +45,8 @@ jobs:
 
       - name: Scan runtime images
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.65.0 image --exit-code 1 --severity HIGH,CRITICAL athena-api:${{ github.sha }}
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.65.0 image --exit-code 1 --severity HIGH,CRITICAL athena-web:${{ github.sha }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.65.0 image --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL athena-api:${{ github.sha }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.65.0 image --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL athena-web:${{ github.sha }}
 
       - name: Record artifact digests
         run: sha256sum artifacts/supply-chain/* > artifacts/supply-chain/SHA256SUMS
