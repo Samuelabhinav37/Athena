@@ -25,13 +25,19 @@ class IdentitySyncService:
         group_keys: set[tuple[str, str]] = set()
         role_keys: set[tuple[str, str]] = set()
         sources = {record.source for record in records}
+        group_statement = select(Group).where(Group.source.in_(sources))
+        role_statement = select(Role).where(Role.source.in_(sources))
+        tenant_id = self.session.info.get("tenant_id")
+        if tenant_id is not None:
+            group_statement = group_statement.where(Group.tenant_id == tenant_id)
+            role_statement = role_statement.where(Role.tenant_id == tenant_id)
         self._groups = {
             (group.source, group.external_id): group
-            for group in self.session.scalars(select(Group).where(Group.source.in_(sources)))
+            for group in self.session.scalars(group_statement)
         }
         self._roles = {
             (role.source, role.external_id): role
-            for role in self.session.scalars(select(Role).where(Role.source.in_(sources)))
+            for role in self.session.scalars(role_statement)
         }
 
         for record in records:
@@ -69,12 +75,14 @@ class IdentitySyncService:
         return SyncResult(created, updated, len(group_keys), len(role_keys))
 
     def _identity(self, source: str, external_id: str) -> Identity | None:
-        return self.session.scalar(
-            select(Identity).where(
-                Identity.source == source,
-                Identity.external_id == external_id,
-            )
+        statement = select(Identity).where(
+            Identity.source == source,
+            Identity.external_id == external_id,
         )
+        tenant_id = self.session.info.get("tenant_id")
+        if tenant_id is not None:
+            statement = statement.where(Identity.tenant_id == tenant_id)
+        return self.session.scalar(statement)
 
     def _upsert_group(self, source: str, record: NormalizedGroup) -> Group:
         key = (source, record.external_id)

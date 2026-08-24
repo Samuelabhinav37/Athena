@@ -4,7 +4,19 @@ from types import SimpleNamespace
 import httpx
 from athena.collectors.azure import AzureCollectionError, AzureCollector, AzureSnapshot
 from athena.config import Settings
-from athena.models import AccessGrant, Base, ConnectorCheckpoint, EffectiveEntitlement, Identity
+from athena.models import (
+    AccessGrant,
+    Base,
+    ConnectorCheckpoint,
+    EffectiveEntitlement,
+    GrantSubjectType,
+    Identity,
+    IdentityType,
+    Permission,
+    Resource,
+    ResourceType,
+    Sensitivity,
+)
 from athena.services.azure_sync import AzureSyncService
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -243,5 +255,87 @@ def test_azure_checkpoint_cache_is_not_reused_across_tenants() -> None:
         session.commit()
 
         assert AzureSyncService(session).checkpoint("subscription-1") is None
+
+    engine.dispose()
+
+
+def test_azure_sync_does_not_deactivate_another_tenants_identity() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "test-tenant"},
+    )
+    with factory() as session:
+        tenant_a_identity = Identity(
+            tenant_id="tenant-a",
+            source="azure_entra",
+            external_id="tenant-a-only-user",
+            username="tenant-a-user@example.test",
+            identity_type=IdentityType.HUMAN,
+            display_name="Tenant A User",
+            active=True,
+            source_metadata={"tenant_id": "tenant-1"},
+        )
+        session.add(tenant_a_identity)
+        session.commit()
+
+        AzureSyncService(session).sync(snapshot("c" * 64))
+
+        assert tenant_a_identity.active is True
+
+    engine.dispose()
+
+
+def test_azure_sync_does_not_revoke_another_tenants_grant() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "test-tenant"},
+    )
+    with factory() as session:
+        identity = Identity(
+            tenant_id="tenant-a",
+            source="azure_entra",
+            external_id="tenant-a-principal",
+            username="tenant-a-principal",
+            identity_type=IdentityType.APPLICATION,
+            display_name="Tenant A Principal",
+        )
+        resource = Resource(
+            tenant_id="tenant-a",
+            source="azure_rbac",
+            external_id="tenant-a-resource",
+            name="Tenant A Resource",
+            resource_type=ResourceType.CLOUD,
+            sensitivity=Sensitivity.HIGH,
+        )
+        permission = Permission(
+            tenant_id="tenant-a",
+            resource=resource,
+            action="Microsoft.Compute/virtualMachines/read",
+            name="Tenant A Reader",
+        )
+        grant = AccessGrant(
+            tenant_id="tenant-a",
+            source="azure_rbac",
+            external_id="tenant-a-grant",
+            subject_type=GrantSubjectType.IDENTITY,
+            identity=identity,
+            permission=permission,
+            granted_at=datetime.now(UTC),
+            source_metadata={"subscription_id": "subscription-1"},
+        )
+        session.add(grant)
+        session.commit()
+
+        AzureSyncService(session).sync(snapshot("d" * 64, assignments=False))
+
+        assert grant.revoked_at is None
 
     engine.dispose()

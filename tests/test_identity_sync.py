@@ -55,3 +55,58 @@ def test_sync_is_idempotent_and_updates_relationships() -> None:
         assert alice is not None
         assert [group.name for group in alice.groups] == ["engineering"]
         assert [role.name for role in alice.roles] == ["developer"]
+
+
+def test_sync_does_not_reuse_records_from_another_tenant() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "test-tenant"},
+    )
+
+    with factory() as session:
+        tenant_a_identity = Identity(
+            tenant_id="tenant-a",
+            source="keycloak",
+            external_id="user-alice",
+            username="tenant-a-alice",
+            identity_type=IdentityType.HUMAN,
+            display_name="Tenant A Alice",
+        )
+        session.add_all([
+            tenant_a_identity,
+            Group(
+                tenant_id="tenant-a",
+                source="keycloak",
+                external_id="group-engineering",
+                name="Tenant A Engineering",
+                path="/tenant-a/engineering",
+            ),
+            Role(
+                tenant_id="tenant-a",
+                source="keycloak",
+                external_id="role-developer",
+                name="Tenant A Developer",
+            ),
+        ])
+        session.commit()
+
+        result = IdentitySyncService(session).sync([alice_record()])
+
+        tenant_b_identity = session.scalar(
+            select(Identity).where(
+                Identity.tenant_id == "test-tenant",
+                Identity.external_id == "user-alice",
+            )
+        )
+        assert result.identities_created == 1
+        assert tenant_b_identity is not None
+        assert tenant_b_identity.username == "alice"
+        assert tenant_a_identity.username == "tenant-a-alice"
+        assert [group.tenant_id for group in tenant_b_identity.groups] == ["test-tenant"]
+        assert [role.tenant_id for role in tenant_b_identity.roles] == ["test-tenant"]
+
+    engine.dispose()

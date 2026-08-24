@@ -51,6 +51,7 @@ class AzureSyncService:
         return self.session.scalar(statement)
 
     def sync(self, snapshot: AzureSnapshot) -> AzureSyncResult:
+        tenant_id = self.session.info.get("tenant_id")
         checkpoint = self.checkpoint(snapshot.subscription_id)
         if checkpoint is not None and checkpoint.fingerprint == snapshot.fingerprint:
             checkpoint.observed_at = datetime.now(UTC)
@@ -117,12 +118,13 @@ class AzureSyncService:
         )
         IdentitySyncService(self.session).sync(records)
         for group_record in group_records.values():
-            existing = self.session.scalar(
-                select(Group).where(
-                    Group.source == "azure_entra",
-                    Group.external_id == group_record.external_id,
-                )
+            group_statement = select(Group).where(
+                Group.source == "azure_entra",
+                Group.external_id == group_record.external_id,
             )
+            if tenant_id is not None:
+                group_statement = group_statement.where(Group.tenant_id == tenant_id)
+            existing = self.session.scalar(group_statement)
             if existing is None:
                 self.session.add(
                     Group(
@@ -133,9 +135,10 @@ class AzureSyncService:
                     )
                 )
         active_identity_ids = {record.external_id for record in records}
-        for identity in self.session.scalars(
-            select(Identity).where(Identity.source == "azure_entra")
-        ):
+        identity_statement = select(Identity).where(Identity.source == "azure_entra")
+        if tenant_id is not None:
+            identity_statement = identity_statement.where(Identity.tenant_id == tenant_id)
+        for identity in self.session.scalars(identity_statement):
             if (
                 identity.source_metadata.get("tenant_id") == snapshot.tenant_id
                 and identity.external_id not in active_identity_ids
@@ -144,15 +147,14 @@ class AzureSyncService:
         self.session.flush()
         identities = {
             identity.external_id: identity
-            for identity in self.session.scalars(
-                select(Identity).where(Identity.source == "azure_entra")
-            )
+            for identity in self.session.scalars(identity_statement)
         }
+        group_statement = select(Group).where(Group.source == "azure_entra")
+        if tenant_id is not None:
+            group_statement = group_statement.where(Group.tenant_id == tenant_id)
         groups = {
             group.external_id: group
-            for group in self.session.scalars(
-                select(Group).where(Group.source == "azure_entra")
-            )
+            for group in self.session.scalars(group_statement)
         }
         definitions = {item["id"].lower(): item for item in snapshot.role_definitions}
         active_grant_ids: set[str] = set()
@@ -176,12 +178,13 @@ class AzureSyncService:
                 )
                 external_id = hashlib.sha256(f"{assignment['id']}:{action}".encode()).hexdigest()
                 active_grant_ids.add(external_id)
-                grant = self.session.scalar(
-                    select(AccessGrant).where(
-                        AccessGrant.source == "azure_rbac",
-                        AccessGrant.external_id == external_id,
-                    )
+                grant_statement = select(AccessGrant).where(
+                    AccessGrant.source == "azure_rbac",
+                    AccessGrant.external_id == external_id,
                 )
+                if tenant_id is not None:
+                    grant_statement = grant_statement.where(AccessGrant.tenant_id == tenant_id)
+                grant = self.session.scalar(grant_statement)
                 if grant is None:
                     grant = AccessGrant(
                         source="azure_rbac",
@@ -216,11 +219,14 @@ class AzureSyncService:
                     ),
                 }
         revoked = 0
-        for grant in self.session.scalars(
-            select(AccessGrant).where(
-                AccessGrant.source == "azure_rbac", AccessGrant.revoked_at.is_(None)
+        active_grants_statement = select(AccessGrant).where(
+            AccessGrant.source == "azure_rbac", AccessGrant.revoked_at.is_(None)
+        )
+        if tenant_id is not None:
+            active_grants_statement = active_grants_statement.where(
+                AccessGrant.tenant_id == tenant_id
             )
-        ):
+        for grant in self.session.scalars(active_grants_statement):
             if (
                 grant.source_metadata.get("subscription_id") == snapshot.subscription_id
                 and grant.external_id not in active_grant_ids
@@ -305,11 +311,13 @@ class AzureSyncService:
 
     def _resource(self, subscription_id: str, scope: str) -> Resource:
         external_id = hashlib.sha256(f"{subscription_id}:{scope}".encode()).hexdigest()
-        resource = self.session.scalar(
-            select(Resource).where(
-                Resource.source == "azure_rbac", Resource.external_id == external_id
-            )
+        statement = select(Resource).where(
+            Resource.source == "azure_rbac", Resource.external_id == external_id
         )
+        tenant_id = self.session.info.get("tenant_id")
+        if tenant_id is not None:
+            statement = statement.where(Resource.tenant_id == tenant_id)
+        resource = self.session.scalar(statement)
         if resource is None:
             resource = Resource(
                 source="azure_rbac",
@@ -324,11 +332,13 @@ class AzureSyncService:
         return resource
 
     def _permission(self, resource: Resource, action: str, role_name: str) -> Permission:
-        permission = self.session.scalar(
-            select(Permission).where(
-                Permission.resource_id == resource.id, Permission.action == action
-            )
+        statement = select(Permission).where(
+            Permission.resource_id == resource.id, Permission.action == action
         )
+        tenant_id = self.session.info.get("tenant_id")
+        if tenant_id is not None:
+            statement = statement.where(Permission.tenant_id == tenant_id)
+        permission = self.session.scalar(statement)
         if permission is None:
             permission = Permission(
                 resource=resource,
