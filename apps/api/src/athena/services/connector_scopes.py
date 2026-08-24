@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from athena.models import ConnectorScopeBinding
+from athena.models import ConnectorScopeBinding, ConnectorScopeRevocation
 from athena.tenant_queries import tenant_select
 
 
@@ -28,5 +28,16 @@ class ConnectorScopeRegistry:
             raise ConnectorScopeError(
                 f"Provider scope {normalized_connector}:{normalized_scope} is not approved "
                 "for this tenant"
+            )
+        revocation = self.session.scalar(
+            tenant_select(
+                self.session,
+                ConnectorScopeRevocation,
+                ConnectorScopeRevocation.binding_id == binding.id,
+            )
+        )
+        if revocation is not None:
+            raise ConnectorScopeError(
+                f"Provider scope {normalized_connector}:{normalized_scope} approval is revoked"
             )
         return binding

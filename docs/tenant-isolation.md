@@ -177,3 +177,7 @@ Monitoring run rows are mutable coordination state, but only across the six life
 to claim, retry, and finalize an idempotent schedule slot. Migration `20260824_16` grants that narrow
 column-level update authority without granting table-level updates or deletion. Monitoring step rows
 remain append-only evidence and cannot be updated or deleted by the runtime role.
+
+Connector scope retirement is also append-only. Migration `20260824_17` records revocations in a
+separate tenant-scoped table instead of deleting or editing an approval. Connector lookup checks the
+revocation at the same seam as approval enforcement and fails closed before any provider request.

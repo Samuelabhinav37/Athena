@@ -212,7 +212,7 @@ def test_rls_is_forced_fail_closed_for_direct_application_login(
                 """
                 )
             )
-            == 25
+            == len(TENANT_TABLES)
         )
         assert (
             connection.scalar(
@@ -224,7 +224,7 @@ def test_rls_is_forced_fail_closed_for_direct_application_login(
                 ),
                 {"tables": list(TENANT_TABLES)},
             )
-            == 25
+            == len(TENANT_TABLES)
         )
 
     with app_engine.connect() as connection:

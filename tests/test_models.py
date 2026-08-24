@@ -14,6 +14,7 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
         "audit_events",
         "connector_checkpoints",
         "connector_scope_bindings",
+        "connector_scope_revocations",
         "effective_entitlements",
         "groups",
         "identities",

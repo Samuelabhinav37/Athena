@@ -1087,6 +1087,30 @@ class ConnectorScopeBinding(TenantScopedMixin, Base):
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ConnectorScopeRevocation(TenantScopedMixin, Base):
+    __tablename__ = "connector_scope_revocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "binding_id",
+            name="uq_connector_scope_revocations_tenant_binding_id",
+        ),
+        tenant_foreign_key(
+            "binding_id",
+            "connector_scope_bindings",
+            "fk_connector_scope_revocations_tenant_binding_id_bindings",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    binding_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    approval_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    revoked_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class ConnectorCheckpoint(TenantScopedMixin, Base):
     __tablename__ = "connector_checkpoints"
     __table_args__ = (
@@ -1154,3 +1178,9 @@ def prevent_remediation_execution_event_mutation(*_: object) -> None:
 @event.listens_for(MonitoringStep, "before_delete")
 def prevent_monitoring_step_mutation(*_: object) -> None:
     raise ValueError("Monitoring steps are immutable")
+
+
+@event.listens_for(ConnectorScopeRevocation, "before_update")
+@event.listens_for(ConnectorScopeRevocation, "before_delete")
+def prevent_connector_scope_revocation_mutation(*_: object) -> None:
+    raise ValueError("Connector scope revocations are immutable")
