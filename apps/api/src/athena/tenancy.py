@@ -53,7 +53,7 @@ class TenantIsolationPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     contract_version: Literal[TENANT_CONTRACT_VERSION] = TENANT_CONTRACT_VERSION
-    status: Literal["design_only"] = "design_only"
+    status: Literal["design_only", "ready"] = "design_only"
     current_mode: Literal["single_tenant"] = "single_tenant"
     target_mode: Literal["shared_database_row_isolation"] = "shared_database_row_isolation"
     tenant_claim: Literal["athena_tenant_id"] = "athena_tenant_id"

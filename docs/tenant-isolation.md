@@ -1,15 +1,17 @@
 # Tenant-isolation contract and threat model
 
-Athena is currently a single-tenant application. Azure tenant IDs, GitHub organizations, Keycloak
-realms, connector scopes, and identity sources are collected evidence—not an Athena authorization
-boundary. No current API, database row, background job, cache, graph projection, or report should
-be represented as safely tenant-isolated.
+Athena's development runtime now carries validated tenant context through its primary API,
+database, connector, graph, and report paths, but the production-readiness manifest remains
+`design_only`. Azure tenant IDs, GitHub organizations, Keycloak realms, connector scopes, and
+identity sources remain collected evidence—not Athena tenant authority. Production startup is
+blocked until every isolation and recovery gate in this contract is complete and separately
+authorized.
 
 Contract `1.0` defines the target as shared-database row isolation. A canonical lowercase Athena
 tenant ID must come from a validated context bound to an approved identity issuer or internal
 service identity. Every persisted business/evidence row and every scoped reference must carry that
 key. There is no global-administrator bypass. `require_tenant_access` demonstrates the default-deny
-comparison rule but is not yet integrated into runtime data access.
+comparison rule used by tenant-scoped runtime boundaries.
 
 ## Trust boundaries
 

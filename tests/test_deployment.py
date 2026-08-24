@@ -62,20 +62,19 @@ def test_production_configuration_rejects_development_security_defaults() -> Non
     assert "OIDC issuer must use HTTPS" in message
 
 
-def test_production_configuration_accepts_explicit_secure_values() -> None:
-    settings = Settings(
-        env="production",
-        database_url="postgresql+psycopg://athena_app:strong-app-password@db:5432/athena",
-        migration_database_url=(
-            "postgresql+psycopg://athena_migrator:strong-owner-password@db:5432/athena"
-        ),
-        system_tenant_id="production-system",
-        keycloak_client_secret="separately-provisioned-secret",
-        oidc_issuer="https://identity.example.test/realms/athena",
-        auth_required=True,
-    )
-
-    assert settings.auth_required is True
+def test_production_configuration_rejects_incomplete_tenant_isolation() -> None:
+    with pytest.raises(ValidationError, match="tenant isolation is not production-ready"):
+        Settings(
+            env="production",
+            database_url="postgresql+psycopg://athena_app:strong-app-password@db:5432/athena",
+            migration_database_url=(
+                "postgresql+psycopg://athena_migrator:strong-owner-password@db:5432/athena"
+            ),
+            system_tenant_id="production-system",
+            keycloak_client_secret="separately-provisioned-secret",
+            oidc_issuer="https://identity.example.test/realms/athena",
+            auth_required=True,
+        )
 
 
 def test_runtime_images_are_versioned_and_drop_root() -> None:

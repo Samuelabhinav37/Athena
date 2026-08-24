@@ -84,8 +84,10 @@ the allowed destination merely to make a demo work.
 ## Production requirements
 
 `ATHENA_ENV=production` fails startup when authentication is disabled, the default database
-credential or Keycloak collector secret remains, or the OIDC issuer is not HTTPS. A production
-deployment must additionally provide:
+credential or Keycloak collector secret remains, the OIDC issuer is not HTTPS, or the checked-in
+tenant-isolation manifest is not `ready`. The manifest remains `design_only`, so production startup
+is intentionally blocked until every isolation and recovery gate is implemented, tested, reviewed,
+and separately authorized. A production deployment must additionally provide:
 
 - externally managed PostgreSQL with encrypted connections, backups, and point-in-time recovery;
 - production-mode Keycloak behind TLS, without the imported demonstration realm or default users;

@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from athena.tenancy import TENANT_ISOLATION_PLAN
+
 
 class Settings(BaseSettings):
     """Runtime configuration loaded from ATHENA-prefixed environment variables."""
@@ -145,6 +147,8 @@ class Settings(BaseSettings):
             errors.append("the default Keycloak collector secret is forbidden")
         if not self.oidc_issuer.startswith("https://"):
             errors.append("the OIDC issuer must use HTTPS")
+        if TENANT_ISOLATION_PLAN.status != "ready":
+            errors.append("tenant isolation is not production-ready")
         if errors:
             raise ValueError("Invalid production configuration: " + "; ".join(errors))
         return self
