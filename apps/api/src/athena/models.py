@@ -1084,6 +1084,43 @@ class MonitoringStep(TenantScopedMixin, Base):
     run: Mapped[MonitoringRun] = relationship(back_populates="steps")
 
 
+class RequestReplay(TenantScopedMixin, Base):
+    __tablename__ = "request_replays"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "namespace", "idempotency_key", name="uq_request_replays_tenant_key"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    namespace: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RateLimitBucket(TenantScopedMixin, Base):
+    __tablename__ = "rate_limit_buckets"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "namespace",
+            "subject",
+            "window_started_at",
+            name="uq_rate_limit_buckets_tenant_subject_window",
+        ),
+        CheckConstraint("request_count > 0", name="ck_rate_limit_buckets_positive_count"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    namespace: Mapped[str] = mapped_column(String(128), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ConnectorScopeBinding(TenantScopedMixin, Base):
     __tablename__ = "connector_scope_bindings"
     __table_args__ = (
@@ -1091,7 +1128,10 @@ class ConnectorScopeBinding(TenantScopedMixin, Base):
         CheckConstraint("scope = lower(scope)", name="ck_connector_scope_scope_lower"),
         UniqueConstraint("tenant_id", "id", name="uq_connector_scope_bindings_tenant_id"),
         UniqueConstraint(
-            "connector", "scope", name="uq_connector_scope_bindings_connector_scope"
+            "tenant_id",
+            "connector",
+            "scope",
+            name="uq_connector_scope_bindings_tenant_connector_scope",
         ),
     )
 
@@ -1150,6 +1190,12 @@ class ConnectorCheckpoint(TenantScopedMixin, Base):
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
     raise ValueError("Audit events are append-only")
+
+
+@event.listens_for(RequestReplay, "before_update")
+@event.listens_for(RequestReplay, "before_delete")
+def prevent_request_replay_mutation(*_: object) -> None:
+    raise ValueError("Request replay reservations are append-only")
 
 
 @event.listens_for(PolicyEvaluation, "before_update")

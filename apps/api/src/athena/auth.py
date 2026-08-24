@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Annotated, Any
 
@@ -20,8 +21,9 @@ VIEWER = "athena-viewer"
 ANALYST = "athena-analyst"
 REVIEWER = "athena-reviewer"
 ADMINISTRATOR = "athena-administrator"
+BREAK_GLASS = "athena-break-glass"
 
-ROLE_LEVEL = {VIEWER: 1, ANALYST: 2, REVIEWER: 3, ADMINISTRATOR: 4}
+ROLE_LEVEL = {VIEWER: 1, ANALYST: 2, REVIEWER: 3, ADMINISTRATOR: 4, BREAK_GLASS: 4}
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -52,6 +54,11 @@ class TokenVerifier:
 
     def verify(self, token: str) -> Principal:
         try:
+            header = jwt.get_unverified_header(token)
+            if header.get("alg") != "RS256":
+                raise InvalidTokenError("Unexpected signing algorithm")
+            if self.settings.oidc_require_key_id and not header.get("kid"):
+                raise InvalidTokenError("Signing key ID is required")
             signing_key = self.signing_key_resolver(token)
             claims = jwt.decode(
                 token,
@@ -59,8 +66,21 @@ class TokenVerifier:
                 algorithms=["RS256"],
                 audience=self.settings.oidc_audience,
                 issuer=self.settings.oidc_issuer.rstrip("/"),
+                leeway=self.settings.oidc_clock_skew_seconds,
                 options={"require": ["exp", "iat", "sub", "iss", "aud"]},
             )
+            issued_at = datetime.fromtimestamp(float(claims["iat"]), tz=UTC)
+            expires_at = datetime.fromtimestamp(float(claims["exp"]), tz=UTC)
+            if expires_at <= datetime.now(UTC):
+                raise InvalidTokenError("Access token is expired")
+            if datetime.now(UTC) - issued_at > timedelta(
+                seconds=self.settings.oidc_max_token_age_seconds
+                + self.settings.oidc_clock_skew_seconds
+            ):
+                raise InvalidTokenError("Access token is too old")
+            roles = frozenset(_roles(claims, self.settings.oidc_audience))
+            if BREAK_GLASS in roles:
+                self._validate_break_glass(claims, issued_at, expires_at)
         except (InvalidTokenError, PyJWKClientError, ValueError) as error:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,9 +98,25 @@ class TokenVerifier:
         return Principal(
             subject,
             username,
-            frozenset(_roles(claims, self.settings.oidc_audience)),
+            roles,
             claims,
         )
+
+    def _validate_break_glass(
+        self, claims: dict[str, Any], issued_at: datetime, expires_at: datetime
+    ) -> None:
+        reason = claims.get("athena_break_glass_reason")
+        methods = claims.get("amr")
+        if not self.settings.break_glass_enabled:
+            raise InvalidTokenError("Break-glass access is disabled")
+        if not isinstance(claims.get("jti"), str) or not claims["jti"]:
+            raise InvalidTokenError("Break-glass token requires a token ID")
+        if not isinstance(reason, str) or not reason.strip():
+            raise InvalidTokenError("Break-glass token requires a reason")
+        if not isinstance(methods, list) or not {"hwk", "webauthn"}.intersection(methods):
+            raise InvalidTokenError("Break-glass token requires hardware-backed authentication")
+        if expires_at - issued_at > timedelta(seconds=self.settings.break_glass_max_token_seconds):
+            raise InvalidTokenError("Break-glass token lifetime exceeds the configured maximum")
 
     def _resolve_jwks_key(self, token: str) -> Any:
         if self.jwks is None:  # pragma: no cover - constructor invariant

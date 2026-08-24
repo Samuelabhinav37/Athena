@@ -19,6 +19,13 @@ Signing keys are cached and refreshed through PyJWT's JWKS client. Invalid, expi
 issued, or incorrectly targeted tokens receive `401 Unauthorized`. Authenticated callers without the
 required role or a valid tenant claim receive `403 Forbidden`.
 
+Athena accepts only `RS256`, requires a JWT `kid` so issuer key rotation remains explicit, bounds
+clock skew, and rejects access tokens older than the configured maximum even when their expiry is
+later. Emergency access is disabled by default. When explicitly enabled, the `athena-break-glass`
+role requires a unique token ID, a bounded reason, hardware-backed `amr` (`hwk` or `webauthn`), and
+a lifetime no longer than 15 minutes. Tenant database access appends an immutable audit event before
+the request proceeds.
+
 The local Keycloak lab emits `athena_tenant_id=athena-local`. Athena validates that claim against its
 canonical tenant-ID contract and installs it with transaction-local PostgreSQL `set_config`. It is
 never accepted from request bodies, query parameters, provider metadata, or session-level database
@@ -69,6 +76,11 @@ ATHENA_OIDC_ISSUER=http://localhost:8080/realms/athena
 ATHENA_OIDC_AUDIENCE=athena-api
 ATHENA_OIDC_JWKS_URL=
 ATHENA_OIDC_IDENTITY_SOURCE=keycloak
+ATHENA_OIDC_CLOCK_SKEW_SECONDS=30
+ATHENA_OIDC_MAX_TOKEN_AGE_SECONDS=3600
+ATHENA_OIDC_REQUIRE_KEY_ID=true
+ATHENA_BREAK_GLASS_ENABLED=false
+ATHENA_BREAK_GLASS_MAX_TOKEN_SECONDS=900
 ```
 
 When `ATHENA_OIDC_JWKS_URL` is empty, Athena derives the standard Keycloak certificate endpoint from

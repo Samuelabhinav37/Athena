@@ -48,7 +48,9 @@ class WebhookReplayCache:
         self._entries: OrderedDict[str, float] = OrderedDict()
         self._lock = threading.Lock()
 
-    def check_and_mark(self, delivery_id: str, expires_at: float) -> None:
+    def check_and_mark(
+        self, delivery_id: str, expires_at: float, request_bytes: bytes = b""
+    ) -> None:
         now = self.clock()
         with self._lock:
             expired = [key for key, expiry in self._entries.items() if expiry <= now]
@@ -102,7 +104,7 @@ class SignedWebhookAdapter:
         ).hexdigest()
         if not hmac.compare_digest(expected, signature_match.group(1)):
             raise WebhookAuthenticationError("Webhook signature is invalid")
-        self.replay_cache.check_and_mark(delivery_id, now + max_age)
+        self.replay_cache.check_and_mark(delivery_id, now + max_age, original_bytes)
         try:
             payload = WebhookEventInput.model_validate_json(original_bytes)
             event = build_security_event(

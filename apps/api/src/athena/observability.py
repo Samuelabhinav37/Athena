@@ -4,7 +4,9 @@ import re
 import sys
 import time
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable
+from threading import Lock
 from typing import Any
 
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -15,6 +17,43 @@ if not logger.handlers:
     request_handler = logging.StreamHandler(sys.stdout)
     request_handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(request_handler)
+
+
+class MetricsRegistry:
+    def __init__(self) -> None:
+        self._requests: Counter[tuple[str, str]] = Counter()
+        self._duration_seconds = 0.0
+        self._lock = Lock()
+
+    def observe_request(self, method: str, status_code: int, duration_seconds: float) -> None:
+        status_class = f"{status_code // 100}xx"
+        with self._lock:
+            self._requests[(method, status_class)] += 1
+            self._duration_seconds += duration_seconds
+
+    def render(self) -> str:
+        with self._lock:
+            requests = tuple(sorted(self._requests.items()))
+            duration = self._duration_seconds
+        lines = [
+            "# HELP athena_http_requests_total HTTP requests by method and status class.",
+            "# TYPE athena_http_requests_total counter",
+        ]
+        lines.extend(
+            f'athena_http_requests_total{{method="{method}",status_class="{status}"}} {count}'
+            for (method, status), count in requests
+        )
+        lines.extend(
+            [
+                "# HELP athena_http_request_duration_seconds_sum Total HTTP request duration.",
+                "# TYPE athena_http_request_duration_seconds_sum counter",
+                f"athena_http_request_duration_seconds_sum {duration:.6f}",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+
+metrics = MetricsRegistry()
 
 
 class RequestObservabilityMiddleware:
@@ -48,6 +87,10 @@ class RequestObservabilityMiddleware:
         try:
             await self.app(scope, receive, send_with_context)
         finally:
+            duration_seconds = time.perf_counter() - started
+            metrics.observe_request(
+                str(scope.get("method", "UNKNOWN")), status_code, duration_seconds
+            )
             logger.info(
                 json.dumps(
                     {
@@ -56,7 +99,7 @@ class RequestObservabilityMiddleware:
                         "method": scope.get("method"),
                         "path": scope.get("path"),
                         "status": status_code,
-                        "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                        "duration_ms": round(duration_seconds * 1000, 3),
                     },
                     separators=(",", ":"),
                 )

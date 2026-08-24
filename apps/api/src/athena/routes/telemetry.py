@@ -4,7 +4,7 @@ import threading
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Annotated
 
@@ -13,8 +13,10 @@ from pydantic import ValidationError
 
 from athena.auth import AdministratorPrincipal, require_administrator
 from athena.config import Settings, get_settings
+from athena.database import get_session_factory
 from athena.services.otlp import OTLPJSONLogAdapter, OTLPMappingError
 from athena.services.otlp_export import OTLPExportError, OTLPJSONExporter
+from athena.services.request_controls import RequestControls
 from athena.services.syslog import SyslogAdapter, SyslogMappingError
 from athena.services.telemetry_export import TelemetryExportError, TelemetryJSONExporter
 from athena.services.webhook import (
@@ -78,6 +80,32 @@ def get_json_rate_limiter() -> SubjectRateLimiter:
     return SubjectRateLimiter()
 
 
+class PersistentSubjectRateLimiter:
+    def __init__(self, controls: RequestControls) -> None:
+        self.controls = controls
+
+    def check(self, subject: str) -> int | None:
+        admission = self.controls.admit(
+            namespace="telemetry",
+            subject=subject,
+            limit=JSON_RATE_LIMIT,
+            window=timedelta(seconds=JSON_RATE_WINDOW_SECONDS),
+        )
+        self.controls.session.commit()
+        return admission.retry_after_seconds
+
+
+def get_rate_limiter(
+    settings: Annotated[Settings, Depends(get_settings)],
+    fallback: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+):
+    if not settings.shared_request_controls_enabled:
+        yield fallback
+        return
+    with get_session_factory(settings.system_tenant_id)() as session:
+        yield PersistentSubjectRateLimiter(RequestControls(session))
+
+
 router = APIRouter(
     prefix="/v1/telemetry/events",
     tags=["telemetry"],
@@ -89,6 +117,36 @@ webhook_router = APIRouter(prefix="/v1/telemetry/webhooks", tags=["telemetry"])
 @lru_cache
 def get_webhook_replay_cache() -> WebhookReplayCache:
     return WebhookReplayCache()
+
+
+class PersistentWebhookReplayCache:
+    def __init__(self, controls: RequestControls, clock: Callable[[], float] = time.time) -> None:
+        self.controls = controls
+        self.clock = clock
+
+    def check_and_mark(
+        self, delivery_id: str, expires_at: float, request_bytes: bytes = b""
+    ) -> None:
+        admission = self.controls.reserve(
+            namespace="webhook",
+            idempotency_key=delivery_id,
+            request_bytes=request_bytes,
+            ttl=timedelta(seconds=max(1, expires_at - self.clock())),
+        )
+        if admission.replayed:
+            raise WebhookReplayError("Webhook delivery was already processed")
+        self.controls.session.commit()
+
+
+def get_webhook_replay_protection(
+    settings: Annotated[Settings, Depends(get_settings)],
+    fallback: Annotated[WebhookReplayCache, Depends(get_webhook_replay_cache)],
+):
+    if not settings.shared_request_controls_enabled:
+        yield fallback
+        return
+    with get_session_factory(settings.system_tenant_id)() as session:
+        yield PersistentWebhookReplayCache(RequestControls(session))
 
 
 @router.post("/export/json", response_class=Response)
@@ -164,7 +222,7 @@ async def receive_json_security_event(
     request: Request,
     response: Response,
     principal: AdministratorPrincipal,
-    limiter: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+    limiter: Annotated[SubjectRateLimiter, Depends(get_rate_limiter)],
 ) -> SecurityEventEnvelope:
     media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if media_type != "application/json":
@@ -214,7 +272,7 @@ async def receive_otlp_json_logs(
     request: Request,
     response: Response,
     principal: AdministratorPrincipal,
-    limiter: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+    limiter: Annotated[SubjectRateLimiter, Depends(get_rate_limiter)],
 ) -> OTLPNormalizationResponse:
     media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if media_type != "application/json":
@@ -248,7 +306,7 @@ async def receive_signed_webhook(
     request: Request,
     response: Response,
     settings: Annotated[Settings, Depends(get_settings)],
-    replay_cache: Annotated[WebhookReplayCache, Depends(get_webhook_replay_cache)],
+    replay_cache: Annotated[WebhookReplayCache, Depends(get_webhook_replay_protection)],
 ) -> WebhookNormalizationResponse:
     if not settings.webhook_enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -293,7 +351,7 @@ async def receive_syslog_message(
     request: Request,
     response: Response,
     principal: AdministratorPrincipal,
-    limiter: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+    limiter: Annotated[SubjectRateLimiter, Depends(get_rate_limiter)],
 ) -> SyslogNormalizationResponse:
     media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if media_type not in {"application/syslog", "text/plain"}:

@@ -1,9 +1,9 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from athena.database import get_session_factory
-from athena.observability import RequestObservabilityMiddleware
+from athena.observability import RequestObservabilityMiddleware, metrics
 from athena.routes.attack_paths import router as attack_paths_router
 from athena.routes.auth import router as auth_router
 from athena.routes.connectors import router as connectors_router
@@ -40,6 +40,11 @@ app.include_router(webhook_router)
 def health() -> dict[str, str]:
     """Report whether the API process is available."""
     return {"status": "ok", "service": "athena-api"}
+
+
+@app.get("/metrics", tags=["operations"], include_in_schema=False)
+def prometheus_metrics() -> Response:
+    return Response(content=metrics.render(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/ready", tags=["operations"])

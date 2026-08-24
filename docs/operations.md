@@ -112,3 +112,14 @@ Resolve and verify the exact target before running any command. The high-level s
 Never use `alembic downgrade`, `DROP`, `TRUNCATE`, destructive volume commands, or a restore over
 live Athena data. Disaster recovery does not authorize real connector actions; execution adapters
 remain separately credentialed and approved.
+# Disposable PostgreSQL verification
+
+Run `powershell -File scripts/test-postgres.ps1` to create an isolated Compose project, apply every
+migration, run PostgreSQL privilege and tenant-isolation tests, and then remove only that randomly
+named test project's containers and volume. The workflow never connects to the normal Athena
+Compose project or its evidence volume.
+
+Production replicas must set `ATHENA_SHARED_REQUEST_CONTROLS_ENABLED=true` after migrations
+`20260824_20` and `20260824_21` are approved and applied. Until then Athena deliberately permits only
+one worker and one replica because telemetry throttling and webhook replay protection use bounded
+in-process adapters. Production configuration fails closed if shared controls are disabled.

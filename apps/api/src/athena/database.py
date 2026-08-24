@@ -13,7 +13,7 @@ from athena.auth import (
     get_tenant_context,
 )
 from athena.config import Settings, get_settings
-from athena.models import TenantScopedMixin
+from athena.models import AuditEvent, TenantScopedMixin
 from athena.tenancy import TenantContext
 
 
@@ -56,6 +56,22 @@ def get_db_session(
 ) -> Generator[Session]:
     with get_session_factory(context.tenant_id)() as session:
         authorize_tenant_membership(principal, context, settings, session)
+        if "athena-break-glass" in principal.roles:
+            session.add(
+                AuditEvent(
+                    actor_type="break_glass_principal",
+                    actor_id=principal.actor,
+                    action="break_glass_tenant_access",
+                    entity_type="tenant",
+                    entity_id=context.tenant_id,
+                    reason=str(principal.claims["athena_break_glass_reason"]),
+                    approval={
+                        "token_id": principal.claims["jti"],
+                        "authentication_methods": principal.claims["amr"],
+                    },
+                )
+            )
+            session.commit()
         yield session
 
 

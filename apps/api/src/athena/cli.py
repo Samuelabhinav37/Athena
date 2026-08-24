@@ -19,6 +19,11 @@ from athena.policy.opa import OpaAuthorizationAdapter, OpaClient, OpaEvaluationE
 from athena.repositories import IdentityRepository
 from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
 from athena.services.azure_sync import AzureSyncService
+from athena.services.connector_admin import (
+    ConnectorAdministration,
+    ConnectorAdministrationError,
+    ConnectorScopeChangePlan,
+)
 from athena.services.connector_scopes import ConnectorScopeError, ConnectorScopeRegistry
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
@@ -510,6 +515,60 @@ def tenant_rls_plan() -> int:
     return 0
 
 
+def connector_scope_plan(
+    *,
+    action: str,
+    tenant_id: str,
+    connector: str,
+    scope: str,
+    approval_reference: str,
+    authorized_by: str,
+    authorized_at: datetime,
+    reason: str | None,
+) -> int:
+    try:
+        with get_administrative_session_factory()() as session:
+            administration = ConnectorAdministration(session)
+            if action == "approve":
+                plan = administration.plan_approval(
+                    tenant_id=tenant_id,
+                    connector=connector,
+                    scope=scope,
+                    approval_reference=approval_reference,
+                    authorized_by=authorized_by,
+                    authorized_at=authorized_at,
+                )
+            else:
+                plan = administration.plan_revocation(
+                    tenant_id=tenant_id,
+                    connector=connector,
+                    scope=scope,
+                    approval_reference=approval_reference,
+                    authorized_by=authorized_by,
+                    authorized_at=authorized_at,
+                    reason=reason or "",
+                )
+    except (ConnectorAdministrationError, SQLAlchemyError, ValueError) as error:
+        print(f"Connector scope planning failed: {error}", file=sys.stderr)
+        return 1
+    print(plan.model_dump_json())
+    return 0
+
+
+def apply_connector_scope_plan(plan_file: Path, confirmed_plan_sha256: str) -> int:
+    try:
+        plan = ConnectorScopeChangePlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+        with get_administrative_session_factory().begin() as session:
+            result = ConnectorAdministration(session).apply(
+                plan, confirmed_plan_sha256=confirmed_plan_sha256
+            )
+    except (ConnectorAdministrationError, OSError, SQLAlchemyError, ValueError) as error:
+        print(f"Connector scope application failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps({"id": str(result.id), "plan_sha256": plan.plan_sha256}, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -603,6 +662,24 @@ def main() -> int:
         "tenant-constraint-plan", help="Build a non-mutating tenant-aware constraint plan"
     )
     subcommands.add_parser("tenant-rls-plan", help="Build a non-mutating fail-closed RLS plan")
+    connector_plan_parser = subcommands.add_parser(
+        "connector-scope-plan", help="Build a deterministic connector scope change plan"
+    )
+    connector_plan_parser.add_argument("--action", choices=("approve", "revoke"), required=True)
+    connector_plan_parser.add_argument("--tenant-id", required=True)
+    connector_plan_parser.add_argument("--connector", required=True)
+    connector_plan_parser.add_argument("--scope", required=True)
+    connector_plan_parser.add_argument("--approval-reference", required=True)
+    connector_plan_parser.add_argument("--authorized-by", required=True)
+    connector_plan_parser.add_argument(
+        "--authorized-at", type=datetime.fromisoformat, required=True
+    )
+    connector_plan_parser.add_argument("--reason")
+    connector_apply_parser = subcommands.add_parser(
+        "connector-scope-apply", help="Apply an exact approved connector scope change plan"
+    )
+    connector_apply_parser.add_argument("--plan-file", type=Path, required=True)
+    connector_apply_parser.add_argument("--confirm-plan-sha256", required=True)
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -673,6 +750,19 @@ def main() -> int:
         return tenant_constraint_plan()
     if arguments.command == "tenant-rls-plan":
         return tenant_rls_plan()
+    if arguments.command == "connector-scope-plan":
+        return connector_scope_plan(
+            action=arguments.action,
+            tenant_id=arguments.tenant_id,
+            connector=arguments.connector,
+            scope=arguments.scope,
+            approval_reference=arguments.approval_reference,
+            authorized_by=arguments.authorized_by,
+            authorized_at=arguments.authorized_at,
+            reason=arguments.reason,
+        )
+    if arguments.command == "connector-scope-apply":
+        return apply_connector_scope_plan(arguments.plan_file, arguments.confirm_plan_sha256)
     return 2
 
 

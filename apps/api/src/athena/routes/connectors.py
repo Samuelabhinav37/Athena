@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from athena.auth import require_viewer
 from athena.database import get_db_session
-from athena.models import ConnectorCheckpoint
-from athena.schemas import ConnectorCheckpointResponse
+from athena.models import ConnectorCheckpoint, ConnectorScopeBinding, ConnectorScopeRevocation
+from athena.schemas import ConnectorCheckpointResponse, ConnectorScopeResponse
 from athena.tenant_queries import tenant_select
 
 router = APIRouter(
@@ -33,4 +33,35 @@ def list_connector_checkpoints(
             cached_endpoints=len(checkpoint.endpoint_cache),
         )
         for checkpoint in checkpoints
+    ]
+
+
+@router.get("/scopes", response_model=list[ConnectorScopeResponse])
+def list_connector_scopes(session: DatabaseSession) -> list[ConnectorScopeResponse]:
+    bindings = list(
+        session.scalars(
+            tenant_select(session, ConnectorScopeBinding).order_by(
+                ConnectorScopeBinding.connector, ConnectorScopeBinding.scope
+            )
+        )
+    )
+    revocations = {
+        revocation.binding_id: revocation
+        for revocation in session.scalars(tenant_select(session, ConnectorScopeRevocation))
+    }
+    return [
+        ConnectorScopeResponse(
+            id=binding.id,
+            connector=binding.connector,
+            scope=binding.scope,
+            approval_reference=binding.approval_reference,
+            approved_by=binding.approved_by,
+            approved_at=binding.approved_at,
+            active=binding.id not in revocations,
+            revoked_at=(revocations[binding.id].revoked_at if binding.id in revocations else None),
+            revocation_reference=(
+                revocations[binding.id].approval_reference if binding.id in revocations else None
+            ),
+        )
+        for binding in bindings
     ]

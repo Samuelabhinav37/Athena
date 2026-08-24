@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     webhook_enabled: bool = False
     webhook_secret: SecretStr = SecretStr("")
     webhook_max_age_seconds: int = Field(default=300, ge=30, le=900)
+    shared_request_controls_enabled: bool = False
     api_worker_count: int = Field(ge=1, le=1024)
     api_replica_count: int = Field(ge=1, le=1024)
     monitoring_lease_seconds: int = Field(default=900, ge=60, le=86400)
@@ -68,6 +69,11 @@ class Settings(BaseSettings):
     oidc_issuer: str = "http://localhost:8080/realms/athena"
     oidc_audience: str = "athena-api"
     oidc_jwks_url: str = ""
+    oidc_clock_skew_seconds: int = Field(default=30, ge=0, le=300)
+    oidc_max_token_age_seconds: int = Field(default=3600, ge=60, le=86400)
+    oidc_require_key_id: bool = True
+    break_glass_enabled: bool = False
+    break_glass_max_token_seconds: int = Field(default=900, ge=60, le=900)
     oidc_identity_source: str = Field(
         default="keycloak",
         min_length=1,
@@ -135,7 +141,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_process_local_telemetry_controls(self) -> "Settings":
-        if self.api_worker_count != 1 or self.api_replica_count != 1:
+        if not self.shared_request_controls_enabled and (
+            self.api_worker_count != 1 or self.api_replica_count != 1
+        ):
             raise ValueError(
                 "process-local telemetry controls require one API worker and one API replica"
             )
@@ -158,6 +166,10 @@ class Settings(BaseSettings):
             errors.append("the default Keycloak collector secret is forbidden")
         if not self.oidc_issuer.startswith("https://"):
             errors.append("the OIDC issuer must use HTTPS")
+        if not self.oidc_require_key_id:
+            errors.append("OIDC signing key IDs must be required")
+        if not self.shared_request_controls_enabled:
+            errors.append("shared database request controls must be enabled")
         if TENANT_ISOLATION_PLAN.status != "ready":
             errors.append("tenant isolation is not production-ready")
         if errors:
