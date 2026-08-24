@@ -48,9 +48,9 @@ Acme Corp assignments are:
 - An audience mapper adds `athena-api` only to access tokens.
 - Password grants remain disabled for every client.
 
-The future React dashboard will obtain an access token through the authorization-code-with-PKCE
-flow and send it to the API. Current callers can paste a valid access token into the OpenAPI
-Authorize dialog or use an HTTP `Authorization` header.
+The React dashboard obtains an access token through the authorization-code-with-PKCE flow and sends
+it to the API. API-only callers can use the OpenAPI Authorize dialog or an HTTP `Authorization`
+header with a valid access token.
 
 ## Authenticated review evidence
 

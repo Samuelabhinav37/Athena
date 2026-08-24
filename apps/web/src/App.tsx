@@ -168,7 +168,7 @@ function Dashboard({ user }: { user: User }) {
         {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} />}
         {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
         {state === "ready" && page === "machines" && <MachineIdentities user={user} />}
-        {state === "ready" && page === "reviews" && <Reviews reviews={reviews} identities={identities} />}
+        {state === "ready" && page === "reviews" && <Reviews user={user} principal={principal} reviews={reviews} identities={identities} onReviewsChanged={setReviews} onExecutionCreated={(execution) => setExecutions((current) => [execution, ...current])} />}
         {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
       </main>
     </div>
@@ -313,10 +313,35 @@ function MachineIdentities({ user }: { user: User }) {
   </div>;
 }
 
-function Reviews({ reviews, identities }: { reviews: ReviewCase[]; identities: Identity[] }) {
+function Reviews({ user, principal, reviews, identities, onReviewsChanged, onExecutionCreated }: { user: User; principal: Principal | null; reviews: ReviewCase[]; identities: Identity[]; onReviewsChanged: (reviews: ReviewCase[]) => void; onExecutionCreated: (execution: Execution) => void }) {
+  const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
+  const [owner, setOwner] = useState("");
+  const [reason, setReason] = useState("");
+  const [decision, setDecision] = useState("retain");
+  const [actionState, setActionState] = useState<LoadState>("idle");
+  const [actionError, setActionError] = useState("");
   const nameFor = (id: string) => identities.find((identity) => identity.id === id)?.display_name ?? id.slice(0, 8);
+  const roles = principal?.roles ?? [];
+  const canOpen = roles.some((role) => ["athena-analyst", "athena-reviewer", "athena-administrator"].includes(role));
+  const canReview = roles.some((role) => ["athena-reviewer", "athena-administrator"].includes(role));
+  const isAdmin = roles.includes("athena-administrator");
+  async function refresh() { onReviewsChanged(await apiGet<ReviewCase[]>(user, "/v1/reviews")); }
+  async function act(operation: () => Promise<unknown>) {
+    setActionState("loading"); setActionError("");
+    try { await operation(); await refresh(); setReason(""); setActionState("ready"); }
+    catch (caught) { setActionError(caught instanceof Error ? caught.message : "Review action failed"); setActionState("error"); }
+  }
+  async function requestExecution(review: ReviewCase) {
+    setActionState("loading"); setActionError("");
+    try {
+      const execution = await apiPost<Execution>(user, "/v1/executions", { case_id: review.id, idempotency_key: `ui-${review.id}-revoke` });
+      onExecutionCreated(execution); setActionState("ready");
+    } catch (caught) { setActionError(caught instanceof Error ? caught.message : "Execution request failed"); setActionState("error"); }
+  }
   return <div className="page"><section className="page-heading"><div><p className="kicker">Human decision boundary</p><h1>Review with context.<br /><em>Act with proof.</em></h1></div><p className="heading-note">Athena records decisions as immutable evidence. Destructive access changes always remain separately authorized.</p></section>
-    <section className="panel table-panel"><div className="review-table table-header"><span>Case</span><span>Identity</span><span>Owner</span><span>Due</span><span>Status</span></div>{reviews.length ? reviews.map((review) => <div className="review-table" key={review.id}><span><strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{nameFor(review.identity_id)}</span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><span><Badge value={review.status} /></span></div>) : <Empty>No review cases recorded.</Empty>}</section>
+    {actionError && <div className="notice notice--error">{actionError}</div>}
+    {canOpen && <section className="panel action-panel"><PanelTitle eyebrow="New evidence review" title="Open a case" /><div className="action-form"><select value={identityId} onChange={(event) => setIdentityId(event.target.value)}>{identities.map((identity) => <option value={identity.id} key={identity.id}>{identity.display_name}</option>)}</select><input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Optional owner" /><button className="button button--secondary" disabled={!identityId || actionState === "loading"} onClick={() => void act(() => apiPost(user, "/v1/reviews", { identity_id: identityId, owner: owner || null, due_days: 7 }))}>Open review</button></div></section>}
+    <section className="panel table-panel"><div className="review-table table-header"><span>Case</span><span>Identity</span><span>Owner</span><span>Due</span><span>Status / actions</span></div>{reviews.length ? reviews.map((review) => <div className="review-table" key={review.id}><span><strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{nameFor(review.identity_id)}</span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><span><Badge value={review.status} />{canReview && review.status !== "resolved" && <div className="review-actions"><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Evidence-based reason" />{review.status === "open" && <button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/assign`, { owner: owner || principal?.username, reason }))}>Assign</button>}{review.status === "in_review" && <><select value={decision} onChange={(event) => setDecision(event.target.value)}><option value="retain">Retain</option><option value="revoke">Revoke</option><option value="extend">Extend</option><option value="exception">Exception</option></select><button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/decide`, { decision, reason }))}>Decide</button></>}</div>}{isAdmin && review.status === "resolved" && review.resolution === "revoke" && <button className="button button--secondary" onClick={() => void requestExecution(review)}>Request execution</button>}</span></div>) : <Empty>No review cases recorded.</Empty>}</section>
   </div>;
 }
 

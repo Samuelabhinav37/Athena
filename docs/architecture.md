@@ -140,21 +140,23 @@ renderer registry only when every declared context, dependency, security, and ve
 satisfied. Installing a library alone cannot promote OSCAL Assessment Results, PDF, or Word output
 to supported status.
 
-Athena remains single-tenant at runtime. Tenant contract `1.0` defines a future non-null tenant key
-for every business and evidence row, a validated context for every request and job, default-deny
-cross-tenant references, tenant-aware constraints and row-level security, and no administrator
-bypass. Provider tenant IDs are provenance rather than platform authority. See the
-[tenant-isolation threat model](tenant-isolation.md).
+Athena now carries a required tenant context through authenticated requests and explicit jobs.
+Every business and evidence row has a non-null tenant key; tenant-aware constraints and forced
+PostgreSQL row-level security provide defense in depth without an application-role bypass. Provider
+tenant IDs remain provenance rather than platform authority. Approved connector-scope bindings
+must match the runtime tenant before collection begins. Production remains blocked while the wider
+isolation, recovery, scale, residency, and operational evidence in the
+[tenant-isolation threat model](tenant-isolation.md) is incomplete.
 
 The bootstrap transition is a separate reviewed contract, not an implicit migration default. It
 requires approved counts for all 25 current tables and aborts if observed inventory differs. Its
 six ordered phases preserve immutable evidence, introduce tenant-aware integrity and RLS, propagate
 context to every runtime boundary, and defer enablement until isolation and recovery gates pass.
 
-The first schema increment adds only the global registry and nullable indexed tenant references.
-It neither assigns existing rows nor changes query behavior. Tenant-aware uniqueness, composite
-foreign keys, non-null enforcement, RLS, authenticated claim binding, and runtime enablement remain
-separate gated phases.
+The local bootstrap backfill, tenant-aware uniqueness and relationships, non-null enforcement, RLS,
+authenticated claim binding, and runtime tenant propagation are complete. The bootstrap commands
+remain one-time upgrade tooling for installations that have not transitioned; they are not normal
+runtime operations and correctly fail once a database is already assigned.
 
 ## MVP build order
 

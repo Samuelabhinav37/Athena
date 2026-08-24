@@ -11,6 +11,7 @@ from athena.models import (
     Role,
     RoleTransition,
 )
+from athena.repositories import IdentityRepository
 from athena.services.demo_scenario import DemoScenarioError
 
 
@@ -112,7 +113,7 @@ class DriftScenarioService:
         }
 
     def _identity(self, username: str) -> Identity:
-        identity = self.session.scalar(select(Identity).where(Identity.username == username))
+        identity = IdentityRepository(self.session).get_by_username(username)
         if identity is None:
             raise DemoScenarioError(
                 f"Identity {username} is missing; synchronize Keycloak first"

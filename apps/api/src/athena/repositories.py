@@ -22,3 +22,7 @@ class IdentityRepository:
     def get(self, identity_id: uuid.UUID) -> Identity | None:
         statement = tenant_select(self.session, Identity, Identity.id == identity_id)
         return self.session.scalar(statement)
+
+    def get_by_username(self, username: str) -> Identity | None:
+        statement = tenant_select(self.session, Identity, Identity.username == username)
+        return self.session.scalar(statement)

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -9,6 +10,11 @@ from athena.config import Settings, get_settings
 from athena.database import get_db_session
 from athena.schemas import EvidenceReportResponse
 from athena.services.evidence_report import EvidenceReportService
+from athena.services.frameworks import (
+    OscalComponentDocument,
+    build_oscal_component_definition,
+    load_framework_pack,
+)
 
 router = APIRouter(
     prefix="/v1/reports",
@@ -30,3 +36,13 @@ def evidence_report(
 def evidence_report_markdown(session: DatabaseSession, settings: RuntimeSettings) -> str:
     service = EvidenceReportService(session, settings.control_directory)
     return service.markdown(service.build())
+
+
+@router.get(
+    "/oscal-component-definition.json",
+    response_model=OscalComponentDocument,
+    response_model_by_alias=True,
+)
+def oscal_component_definition(settings: RuntimeSettings) -> OscalComponentDocument:
+    pack = load_framework_pack(settings.control_directory)
+    return build_oscal_component_definition(pack, last_modified=datetime.now(UTC))

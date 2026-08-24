@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from athena.auth import AnalystPrincipal, ReviewerPrincipal, require_viewer
 from athena.database import get_db_session
-from athena.models import Identity
+from athena.repositories import IdentityRepository
 from athena.schemas import (
     AssignReviewRequest,
     DecideReviewRequest,
@@ -42,7 +42,7 @@ def get_review(case_id: uuid.UUID, session: DatabaseSession) -> ReviewCaseRespon
 def open_review(
     request: OpenReviewRequest, session: DatabaseSession, principal: AnalystPrincipal
 ) -> ReviewCaseResponse:
-    identity = session.get(Identity, request.identity_id)
+    identity = IdentityRepository(session).get(request.identity_id)
     if identity is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     try:

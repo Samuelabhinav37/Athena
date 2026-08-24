@@ -12,6 +12,11 @@ class TenantIntegrityError(RuntimeError):
     pass
 
 
+CROSS_TENANT_AUTHORITY_CONSTRAINTS = frozenset(
+    {"connector_scope_bindings.uq_connector_scope_bindings_connector_scope"}
+)
+
+
 class TenantRelationshipCheck(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -55,7 +60,9 @@ def inspect_tenant_integrity(session: Session) -> TenantIntegrityReport:
                     and "tenant_id" not in constraint.columns
                 )
                 if is_global:
-                    unique_constraints.append(f"{table_name}.{constraint.name}")
+                    reference = f"{table_name}.{constraint.name}"
+                    if reference not in CROSS_TENANT_AUTHORITY_CONSTRAINTS:
+                        unique_constraints.append(reference)
 
             for foreign_key in table.foreign_key_constraints:
                 if not isinstance(foreign_key, ForeignKeyConstraint):

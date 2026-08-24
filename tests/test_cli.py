@@ -22,6 +22,11 @@ def test_sync_command_reports_collection_failure_without_traceback(
         collect = staticmethod(fail_collection)
 
     monkeypatch.setattr(cli, "KeycloakCollector", FailingCollector)
+    monkeypatch.setattr(
+        cli.ConnectorScopeRegistry,
+        "require_approved",
+        lambda *_: None,
+    )
 
     assert cli.sync_keycloak("tenant-a") == 1
     captured = capsys.readouterr()
@@ -151,6 +156,8 @@ def test_job_session_factory_receives_only_the_explicit_tenant(monkeypatch, caps
     observed = None
 
     class Session:
+        info = {"tenant_id": "tenant-b"}
+
         def __enter__(self):
             return self
 

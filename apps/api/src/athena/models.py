@@ -1068,6 +1068,25 @@ class MonitoringStep(TenantScopedMixin, Base):
     run: Mapped[MonitoringRun] = relationship(back_populates="steps")
 
 
+class ConnectorScopeBinding(TenantScopedMixin, Base):
+    __tablename__ = "connector_scope_bindings"
+    __table_args__ = (
+        CheckConstraint("connector = lower(connector)", name="ck_connector_scope_connector_lower"),
+        CheckConstraint("scope = lower(scope)", name="ck_connector_scope_scope_lower"),
+        UniqueConstraint("tenant_id", "id", name="uq_connector_scope_bindings_tenant_id"),
+        UniqueConstraint(
+            "connector", "scope", name="uq_connector_scope_bindings_connector_scope"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    connector: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope: Mapped[str] = mapped_column(String(255), nullable=False)
+    approval_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ConnectorCheckpoint(TenantScopedMixin, Base):
     __tablename__ = "connector_checkpoints"
     __table_args__ = (

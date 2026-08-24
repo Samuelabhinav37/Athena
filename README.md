@@ -386,7 +386,7 @@ Athena/
 - [x] Deterministic fail-closed PostgreSQL RLS plan
 - [x] Forced fail-closed PostgreSQL RLS policies and non-bypass application role
 - [x] Validated transaction-local request, CLI, and background-job tenant context
-- [x] Production deployment and recovery hardening
+- [ ] Production deployment and recovery evidence (HA, backup/restore rehearsal, residency, scale)
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
 - [x] Machine and workload identity posture foundation

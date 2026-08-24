@@ -7,7 +7,6 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from athena.collectors.azure import AzureCollectionError, AzureCollector
@@ -17,8 +16,10 @@ from athena.config import get_settings
 from athena.database import get_administrative_session_factory, get_session_factory
 from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaAuthorizationAdapter, OpaClient, OpaEvaluationError
+from athena.repositories import IdentityRepository
 from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
 from athena.services.azure_sync import AzureSyncService
+from athena.services.connector_scopes import ConnectorScopeError, ConnectorScopeRegistry
 from athena.services.demo_scenario import DemoScenarioError, DemoScenarioService
 from athena.services.drift_scenario import DriftScenarioService
 from athena.services.github_sync import GitHubSyncService
@@ -45,11 +46,14 @@ from athena.tenant_transition import TenantTransitionError
 def sync_keycloak(tenant_id: str) -> int:
     try:
         settings = get_settings()
-        with KeycloakCollector(settings) as collector:
-            records = collector.collect()
         with get_session_factory(tenant_id)() as session:
+            ConnectorScopeRegistry(session).require_approved(
+                "keycloak", settings.keycloak_realm
+            )
+            with KeycloakCollector(settings) as collector:
+                records = collector.collect()
             result = IdentitySyncService(session).sync(records)
-    except (KeycloakCollectionError, SQLAlchemyError) as error:
+    except (ConnectorScopeError, KeycloakCollectionError, SQLAlchemyError) as error:
         print(f"Keycloak synchronization failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(asdict(result), sort_keys=True))
@@ -60,13 +64,14 @@ def sync_github(tenant_id: str) -> int:
     try:
         settings = get_settings()
         with get_session_factory(tenant_id)() as session:
+            ConnectorScopeRegistry(session).require_approved("github", settings.github_org)
             service = GitHubSyncService(session)
             checkpoint = service.checkpoint(settings.github_org)
             cache = checkpoint.endpoint_cache if checkpoint else None
             with GitHubCollector(settings) as collector:
                 snapshot = collector.collect(cache)
             result = service.sync(snapshot)
-    except (GitHubCollectionError, SQLAlchemyError, ValueError) as error:
+    except (ConnectorScopeError, GitHubCollectionError, SQLAlchemyError, ValueError) as error:
         print(f"GitHub synchronization failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(asdict(result), sort_keys=True))
@@ -77,10 +82,14 @@ def sync_azure(tenant_id: str) -> int:
     try:
         settings = get_settings()
         with get_session_factory(tenant_id)() as session:
+            ConnectorScopeRegistry(session).require_approved(
+                "azure",
+                f"{settings.azure_tenant_id}/{settings.azure_subscription_id}",
+            )
             with AzureCollector(settings) as collector:
                 snapshot = collector.collect()
             result = AzureSyncService(session).sync(snapshot)
-    except (AzureCollectionError, SQLAlchemyError, ValueError) as error:
+    except (ConnectorScopeError, AzureCollectionError, SQLAlchemyError, ValueError) as error:
         print(f"Azure synchronization failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(asdict(result), sort_keys=True))
@@ -116,7 +125,7 @@ def evaluate_policies(tenant_id: str, username: str) -> int:
     settings = get_settings()
     try:
         with get_session_factory(tenant_id)() as session:
-            identity = session.scalar(select(Identity).where(Identity.username == username))
+            identity = IdentityRepository(session).get_by_username(username)
             if identity is None:
                 print(
                     f"Policy evaluation failed: identity {username} was not found",
@@ -179,7 +188,7 @@ def apply_drift_demo(tenant_id: str) -> int:
 def assess_risk(tenant_id: str, username: str) -> int:
     try:
         with get_session_factory(tenant_id)() as session:
-            identity = session.scalar(select(Identity).where(Identity.username == username))
+            identity = IdentityRepository(session).get_by_username(username)
             if identity is None:
                 print(f"Risk assessment failed: identity {username} was not found", file=sys.stderr)
                 return 1
@@ -205,7 +214,7 @@ def assess_risk(tenant_id: str, username: str) -> int:
 def run_peer_anomaly(tenant_id: str, username: str) -> int:
     try:
         with get_session_factory(tenant_id)() as session:
-            identity = session.scalar(select(Identity).where(Identity.username == username))
+            identity = IdentityRepository(session).get_by_username(username)
             if identity is None:
                 print(f"Peer anomaly failed: identity {username} was not found", file=sys.stderr)
                 return 1
@@ -237,7 +246,7 @@ def open_review(
 ) -> int:
     try:
         with get_session_factory(tenant_id)() as session:
-            identity = session.scalar(select(Identity).where(Identity.username == username))
+            identity = IdentityRepository(session).get_by_username(username)
             if identity is None:
                 raise ValueError(f"identity {username} was not found")
             result = RemediationService(session).open_for_latest_evidence(
@@ -306,7 +315,7 @@ def run_monitoring_slot(
             OpaClient(settings.opa_url) as engine,
         ):
             def identity() -> Identity:
-                record = session.scalar(select(Identity).where(Identity.username == username))
+                record = IdentityRepository(session).get_by_username(username)
                 if record is None:
                     raise ValueError(f"identity {username} was not found after synchronization")
                 return record

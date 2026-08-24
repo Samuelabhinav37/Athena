@@ -13,6 +13,10 @@ the NIST catalog, and implemented requirements for AC-2, AC-5, and AC-6. Stable 
 are derived from the framework digest, and callers must supply a timezone-aware `last-modified`
 value so repeated rendering of the same evidence context remains deterministic.
 
+Administrators can download this Component Definition from
+`GET /v1/reports/oscal-component-definition.json`. It remains a framework mapping artifact, not an
+assessment result or certification claim.
+
 Automated test and policy-fixture evidence use repository-relative links. Database fields and Rego
 rules use Athena URNs. Each requirement carries the source mapping's status and limitations as
 Athena-namespaced OSCAL properties. Partial mappings therefore remain visibly partial and cannot be

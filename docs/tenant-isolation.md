@@ -26,6 +26,9 @@ comparison rule used by tenant-scoped runtime boundaries.
   backups, and restore operations must include and independently authorize the tenant boundary.
 - Provider tenant IDs remain provenance. An administrator explicitly maps provider scopes to one
   Athena tenant; provider data cannot create or switch platform tenants.
+- `connector_scope_bindings` deliberately keeps one global `(connector, scope)` uniqueness key.
+  This is a narrow authority-registry exception: it prevents one external provider scope from being
+  approved for two Athena tenants. Runtime reads remain tenant-filtered and protected by RLS.
 
 ## Threats and required mitigations
 

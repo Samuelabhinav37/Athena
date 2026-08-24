@@ -22,9 +22,9 @@ verification failures. Do not place secrets or full source payloads in labels or
 Athena's receiver-neutral security-event contract is documented in [telemetry.md](telemetry.md).
 It aligns normalized timestamps, severity, resource, attributes, and trace context with
 OpenTelemetry log concepts while retaining a digest and bounded provenance for the original source
-bytes. The contract does not yet enable a listener, durable telemetry store, or external exporter.
-Operators must not expose an ingestion port or forward events until the corresponding adapter,
-authentication, rate limiting, retention, and failure behavior have been reviewed.
+bytes. Authenticated HTTP normalization routes exist for bounded JSON, OTLP/JSON, and syslog input,
+plus a signed generic webhook route. They do not provide a durable telemetry store or acknowledged
+external delivery. Operators must not treat normalization success as ingestion durability.
 
 The initial JSON normalization endpoint is administrator-protected and process-rate-limited, but it
 does not persist events. Do not treat `200` as durable ingestion. Multi-worker deployments must add

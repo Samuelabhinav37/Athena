@@ -81,7 +81,11 @@ class ExecutionService:
         )
         if entitlement is None or not entitlement.active:
             raise ExecutionError("The reviewed entitlement is not active")
-        grant = self.session.get(AccessGrant, entitlement.grant_id)
+        grant = self.session.scalar(
+            tenant_select(
+                self.session, AccessGrant, AccessGrant.id == entitlement.grant_id
+            )
+        )
         if grant is None or grant.revoked_at is not None:
             raise ExecutionError("The reviewed grant is already revoked or unavailable")
         target = self._target(entitlement, grant)
@@ -124,10 +128,20 @@ class ExecutionService:
             raise ExecutionError("Execution is already running")
         if adapter.source != execution.source:
             raise ExecutionError("Adapter source does not match the execution source")
-        entitlement = self.session.get(EffectiveEntitlement, execution.entitlement_id)
+        entitlement = self.session.scalar(
+            tenant_select(
+                self.session,
+                EffectiveEntitlement,
+                EffectiveEntitlement.id == execution.entitlement_id,
+            )
+        )
         if entitlement is None:
             raise ExecutionError("Execution entitlement is unavailable")
-        grant = self.session.get(AccessGrant, entitlement.grant_id)
+        grant = self.session.scalar(
+            tenant_select(
+                self.session, AccessGrant, AccessGrant.id == entitlement.grant_id
+            )
+        )
         if grant is None:
             raise ExecutionError("Execution grant is unavailable")
         target = self._target(entitlement, grant)
@@ -218,6 +232,43 @@ class ExecutionService:
             identity_external_id=identity.external_id,
             permission_action=permission.action,
             resource_external_id=permission.resource.external_id,
+        )
+
+
+class ExecutionWorker:
+    """Claim and run one authorized execution through an injected source adapter."""
+
+    def __init__(self, session: Session, *, actor: str) -> None:
+        self.session = session
+        self.actor = actor
+
+    def run_next(
+        self, adapters: dict[str, RemediationAdapter]
+    ) -> RemediationExecution | None:
+        if not adapters:
+            return None
+        statement = (
+            tenant_select(
+                self.session,
+                RemediationExecution,
+                RemediationExecution.source.in_(adapters),
+                RemediationExecution.status.in_(
+                    [
+                        ExecutionStatus.PENDING,
+                        ExecutionStatus.FAILED,
+                        ExecutionStatus.VERIFICATION_FAILED,
+                    ]
+                ),
+            )
+            .order_by(RemediationExecution.created_at, RemediationExecution.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        execution = self.session.scalar(statement)
+        if execution is None:
+            return None
+        return ExecutionService(self.session).run(
+            execution, self.actor, adapters[execution.source]
         )
 
 

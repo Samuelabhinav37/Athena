@@ -3,8 +3,10 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from athena.main import app
 from athena.services.telemetry_export import TelemetryExportError, TelemetryJSONExporter
 from athena.telemetry import TelemetryResource, build_security_event
+from fastapi.testclient import TestClient
 
 
 def _event(name: str, timestamp: datetime, event_id: uuid.UUID):
@@ -105,3 +107,26 @@ def test_json_export_verification_rejects_tampering_and_noncanonical_json() -> N
         )
     with pytest.raises(TelemetryExportError, match="not canonically serialized"):
         exporter.verify(json.dumps(json.loads(exported), indent=2).encode())
+
+
+def test_administrator_can_export_canonical_events_as_json_or_otlp() -> None:
+    event = _event(
+        "security.first",
+        datetime(2026, 8, 19, 12, 0, tzinfo=UTC),
+        uuid.UUID("00000000-0000-0000-0000-000000000001"),
+    )
+    client = TestClient(app)
+
+    canonical = client.post(
+        "/v1/telemetry/events/export/json", json=[event.model_dump(mode="json")]
+    )
+    otlp = client.post(
+        "/v1/telemetry/events/export/otlp-json", json=[event.model_dump(mode="json")]
+    )
+
+    assert canonical.status_code == 200
+    assert canonical.headers["content-type"].startswith("application/vnd.athena.telemetry+json")
+    assert json.loads(canonical.content)["event_count"] == 1
+    assert otlp.status_code == 200
+    assert otlp.headers["x-athena-event-count"] == "1"
+    assert len(otlp.headers["x-athena-content-sha256"]) == 64

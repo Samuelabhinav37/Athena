@@ -111,6 +111,18 @@ def test_administrator_can_download_json_and_markdown_reports(client: TestClient
     assert "# Athena Authorization Evidence Report" in markdown_response.text
 
 
+def test_administrator_can_download_oscal_component_definition(client: TestClient) -> None:
+    response = client.get("/v1/reports/oscal-component-definition.json")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    definition = response.json()["component-definition"]
+    assert definition["metadata"]["oscal-version"] == "1.1.3"
+    assert definition["components"][0]["control-implementations"][0][
+        "implemented-requirements"
+    ]
+
+
 def test_viewer_cannot_download_full_evidence_report(
     client: TestClient,
 ) -> None:

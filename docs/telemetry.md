@@ -130,6 +130,10 @@ facts. Offline verification revalidates every envelope, checks event count and u
 recomputes the digest with constant-time comparison, and rejects noncanonical serialization. The
 package intentionally excludes generation time so unchanged events produce byte-identical output.
 
+Administrators can invoke the serializer at `POST /v1/telemetry/events/export/json` with a bounded
+array of canonical envelopes. The response is sensitive, marked `no-store`, and is returned to the
+caller rather than persisted or delivered.
+
 This is an in-memory serializer and verifier. It does not select database records, write files,
 upload artifacts, contact a destination, sign content, encrypt data, or claim durable export. File
 placement, transport, signing, encryption, retention, and destination acknowledgement require
@@ -148,6 +152,10 @@ The result contains canonical compact ASCII request bytes, their SHA-256 digest,
 count, and bounded mapping warnings. JSON null has no OTLP `AnyValue` representation and is omitted
 with a path-specific warning. Integers outside signed 64-bit range become decimal strings with a
 warning. Warnings are capped at 100 and output at 8 MiB.
+
+Administrators can invoke this mapping at `POST /v1/telemetry/events/export/otlp-json`. Response
+headers expose the event count, content digest, and warning count; callers must inspect warnings
+and provide their own reviewed transport and durable acknowledgement.
 
 This adapter only constructs request bytes. It does not open a connection, choose or authenticate a
 collector, retry, persist, queue, compress, sign, or interpret an OTLP acknowledgement. Transport

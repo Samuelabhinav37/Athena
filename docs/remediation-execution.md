@@ -73,6 +73,8 @@ class RemediationAdapter(Protocol):
     def verify_revoked(self, target) -> VerificationResult: ...
 ```
 
-Athena currently provides the durable framework and deterministic adapter tests, not production
-GitHub or Azure write adapters. Those adapters require separately managed least-privilege credentials,
-upstream API-specific idempotency behavior, and live verification before they can be enabled.
+Athena provides the durable framework, deterministic adapter tests, and an `ExecutionWorker`
+orchestration interface that claims one eligible request with row locking and invokes an injected
+source adapter. It does not provide production GitHub or Azure write adapters. Those adapters
+require separately managed least-privilege credentials, upstream API-specific idempotency behavior,
+and live verification before they can be enabled.

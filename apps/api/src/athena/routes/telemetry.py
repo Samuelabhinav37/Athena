@@ -14,7 +14,9 @@ from pydantic import ValidationError
 from athena.auth import AdministratorPrincipal, require_administrator
 from athena.config import Settings, get_settings
 from athena.services.otlp import OTLPJSONLogAdapter, OTLPMappingError
+from athena.services.otlp_export import OTLPExportError, OTLPJSONExporter
 from athena.services.syslog import SyslogAdapter, SyslogMappingError
+from athena.services.telemetry_export import TelemetryExportError, TelemetryJSONExporter
 from athena.services.webhook import (
     SignedWebhookAdapter,
     WebhookAuthenticationError,
@@ -87,6 +89,41 @@ webhook_router = APIRouter(prefix="/v1/telemetry/webhooks", tags=["telemetry"])
 @lru_cache
 def get_webhook_replay_cache() -> WebhookReplayCache:
     return WebhookReplayCache()
+
+
+@router.post("/export/json", response_class=Response)
+def export_canonical_events(events: list[SecurityEventEnvelope]) -> Response:
+    try:
+        payload = TelemetryJSONExporter().export(events)
+    except TelemetryExportError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return Response(
+        content=payload,
+        media_type="application/vnd.athena.telemetry+json",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/export/otlp-json", response_class=Response)
+def export_otlp_events(events: list[SecurityEventEnvelope]) -> Response:
+    try:
+        exported = OTLPJSONExporter().export(events)
+    except OTLPExportError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return Response(
+        content=exported.request_bytes,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Athena-Event-Count": str(exported.event_count),
+            "X-Athena-Content-SHA256": exported.content_sha256,
+            "X-Athena-Mapping-Warnings": str(len(exported.warnings)),
+        },
+    )
 
 
 async def _bounded_body(request: Request) -> bytes:

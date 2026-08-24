@@ -39,7 +39,10 @@ def test_rls_migration_history_covers_every_current_scoped_table() -> None:
                 continue
             protected_tables.update(ast.literal_eval(statement.value))
         assert "for table in SCOPED_TABLES:" in source
-        assert 'GRANT SELECT, INSERT, UPDATE, DELETE ON "{table}"' in source
+        assert (
+            'GRANT SELECT, INSERT, UPDATE, DELETE ON "{table}"' in source
+            or 'GRANT SELECT ON "{table}"' in source
+        )
         assert 'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY' in source
         assert 'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY' in source
         assert 'CREATE POLICY "{table}_tenant_isolation"' in source

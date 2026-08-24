@@ -23,6 +23,7 @@ from athena.services.execution import (
     ExecutionError,
     ExecutionService,
     ExecutionTarget,
+    ExecutionWorker,
     VerificationResult,
 )
 from athena.services.remediation import RemediationService, load_case
@@ -187,6 +188,21 @@ def test_verified_execution_revokes_local_evidence_and_replay_is_noop(
     assert entitlement is not None and entitlement.active is False
     assert entitlement.grant.revoked_at is not None
     assert [event.action for event in completed.events] == ["requested", "started", "verified"]
+
+
+def test_worker_claims_and_runs_an_eligible_execution(risk_session: Session) -> None:
+    case = approved_case(risk_session)
+    execution = ExecutionService(risk_session).request(case, "frank", "worker-revocation")
+    adapter = FakeAdapter(source=execution.source)
+
+    completed = ExecutionWorker(risk_session, actor="athena-executor").run_next(
+        {adapter.source: adapter}
+    )
+
+    assert completed is not None
+    assert completed.id == execution.id
+    assert completed.status == ExecutionStatus.SUCCEEDED
+    assert len(adapter.calls) == 1
 
 
 def test_failure_and_verification_failure_preserve_active_access(risk_session: Session) -> None:

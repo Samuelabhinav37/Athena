@@ -8,6 +8,33 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from athena.tenancy import TENANT_CONTRACT_VERSION, TENANT_ID_PATTERN
 
 TENANT_TRANSITION_VERSION = "1.0"
+LEGACY_BOOTSTRAP_TABLES = (
+    "access_grants",
+    "access_observations",
+    "anomaly_model_runs",
+    "anomaly_results",
+    "audit_events",
+    "connector_checkpoints",
+    "effective_entitlements",
+    "groups",
+    "identities",
+    "identity_groups",
+    "identity_roles",
+    "monitoring_runs",
+    "monitoring_steps",
+    "permissions",
+    "policy_evaluations",
+    "provenance_edges",
+    "remediation_execution_events",
+    "remediation_executions",
+    "resources",
+    "review_cases",
+    "review_events",
+    "risk_assessments",
+    "risk_findings",
+    "role_transitions",
+    "roles",
+)
 TENANT_TABLES = (
     "access_grants",
     "access_observations",
@@ -15,6 +42,7 @@ TENANT_TABLES = (
     "anomaly_results",
     "audit_events",
     "connector_checkpoints",
+    "connector_scope_bindings",
     "effective_entitlements",
     "groups",
     "identities",
@@ -77,7 +105,7 @@ class BootstrapTenantApproval(BaseModel):
     @field_validator("expected_preexisting_rows")
     @classmethod
     def require_complete_nonnegative_inventory(cls, value: dict[str, int]) -> dict[str, int]:
-        if set(value) != set(TENANT_TABLES):
+        if set(value) not in (set(LEGACY_BOOTSTRAP_TABLES), set(TENANT_TABLES)):
             missing = sorted(set(TENANT_TABLES) - set(value))
             extra = sorted(set(value) - set(TENANT_TABLES))
             raise ValueError(f"inventory table mismatch; missing={missing}, extra={extra}")
@@ -231,7 +259,8 @@ def build_tenant_transition_plan(bootstrap: BootstrapTenantApproval) -> TenantTr
 def validate_observed_inventory(
     bootstrap: BootstrapTenantApproval, observed_rows: dict[str, int]
 ) -> None:
-    if observed_rows != bootstrap.expected_preexisting_rows:
+    expected = {table: bootstrap.expected_preexisting_rows.get(table, 0) for table in TENANT_TABLES}
+    if observed_rows != expected:
         raise TenantTransitionError(
             "Observed row inventory differs from approved bootstrap inventory"
         )

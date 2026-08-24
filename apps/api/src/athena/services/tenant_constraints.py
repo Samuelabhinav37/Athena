@@ -6,7 +6,10 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 
 from athena.models import Base
-from athena.services.tenant_integrity import TenantIntegrityReport
+from athena.services.tenant_integrity import (
+    CROSS_TENANT_AUTHORITY_CONSTRAINTS,
+    TenantIntegrityReport,
+)
 from athena.tenant_transition import TENANT_TABLES
 
 
@@ -71,6 +74,8 @@ def _build_tenant_constraint_plan(*, ready: bool) -> TenantConstraintPlan:
         table = Base.metadata.tables[table_name]
         for constraint in table.constraints:
             if not isinstance(constraint, UniqueConstraint) or "tenant_id" in constraint.columns:
+                continue
+            if f"{table_name}.{constraint.name}" in CROSS_TENANT_AUTHORITY_CONSTRAINTS:
                 continue
             columns = tuple(column.name for column in constraint.columns)
             unique_changes.append(
