@@ -270,13 +270,33 @@ class AzureSyncService:
     def _owner_metadata(owners: object) -> dict[str, object]:
         if not isinstance(owners, list):
             return {"owner": None, "owners": []}
-        candidates = sorted({
-            owner.get("userPrincipalName") or owner.get("displayName")
-            for owner in owners
-            if isinstance(owner, dict)
-            and (owner.get("userPrincipalName") or owner.get("displayName"))
-        }, key=str.casefold)
-        return {"owner": candidates[0] if candidates else None, "owners": candidates}
+        by_id: dict[str, dict[str, str]] = {}
+        for owner in owners:
+            if not isinstance(owner, dict):
+                continue
+            owner_id = owner.get("id")
+            if not isinstance(owner_id, str) or not 1 <= len(owner_id) <= 255:
+                continue
+            record = {"id": owner_id}
+            user_principal_name = owner.get("userPrincipalName")
+            display_name = owner.get("displayName")
+            if isinstance(user_principal_name, str) and user_principal_name:
+                record["user_principal_name"] = user_principal_name[:320]
+            if isinstance(display_name, str) and display_name:
+                record["display_name"] = display_name[:255]
+            existing = by_id.get(owner_id)
+            if existing is None or tuple(sorted(record.items())) < tuple(sorted(existing.items())):
+                by_id[owner_id] = record
+        records = sorted(by_id.values(), key=lambda owner: owner["id"].casefold())
+        owner_label = next(
+            (
+                owner.get("user_principal_name") or owner.get("display_name")
+                for owner in records
+                if owner.get("user_principal_name") or owner.get("display_name")
+            ),
+            records[0]["id"] if records else None,
+        )
+        return {"owner": owner_label, "owners": records}
 
     @staticmethod
     def _credential_expirations(principal: dict) -> list[str]:

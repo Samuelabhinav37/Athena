@@ -40,7 +40,8 @@ python -m athena.cli sync-azure --tenant-id athena-local
 ## Collected evidence
 
 - Entra users, groups, memberships, service principals, and managed identities;
-- service-principal owners and credential expiration times without key IDs or secret material;
+- service-principal owners as deterministic records keyed by Graph owner ID, plus credential
+  expiration times without credential key IDs or secret material;
 - Azure RBAC assignments, role definitions, actions, scopes, and assignment conditions;
 - canonical identities, resources, permissions, grants, and ordered provenance;
 - unchanged-snapshot detection, removed-assignment detection, and audit events; and

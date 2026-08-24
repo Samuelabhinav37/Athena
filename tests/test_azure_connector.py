@@ -163,9 +163,10 @@ def snapshot(fingerprint: str, assignments: bool = True) -> AzureSnapshot:
             "servicePrincipalType": "ManagedIdentity",
             "accountEnabled": True,
             "AthenaOwners": [
-                {"displayName": "Zoe Owner"},
-                {"userPrincipalName": "alice@example.test"},
-                {"userPrincipalName": "alice@example.test"},
+                {"id": "owner-z", "displayName": "Zoe Owner"},
+                {"id": "owner-a", "userPrincipalName": "alice@example.test"},
+                {"id": "owner-b", "userPrincipalName": "alice@example.test"},
+                {"id": "owner-c"},
             ],
             "passwordCredentials": [{
                 "keyId": "excluded-key-id",
@@ -221,7 +222,12 @@ def test_sync_materializes_azure_lineage_is_idempotent_and_revokes_removed_acces
         assert principal is not None
         assert principal.identity_type.value == "workload"
         assert principal.source_metadata["owner"] == "alice@example.test"
-        assert principal.source_metadata["owners"] == ["alice@example.test", "Zoe Owner"]
+        assert principal.source_metadata["owners"] == [
+            {"id": "owner-a", "user_principal_name": "alice@example.test"},
+            {"id": "owner-b", "user_principal_name": "alice@example.test"},
+            {"id": "owner-c"},
+            {"display_name": "Zoe Owner", "id": "owner-z"},
+        ]
         assert principal.source_metadata["credential_expirations"]
         assert "excluded-key-id" not in str(principal.source_metadata)
         assert first.grants_created == 1

@@ -31,9 +31,10 @@ engine, and any destructive response requires human review plus separately autho
 ## Current evidence limits
 
 Microsoft Entra service principals are normalized as applications and managed identities as
-workloads. The read-only collector reduces owners and credential expiration times into bounded
-metadata without persisting key IDs, secrets, certificates, or tokens. Missing owner and usage data
-remains visible rather than inferred.
+workloads. The read-only collector preserves owners as bounded records keyed by Graph owner ID and
+retains a scalar display value for compatibility. Credential expiration metadata excludes
+credential key IDs, secrets, certificates, and tokens. Missing owner and usage data remains visible
+rather than inferred.
 
 Future connectors may normalize additional platform-specific ownership and workload activity into
 the same contract without exposing secret material.
