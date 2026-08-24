@@ -172,3 +172,8 @@ state remains fail closed. Corrective migration `20260824_13` provisions the non
 and migration `20260824_14` completes composite tenant ownership for requester and approver
 references. Administrative migration sessions are explicitly marked and tenant-domain query helpers
 reject them because they carry no tenant authority.
+
+Monitoring run rows are mutable coordination state, but only across the six lifecycle columns used
+to claim, retry, and finalize an idempotent schedule slot. Migration `20260824_16` grants that narrow
+column-level update authority without granting table-level updates or deletion. Monitoring step rows
+remain append-only evidence and cannot be updated or deleted by the runtime role.

@@ -66,6 +66,8 @@ class MonitoringService:
         self.session.commit()
         outputs: dict[str, dict] = {}
         sequence = len(run.steps)
+        run_id = run.id
+        attempt = run.attempt_count
         for name, operation in operations:
             started = datetime.now(UTC)
             try:
@@ -73,13 +75,21 @@ class MonitoringService:
                 step_status = MonitoringStatus.COMPLETED
                 error_text = None
             except Exception as error:
+                self.session.rollback()
+                run = self.session.scalar(
+                    tenant_select(self.session, MonitoringRun, MonitoringRun.id == run_id).options(
+                        selectinload(MonitoringRun.steps)
+                    )
+                )
+                if run is None:
+                    raise MonitoringError(f"Monitoring run {run_id} disappeared") from error
                 output = {}
                 step_status = MonitoringStatus.FAILED
                 error_text = f"{type(error).__name__}: {error}"
             sequence += 1
             step = MonitoringStep(
                 sequence=sequence,
-                attempt=run.attempt_count,
+                attempt=attempt,
                 name=name,
                 status=step_status,
                 started_at=started,

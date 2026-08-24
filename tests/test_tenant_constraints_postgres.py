@@ -324,3 +324,38 @@ def test_runtime_role_has_insert_only_mutation_access_to_immutable_evidence(
             privileges[table].add(privilege)
 
         assert all(grants == {"INSERT", "SELECT"} for grants in privileges.values())
+
+
+def test_runtime_role_can_only_update_monitoring_lifecycle_columns(
+    postgres_engines: tuple[Engine, Engine, uuid.UUID, uuid.UUID],
+) -> None:
+    owner_engine, _, _, _ = postgres_engines
+    expected_columns = {
+        "status",
+        "attempt_count",
+        "started_at",
+        "completed_at",
+        "error",
+        "summary",
+    }
+    with owner_engine.connect() as connection:
+        update_columns = set(
+            connection.scalars(
+                text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.column_privileges
+                    WHERE grantee = 'athena_app'
+                      AND table_name = 'monitoring_runs'
+                      AND privilege_type = 'UPDATE'
+                    """
+                )
+            )
+        )
+        assert update_columns == expected_columns
+        assert connection.scalar(
+            text("SELECT has_table_privilege('athena_app', 'monitoring_runs', 'DELETE')")
+        ) is False
+        assert connection.scalar(
+            text("SELECT has_table_privilege('athena_app', 'monitoring_steps', 'UPDATE')")
+        ) is False

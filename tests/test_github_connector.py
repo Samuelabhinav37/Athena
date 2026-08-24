@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from dataclasses import replace
 
 import httpx
 from athena.collectors.github import GitHubCollector, GitHubSnapshot
@@ -174,13 +175,19 @@ def test_sync_materializes_effective_permission_and_revokes_missing_access() -> 
         assert entitlement.provenance_edges[0].relationship_type == "reported_effective_permission"
         assert sorted(group.name for group in identity.groups) == ["Security", "acme"]
 
+        edge_ids = [edge.id for edge in entitlement.provenance_edges]
+        refreshed = service.sync(replace(initial, fingerprint="b" * 64))
+        session.refresh(entitlement, attribute_names=["provenance_edges"])
+        assert refreshed.unchanged is False
+        assert [edge.id for edge in entitlement.provenance_edges] == edge_ids
+
         removed = GitHubSnapshot(
             organization="acme",
             members=initial.members,
             repositories=initial.repositories,
             permissions=[],
             endpoint_cache={},
-            fingerprint="b" * 64,
+            fingerprint="c" * 64,
         )
         result = service.sync(removed)
         assert result.grants_revoked == 1

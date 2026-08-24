@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import (
@@ -22,6 +22,10 @@ def governance_gaps(grant: AccessGrant) -> list[str]:
     if grant.permission.privileged and grant.expires_at is None:
         gaps.append("missing_expiration")
     return gaps
+
+
+class ProvenanceConflictError(RuntimeError):
+    """Raised when new lineage conflicts with immutable recorded provenance."""
 
 
 class ProvenanceService:
@@ -70,6 +74,7 @@ class ProvenanceService:
         entitlements = []
         for grant in grants:
             entitlement = existing.get(grant.id)
+            edges = self._edges(identity, grant)
             if entitlement is None:
                 entitlement = EffectiveEntitlement(
                     identity_id=identity.id,
@@ -78,21 +83,35 @@ class ProvenanceService:
                 )
                 self.session.add(entitlement)
                 self.session.flush()
-            else:
-                self.session.execute(
-                    delete(ProvenanceEdge).where(
-                        ProvenanceEdge.entitlement_id == entitlement.id
-                    )
+                entitlement.provenance_edges = edges
+            elif self._edge_signature(entitlement.provenance_edges) != self._edge_signature(edges):
+                raise ProvenanceConflictError(
+                    f"Immutable provenance changed for entitlement {entitlement.id}"
                 )
             entitlement.permission_id = grant.permission_id
             entitlement.computed_at = now
             entitlement.active = True
             entitlement.deactivated_at = None
-            entitlement.provenance_edges = self._edges(identity, grant)
             entitlements.append(entitlement)
 
         self.session.flush()
         return entitlements
+
+    @staticmethod
+    def _edge_signature(edges: list[ProvenanceEdge]) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            (
+                edge.sequence,
+                edge.from_type,
+                edge.from_id,
+                edge.from_label,
+                edge.relationship_type,
+                edge.to_type,
+                edge.to_id,
+                edge.to_label,
+            )
+            for edge in edges
+        )
 
     @staticmethod
     def _edges(identity: Identity, grant: AccessGrant) -> list[ProvenanceEdge]:

@@ -69,6 +69,47 @@ def test_failed_slot_retains_evidence_and_retries_same_run(monitoring_session: S
     ]
 
 
+def test_failed_database_operation_rolls_back_before_recording_evidence(
+    monitoring_session: Session,
+) -> None:
+    service = MonitoringService(monitoring_session)
+
+    def violate_schedule_key() -> dict:
+        monitoring_session.add(
+            MonitoringRun(
+                schedule_key="daily:duplicate",
+                status=MonitoringStatus.PENDING,
+                requested_by="scheduler",
+                summary={},
+            )
+        )
+        monitoring_session.flush()
+        return {}
+
+    monitoring_session.add(
+        MonitoringRun(
+            schedule_key="daily:duplicate",
+            status=MonitoringStatus.PENDING,
+            requested_by="scheduler",
+            summary={},
+        )
+    )
+    monitoring_session.commit()
+
+    with pytest.raises(MonitoringError, match="IntegrityError"):
+        service.run("daily:database-failure", "scheduler", [("sync", violate_schedule_key)])
+
+    failed = monitoring_session.scalar(
+        select(MonitoringRun).where(MonitoringRun.schedule_key == "daily:database-failure")
+    )
+    assert failed is not None
+    assert failed.status == MonitoringStatus.FAILED
+    assert len(failed.steps) == 1
+    assert failed.steps[0].status == MonitoringStatus.FAILED
+    assert failed.steps[0].error is not None
+    assert "IntegrityError" in failed.steps[0].error
+
+
 def test_monitoring_steps_are_immutable(monitoring_session: Session) -> None:
     result = MonitoringService(monitoring_session).run(
         "daily:20260816", "scheduler", [("sync", lambda: {"records": 6})]
