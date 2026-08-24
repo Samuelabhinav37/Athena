@@ -162,7 +162,11 @@ def snapshot(fingerprint: str, assignments: bool = True) -> AzureSnapshot:
             "displayName": "Deployer",
             "servicePrincipalType": "ManagedIdentity",
             "accountEnabled": True,
-            "AthenaOwners": [{"userPrincipalName": "alice@example.test"}],
+            "AthenaOwners": [
+                {"displayName": "Zoe Owner"},
+                {"userPrincipalName": "alice@example.test"},
+                {"userPrincipalName": "alice@example.test"},
+            ],
             "passwordCredentials": [{
                 "keyId": "excluded-key-id",
                 "endDateTime": (datetime.now(UTC) + timedelta(days=15)).isoformat(),
@@ -217,6 +221,7 @@ def test_sync_materializes_azure_lineage_is_idempotent_and_revokes_removed_acces
         assert principal is not None
         assert principal.identity_type.value == "workload"
         assert principal.source_metadata["owner"] == "alice@example.test"
+        assert principal.source_metadata["owners"] == ["alice@example.test", "Zoe Owner"]
         assert principal.source_metadata["credential_expirations"]
         assert "excluded-key-id" not in str(principal.source_metadata)
         assert first.grants_created == 1

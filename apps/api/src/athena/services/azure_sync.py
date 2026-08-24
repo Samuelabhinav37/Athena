@@ -109,7 +109,7 @@ class AzureSyncService:
                     "tenant_id": snapshot.tenant_id,
                     "application_id": principal.get("appId"),
                     "service_principal_type": principal.get("servicePrincipalType"),
-                    "owner": self._owner(principal.get("AthenaOwners")),
+                    **self._owner_metadata(principal.get("AthenaOwners")),
                     "credential_expirations": self._credential_expirations(principal),
                 },
                 groups=memberships.get(principal["id"], []),
@@ -267,16 +267,16 @@ class AzureSyncService:
         return self._result(snapshot, created, updated, revoked, False)
 
     @staticmethod
-    def _owner(owners: object) -> str | None:
-        if not isinstance(owners, list) or not owners:
-            return None
-        candidates = sorted(
+    def _owner_metadata(owners: object) -> dict[str, object]:
+        if not isinstance(owners, list):
+            return {"owner": None, "owners": []}
+        candidates = sorted({
             owner.get("userPrincipalName") or owner.get("displayName")
             for owner in owners
             if isinstance(owner, dict)
             and (owner.get("userPrincipalName") or owner.get("displayName"))
-        )
-        return candidates[0] if candidates else None
+        }, key=str.casefold)
+        return {"owner": candidates[0] if candidates else None, "owners": candidates}
 
     @staticmethod
     def _credential_expirations(principal: dict) -> list[str]:
