@@ -60,6 +60,7 @@ jobs:
       - name: Validate Compose
         env:
           POSTGRES_PASSWORD: ci-compose-validation
+          ATHENA_APP_DB_PASSWORD: ci-app-password
           KEYCLOAK_ADMIN: ci-admin
           KEYCLOAK_ADMIN_PASSWORD: ci-compose-validation
         run: |
