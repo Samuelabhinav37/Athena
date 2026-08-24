@@ -6,6 +6,8 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 os.environ.setdefault("ATHENA_AUTH_REQUIRED", "false")
+os.environ.setdefault("ATHENA_API_WORKER_COUNT", "1")
+os.environ.setdefault("ATHENA_API_REPLICA_COUNT", "1")
 
 
 @pytest.fixture(autouse=True)

@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     webhook_enabled: bool = False
     webhook_secret: SecretStr = SecretStr("")
     webhook_max_age_seconds: int = Field(default=300, ge=30, le=900)
-    api_worker_count: int = Field(default=1, ge=1, le=1024)
-    api_replica_count: int = Field(default=1, ge=1, le=1024)
+    api_worker_count: int = Field(ge=1, le=1024)
+    api_replica_count: int = Field(ge=1, le=1024)
     policy_directory: Path = Path("policies")
     control_directory: Path = Path("controls")
     github_api_url: str = "https://api.github.com"

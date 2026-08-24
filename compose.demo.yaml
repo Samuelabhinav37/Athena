@@ -88,6 +88,8 @@ services:
       ATHENA_NEO4J_USER: neo4j
       ATHENA_NEO4J_PASSWORD: ${NEO4J_PASSWORD:?Set NEO4J_PASSWORD for the demo API}
       ATHENA_AUTH_REQUIRED: "true"
+      ATHENA_API_WORKER_COUNT: "1"
+      ATHENA_API_REPLICA_COUNT: "1"
       ATHENA_OIDC_ISSUER: http://localhost:8080/realms/athena
       ATHENA_OIDC_JWKS_URL: http://keycloak:8080/realms/athena/protocol/openid-connect/certs
       ATHENA_OIDC_AUDIENCE: athena-api
