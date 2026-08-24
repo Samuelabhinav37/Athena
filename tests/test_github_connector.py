@@ -216,3 +216,64 @@ def test_connector_api_exposes_checkpoint_without_cached_payload() -> None:
         assert payload["cached_endpoints"] == 1
         assert "private-user" not in response.text
     engine.dispose()
+
+
+def test_checkpoint_cache_is_not_reused_across_tenants() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-b"},
+    )
+    with factory() as session:
+        session.add(
+            ConnectorCheckpoint(
+                tenant_id="tenant-a",
+                connector="github",
+                scope="acme",
+                fingerprint="d" * 64,
+                endpoint_cache={"members": {"etag": '"tenant-a"'}},
+            )
+        )
+        session.commit()
+
+        assert GitHubSyncService(session).checkpoint("acme") is None
+
+    engine.dispose()
+
+
+def test_connector_api_excludes_other_tenant_checkpoints() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-b"},
+    )
+    with factory() as session:
+        session.add(
+            ConnectorCheckpoint(
+                tenant_id="tenant-a",
+                connector="github",
+                scope="acme",
+                fingerprint="f" * 64,
+                endpoint_cache={},
+            )
+        )
+        session.commit()
+        app.dependency_overrides[get_db_session] = lambda: session
+        try:
+            response = TestClient(app).get("/v1/connectors")
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []
+    engine.dispose()

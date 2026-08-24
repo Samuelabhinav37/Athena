@@ -45,13 +45,20 @@ LIMITATIONS = [
 
 def _count(session: Session, model: type, *criteria: Any) -> int:
     statement = select(func.count()).select_from(model)
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(model.tenant_id == tenant_id)
     if criteria:
         statement = statement.where(*criteria)
     return int(session.scalar(statement) or 0)
 
 
 def _enum_counts(session: Session, model: type, column: Any) -> dict[str, int]:
-    rows = session.execute(select(column, func.count()).select_from(model).group_by(column))
+    statement = select(column, func.count()).select_from(model).group_by(column)
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(model.tenant_id == tenant_id)
+    rows = session.execute(statement)
     return {
         (value.value if hasattr(value, "value") else str(value)): int(count)
         for value, count in rows
@@ -104,6 +111,10 @@ class EvidenceReportService:
         self.control_directory = control_directory
 
     def build(self) -> EvidenceReportResponse:
+        tenant_id = self.session.info.get("tenant_id")
+        maximum_risk = select(func.max(RiskAssessment.score))
+        if tenant_id is not None:
+            maximum_risk = maximum_risk.where(RiskAssessment.tenant_id == tenant_id)
         inventory: dict[str, int | float | None] = {
             "identities": _count(self.session, Identity),
             "active_identities": _count(self.session, Identity, Identity.active.is_(True)),
@@ -112,7 +123,7 @@ class EvidenceReportService:
             ),
             "policy_evaluations": _count(self.session, PolicyEvaluation),
             "risk_assessments": _count(self.session, RiskAssessment),
-            "maximum_risk_score": self.session.scalar(select(func.max(RiskAssessment.score))),
+            "maximum_risk_score": self.session.scalar(maximum_risk),
             "anomalies": _count(self.session, AnomalyResult, AnomalyResult.is_anomaly.is_(True)),
             "review_cases": _count(self.session, ReviewCase),
             "remediation_executions": _count(self.session, RemediationExecution),

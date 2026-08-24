@@ -19,11 +19,13 @@ DatabaseSession = Annotated[Session, Depends(get_db_session)]
 def list_connector_checkpoints(
     session: DatabaseSession,
 ) -> list[ConnectorCheckpointResponse]:
-    checkpoints = session.scalars(
-        select(ConnectorCheckpoint).order_by(
-            ConnectorCheckpoint.connector, ConnectorCheckpoint.scope
-        )
+    statement = select(ConnectorCheckpoint).order_by(
+        ConnectorCheckpoint.connector, ConnectorCheckpoint.scope
     )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(ConnectorCheckpoint.tenant_id == tenant_id)
+    checkpoints = session.scalars(statement)
     return [
         ConnectorCheckpointResponse(
             id=checkpoint.id,

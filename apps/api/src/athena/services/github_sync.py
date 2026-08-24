@@ -39,12 +39,14 @@ class GitHubSyncService:
         self.session = session
 
     def checkpoint(self, organization: str) -> ConnectorCheckpoint | None:
-        return self.session.scalar(
-            select(ConnectorCheckpoint).where(
-                ConnectorCheckpoint.connector == "github",
-                ConnectorCheckpoint.scope == organization,
-            )
+        statement = select(ConnectorCheckpoint).where(
+            ConnectorCheckpoint.connector == "github",
+            ConnectorCheckpoint.scope == organization,
         )
+        tenant_id = self.session.info.get("tenant_id")
+        if tenant_id is not None:
+            statement = statement.where(ConnectorCheckpoint.tenant_id == tenant_id)
+        return self.session.scalar(statement)
 
     def sync(self, snapshot: GitHubSnapshot) -> GitHubSyncResult:
         checkpoint = self.checkpoint(snapshot.organization)

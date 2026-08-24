@@ -44,11 +44,15 @@ class AttackPath:
 
 
 def build_projection(session: Session) -> GraphProjection:
-    entitlements = session.scalars(
+    statement = (
         select(EffectiveEntitlement)
         .options(selectinload(EffectiveEntitlement.provenance_edges))
         .where(EffectiveEntitlement.active.is_(True))
-    ).all()
+    )
+    tenant_id = session.info.get("tenant_id")
+    if tenant_id is not None:
+        statement = statement.where(EffectiveEntitlement.tenant_id == tenant_id)
+    entitlements = session.scalars(statement).all()
     nodes: dict[str, GraphNode] = {}
     edges: dict[tuple[str, str, str, str], GraphEdge] = {}
     for entitlement in entitlements:

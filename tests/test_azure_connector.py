@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import httpx
 from athena.collectors.azure import AzureCollectionError, AzureCollector, AzureSnapshot
 from athena.config import Settings
-from athena.models import AccessGrant, Base, EffectiveEntitlement, Identity
+from athena.models import AccessGrant, Base, ConnectorCheckpoint, EffectiveEntitlement, Identity
 from athena.services.azure_sync import AzureSyncService
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -217,5 +217,31 @@ def test_sync_materializes_azure_lineage_is_idempotent_and_revokes_removed_acces
         assert removed.grants_revoked == 1
         assert grants[0].revoked_at is not None
         assert entitlements[0].active is False
+
+    engine.dispose()
+
+
+def test_azure_checkpoint_cache_is_not_reused_across_tenants() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-b"},
+    )
+    with factory() as session:
+        session.add(
+            ConnectorCheckpoint(
+                tenant_id="tenant-a",
+                connector="azure_rbac",
+                scope="subscription-1",
+                fingerprint="e" * 64,
+                endpoint_cache={"inventory": {"etag": '"tenant-a"'}},
+            )
+        )
+        session.commit()
+
+        assert AzureSyncService(session).checkpoint("subscription-1") is None
 
     engine.dispose()

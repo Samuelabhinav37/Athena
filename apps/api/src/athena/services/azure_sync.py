@@ -41,12 +41,14 @@ class AzureSyncService:
         self.session = session
 
     def checkpoint(self, subscription_id: str) -> ConnectorCheckpoint | None:
-        return self.session.scalar(
-            select(ConnectorCheckpoint).where(
-                ConnectorCheckpoint.connector == "azure_rbac",
-                ConnectorCheckpoint.scope == subscription_id,
-            )
+        statement = select(ConnectorCheckpoint).where(
+            ConnectorCheckpoint.connector == "azure_rbac",
+            ConnectorCheckpoint.scope == subscription_id,
         )
+        tenant_id = self.session.info.get("tenant_id")
+        if tenant_id is not None:
+            statement = statement.where(ConnectorCheckpoint.tenant_id == tenant_id)
+        return self.session.scalar(statement)
 
     def sync(self, snapshot: AzureSnapshot) -> AzureSyncResult:
         checkpoint = self.checkpoint(snapshot.subscription_id)

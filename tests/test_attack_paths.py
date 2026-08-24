@@ -69,6 +69,15 @@ def test_projection_reuses_nodes_and_preserves_privileged_lineage(
     assert {node.kind for node in projection.nodes} >= {"identity", "permission", "resource"}
 
 
+def test_projection_excludes_entitlements_from_another_tenant(graph_session: Session) -> None:
+    graph_session.info["tenant_id"] = "tenant-with-no-graph-evidence"
+
+    projection = build_projection(graph_session)
+
+    assert projection.nodes == ()
+    assert projection.edges == ()
+
+
 def test_adapter_requires_explicit_graph_configuration() -> None:
     with pytest.raises(AttackPathError, match="not configured"):
         Neo4jAttackPathAdapter(Settings(database_url="sqlite://"))
