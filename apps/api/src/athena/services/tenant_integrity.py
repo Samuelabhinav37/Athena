@@ -1,7 +1,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import UniqueConstraint, func, select
+from sqlalchemy import ForeignKeyConstraint, UniqueConstraint, and_, func, select
 from sqlalchemy.orm import Session
 
 from athena.models import Base
@@ -42,9 +42,7 @@ def inspect_tenant_integrity(session: Session) -> TenantIntegrityReport:
             table = Base.metadata.tables[table_name]
             count = int(
                 session.scalar(
-                    select(func.count())
-                    .select_from(table)
-                    .where(table.c.tenant_id.is_(None))
+                    select(func.count()).select_from(table).where(table.c.tenant_id.is_(None))
                 )
                 or 0
             )
@@ -59,24 +57,43 @@ def inspect_tenant_integrity(session: Session) -> TenantIntegrityReport:
                 if is_global:
                     unique_constraints.append(f"{table_name}.{constraint.name}")
 
-            for foreign_key in table.foreign_keys:
-                parent = foreign_key.column.table
+            for foreign_key in table.foreign_key_constraints:
+                if not isinstance(foreign_key, ForeignKeyConstraint):
+                    continue
+                elements = tuple(foreign_key.elements)
+                parent = elements[0].column.table
                 if parent.name not in TENANT_TABLES:
                     continue
+                business_elements = tuple(
+                    element for element in elements if element.parent.name != "tenant_id"
+                )
                 mismatch = int(
                     session.scalar(
                         select(func.count())
-                        .select_from(table.join(parent, foreign_key.parent == foreign_key.column))
+                        .select_from(
+                            table.join(
+                                parent,
+                                and_(
+                                    *(
+                                        element.parent == element.column
+                                        for element in business_elements
+                                    )
+                                ),
+                            )
+                        )
                         .where(table.c.tenant_id.is_distinct_from(parent.c.tenant_id))
                     )
                     or 0
                 )
+                child_columns = ",".join(
+                    element.parent.name for element in business_elements
+                )
+                parent_columns = ",".join(
+                    element.column.name for element in business_elements
+                )
                 relationship_checks.append(
                     TenantRelationshipCheck(
-                        relationship=(
-                            f"{table_name}.{foreign_key.parent.name}->"
-                            f"{parent.name}.{foreign_key.column.name}"
-                        ),
+                        relationship=f"{table_name}.{child_columns}->{parent.name}.{parent_columns}",
                         mismatched_rows=mismatch,
                     )
                 )

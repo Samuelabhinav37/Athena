@@ -12,11 +12,17 @@ Every protected request must present `Authorization: Bearer <access-token>`. Ath
 - issuer equality with `ATHENA_OIDC_ISSUER`;
 - the `ATHENA_OIDC_AUDIENCE` audience (`athena-api` by default);
 - required `exp`, `iat`, `sub`, `iss`, and `aud` claims; and
+- a canonical `athena_tenant_id` authority claim before database access; and
 - Athena roles from Keycloak realm roles or `athena-api` client roles.
 
 Signing keys are cached and refreshed through PyJWT's JWKS client. Invalid, expired, incorrectly
 issued, or incorrectly targeted tokens receive `401 Unauthorized`. Authenticated callers without the
-required role receive `403 Forbidden`.
+required role or a valid tenant claim receive `403 Forbidden`.
+
+The local Keycloak lab emits `athena_tenant_id=athena-local`. Athena validates that claim against its
+canonical tenant-ID contract and installs it with transaction-local PostgreSQL `set_config`. It is
+never accepted from request bodies, query parameters, provider metadata, or session-level database
+settings. A pooled connection therefore returns to fail-closed state after commit or rollback.
 
 ## Role hierarchy
 
@@ -58,6 +64,7 @@ to that authenticated username, preserving both RBAC and case ownership.
 
 ```dotenv
 ATHENA_AUTH_REQUIRED=true
+ATHENA_SYSTEM_TENANT_ID=athena-local
 ATHENA_OIDC_ISSUER=http://localhost:8080/realms/athena
 ATHENA_OIDC_AUDIENCE=athena-api
 ATHENA_OIDC_JWKS_URL=
@@ -66,3 +73,6 @@ ATHENA_OIDC_JWKS_URL=
 When `ATHENA_OIDC_JWKS_URL` is empty, Athena derives the standard Keycloak certificate endpoint from
 the issuer. `ATHENA_AUTH_REQUIRED=false` exists only for isolated development and automated tests;
 production deployments must leave authentication enabled.
+`ATHENA_SYSTEM_TENANT_ID` is the explicit context for CLI commands and background jobs. The local
+default is forbidden in production, where operators must configure the deployment's canonical
+system tenant.

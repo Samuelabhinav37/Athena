@@ -95,8 +95,8 @@ flowchart LR
 | Policy interoperability | Canonical principal-action-resource-context requests with OPA as authority |
 | Portable reporting | Digest-verified deterministic JSON and Markdown renderer contracts |
 | Report readiness | Explicit OSCAL, PDF, and Word context, security, and verification gates |
-| Tenant isolation | Versioned default-deny contract and threat model; runtime integration pending |
-| Tenant schema foundation | Global tenant registry and nullable scope keys; backfill/RLS disabled |
+| Tenant isolation | Composite constraints plus forced RLS with transaction-local tenant context |
+| Tenant schema foundation | Non-null scope keys and tenant-aware uniqueness and relationships |
 
 ## Authorization Provenance
 
@@ -167,7 +167,8 @@ Open:
 - OpenAPI: `http://localhost:8000/docs`
 
 Health and readiness are public. All `/v1` evidence and workflow endpoints require a Keycloak access
-token for the `athena-api` audience. See [authentication and API roles](docs/authentication.md).
+token for the `athena-api` audience and a valid `athena_tenant_id` claim. See
+[authentication and API roles](docs/authentication.md).
 
 ## End-to-End Demo
 
@@ -241,6 +242,24 @@ python -m athena.cli tenant-integrity
 
 The report covers every scoped foreign key, lists remaining unassigned rows and global unique
 constraints, and declares whether tenant-aware constraint migration is ready.
+
+Build the deterministic constraint replacement plan without altering the schema:
+
+```bash
+python -m athena.cli tenant-constraint-plan
+```
+
+The plan includes tenant-scoped unique constraints, composite tenant foreign keys, and supporting
+parent constraints. It remains `blocked_by_integrity` until assignment and relationship checks pass.
+
+Build the fail-closed PostgreSQL row-level-security plan without installing policies:
+
+```bash
+python -m athena.cli tenant-rls-plan
+```
+
+The plan covers all 25 scoped tables, requires forced RLS and a non-bypass application role, and
+uses only the transaction-local `athena.tenant_id` setting for reads and writes.
 
 ## GitHub Connector
 
@@ -361,6 +380,11 @@ Athena/
 - [x] Digest-verified bootstrap backfill dry-run
 - [x] Transactionally verified bootstrap backfill executor
 - [x] Read-only tenant integrity readiness inspection
+- [x] Deterministic tenant-aware constraint migration plan
+- [x] Tenant-aware uniqueness and composite relationship migration
+- [x] Deterministic fail-closed PostgreSQL RLS plan
+- [x] Forced fail-closed PostgreSQL RLS policies and non-bypass application role
+- [x] Validated transaction-local request, CLI, and background-job tenant context
 - [x] Production deployment and recovery hardening
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation

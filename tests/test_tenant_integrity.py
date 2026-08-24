@@ -21,11 +21,12 @@ def _tenant(tenant_id: str) -> Tenant:
     )
 
 
-def test_integrity_report_finds_unassigned_rows_and_global_uniqueness() -> None:
+def test_integrity_report_accepts_tenant_scoped_rows_and_uniqueness() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False)
     with factory.begin() as session:
+        session.add(_tenant("tenant-a"))
         session.add(
             Identity(
                 source="keycloak",
@@ -34,14 +35,15 @@ def test_integrity_report_finds_unassigned_rows_and_global_uniqueness() -> None:
                 identity_type=IdentityType.HUMAN,
                 display_name="Alice",
                 active=True,
+                tenant_id="tenant-a",
             )
         )
     with factory() as session:
         report = inspect_tenant_integrity(session)
         assert report.database_mutation is False
-        assert report.ready_for_tenant_constraints is False
-        assert report.unassigned_rows == {"identities": 1}
-        assert "identities.uq_identity_source_external" in report.global_unique_constraints
+        assert report.ready_for_tenant_constraints is True
+        assert report.unassigned_rows == {}
+        assert report.global_unique_constraints == ()
     engine.dispose()
 
 
@@ -94,4 +96,29 @@ def test_integrity_inspection_rejects_pending_session_changes() -> None:
         session.add(_tenant("pending"))
         with pytest.raises(TenantIntegrityError, match="no pending changes"):
             inspect_tenant_integrity(session)
+    engine.dispose()
+
+
+def test_session_context_assigns_new_rows_to_validated_tenant() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-a"},
+    )
+    with factory.begin() as session:
+        session.add(_tenant("tenant-a"))
+        identity = Identity(
+            source="keycloak",
+            external_id="alice",
+            username="alice",
+            identity_type=IdentityType.HUMAN,
+            display_name="Alice",
+            active=True,
+        )
+        session.add(identity)
+
+    assert identity.tenant_id == "tenant-a"
     engine.dispose()

@@ -14,7 +14,7 @@ from athena.collectors.azure import AzureCollectionError, AzureCollector
 from athena.collectors.github import GitHubCollectionError, GitHubCollector
 from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollector
 from athena.config import get_settings
-from athena.database import get_session_factory
+from athena.database import get_system_session_factory as get_session_factory
 from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaAuthorizationAdapter, OpaClient, OpaEvaluationError
 from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
@@ -35,8 +35,10 @@ from athena.services.tenant_backfill import (
     execute_bootstrap_backfill,
     load_bootstrap_approval,
 )
+from athena.services.tenant_constraints import build_tenant_constraint_plan
 from athena.services.tenant_integrity import TenantIntegrityError, inspect_tenant_integrity
 from athena.services.tenant_inventory import TenantInventoryError, capture_tenant_inventory
+from athena.services.tenant_rls import build_tenant_rls_plan
 from athena.tenant_transition import TenantTransitionError
 
 
@@ -459,6 +461,31 @@ def tenant_integrity() -> int:
     return 0
 
 
+def tenant_constraint_plan() -> int:
+    try:
+        with get_session_factory()() as session:
+            integrity = inspect_tenant_integrity(session)
+            plan = build_tenant_constraint_plan(integrity)
+    except (SQLAlchemyError, TenantIntegrityError) as error:
+        print(f"Tenant constraint plan failed: {error}", file=sys.stderr)
+        return 1
+    print(plan.model_dump_json())
+    return 0
+
+
+def tenant_rls_plan() -> int:
+    try:
+        with get_session_factory()() as session:
+            integrity = inspect_tenant_integrity(session)
+            constraints = build_tenant_constraint_plan(integrity)
+            plan = build_tenant_rls_plan(constraints)
+    except (SQLAlchemyError, TenantIntegrityError) as error:
+        print(f"Tenant RLS plan failed: {error}", file=sys.stderr)
+        return 1
+    print(plan.model_dump_json())
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="athena", description="Athena operational commands")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -542,6 +569,10 @@ def main() -> int:
     subcommands.add_parser(
         "tenant-integrity", help="Inspect tenant assignment and relationship readiness"
     )
+    subcommands.add_parser(
+        "tenant-constraint-plan", help="Build a non-mutating tenant-aware constraint plan"
+    )
+    subcommands.add_parser("tenant-rls-plan", help="Build a non-mutating fail-closed RLS plan")
     arguments = parser.parse_args()
 
     if arguments.command == "sync-keycloak":
@@ -587,6 +618,10 @@ def main() -> int:
         return tenant_backfill(arguments.approval_file, arguments.confirm_plan_sha256)
     if arguments.command == "tenant-integrity":
         return tenant_integrity()
+    if arguments.command == "tenant-constraint-plan":
+        return tenant_constraint_plan()
+    if arguments.command == "tenant-rls-plan":
+        return tenant_rls_plan()
     return 2
 
 

@@ -2,7 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
-from athena.auth import Principal, TokenVerifier, ViewerPrincipal, authorize
+from athena.auth import (
+    Principal,
+    TokenVerifier,
+    ViewerPrincipal,
+    authorize,
+    get_tenant_context,
+)
 from athena.config import Settings
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -88,6 +94,39 @@ def test_role_hierarchy_allows_higher_roles_and_denies_lower_roles() -> None:
     assert captured.value.status_code == 403
 
 
+def test_tenant_context_requires_valid_signed_claim() -> None:
+    settings = Settings(database_url="sqlite://", auth_required=True)
+    principal = Principal(
+        "user-charlie",
+        "charlie",
+        frozenset({"athena-viewer"}),
+        {"athena_tenant_id": "tenant-a"},
+    )
+
+    context = get_tenant_context(principal, settings)
+
+    assert context.tenant_id == "tenant-a"
+    assert context.subject == "user-charlie"
+    assert context.source == "oidc_claim"
+
+    for claims in ({}, {"athena_tenant_id": "INVALID TENANT"}):
+        with pytest.raises(HTTPException) as captured:
+            get_tenant_context(Principal("user-charlie", "charlie", frozenset(), claims), settings)
+        assert captured.value.status_code == 403
+
+
+def test_auth_disabled_uses_explicit_system_tenant() -> None:
+    settings = Settings(
+        database_url="sqlite://", auth_required=False, system_tenant_id="local-test"
+    )
+    principal = Principal("local-auth-disabled", "test-user", frozenset(), {})
+
+    context = get_tenant_context(principal, settings)
+
+    assert context.tenant_id == "local-test"
+    assert context.source == "system_job"
+
+
 def test_protected_route_requires_bearer_token(keys: tuple[bytes, bytes]) -> None:
     private_key, public_key = keys
     application = FastAPI()
@@ -110,9 +149,7 @@ def test_protected_route_requires_bearer_token(keys: tuple[bytes, bytes]) -> Non
 
     client = TestClient(application)
     missing = client.get("/protected")
-    accepted = client.get(
-        "/protected", headers={"Authorization": f"Bearer {token(private_key)}"}
-    )
+    accepted = client.get("/protected", headers={"Authorization": f"Bearer {token(private_key)}"})
 
     assert missing.status_code == 401
     assert missing.headers["www-authenticate"] == "Bearer"

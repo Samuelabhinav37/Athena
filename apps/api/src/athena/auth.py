@@ -8,8 +8,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError, PyJWKClientError
+from pydantic import ValidationError
 
 from athena.config import Settings, get_settings
+from athena.tenancy import TenantContext
 
 VIEWER = "athena-viewer"
 ANALYST = "athena-analyst"
@@ -115,6 +117,35 @@ def get_current_principal(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return verifier.verify(credentials.credentials)
+
+
+def get_tenant_context(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> TenantContext:
+    if not settings.auth_required:
+        return TenantContext(
+            tenant_id=settings.system_tenant_id,
+            subject=principal.subject,
+            source="system_job",
+        )
+    tenant_id = principal.claims.get("athena_tenant_id")
+    if not isinstance(tenant_id, str):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access token is missing a valid Athena tenant claim",
+        )
+    try:
+        return TenantContext(
+            tenant_id=tenant_id,
+            subject=principal.subject,
+            source="oidc_claim",
+        )
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access token is missing a valid Athena tenant claim",
+        ) from error
 
 
 def authorize(principal: Principal, required_role: str) -> Principal:

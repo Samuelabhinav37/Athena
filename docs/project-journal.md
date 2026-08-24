@@ -61,8 +61,8 @@ The governing safety rule is:
 - Azure service-principal owner and credential-expiration evidence
 - Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Obtain explicit operator approval for the reviewed bootstrap plan before executing
-it against the local evidence store; then rerun tenant-integrity before constraint design.
+**Next outcome:** Extend tenant-aware negative coverage to caches, graph projection, exports, and
+connector/job keys, then define tenant-scoped lifecycle and recovery controls.
 
 ## Roadmap
 
@@ -109,6 +109,90 @@ it against the local evidence store; then rerun tenant-integrity before constrai
 | 39. Bootstrap backfill dry-run | Digest-verified, deterministic, non-mutating plan | Complete |
 | 40. Bootstrap backfill executor | Locked, atomic assignment with immutable controls restored | Complete |
 | 41. Tenant integrity readiness | Metadata-derived assignment, relationship, and uniqueness checks | Complete |
+| 42. Tenant constraint plan | Deterministic composite uniqueness and relationship design | Complete |
+| 43. Tenant RLS plan | Fail-closed policies and pooled-session safety requirements | Complete |
+| 44. Tenant constraints | Tenant-scoped uniqueness and composite relationship enforcement | Complete |
+| 45. Tenant RLS | Forced policies and a non-owner, non-bypass application role | Complete |
+| 46. Runtime tenant context | Validated OIDC/system authority and pooled-session isolation | Complete |
+
+## Milestone 46: transaction-local runtime tenant context
+
+Protected API database sessions now require the signed `athena_tenant_id` claim. Invalid or missing
+claims fail before database access. Local auth-disabled operation and CLI/background commands use
+the explicit `ATHENA_SYSTEM_TENANT_ID`; production rejects the local bootstrap default. The local
+Keycloak realm emits `athena_tenant_id=athena-local` for dashboard access tokens.
+
+SQLAlchemy sets `athena.tenant_id` with transaction-local `set_config` and propagates that validated
+context to new ORM rows. Tests reuse pooled PostgreSQL connections across `athena-local`, missing,
+and other-tenant contexts and confirm every transaction returns to fail-closed state.
+
+## Milestone 45: forced fail-closed row-level security
+
+After explicit approval of RLS plan
+`0ff1c92c47d9433ac2f30b175d413850f670b813699323264fc785eb6b084a0d`, migration
+`20260823_12` installed one read/write policy on each of the 25 scoped tables, enabled and forced
+RLS, and granted scoped access to the non-login `athena_app` role. The role is neither a table
+owner nor a superuser and has no `BYPASSRLS`; Athena's PostgreSQL pool assumes it on connection.
+
+PostgreSQL verification confirms all 25 policies and forced flags are present. Through
+`athena_app`, unset and empty tenant settings return no identities, the `athena-local` setting
+returns its seven identities, and a write without context is rejected. Runtime transaction-local
+tenant selection remains a separate milestone.
+
+## Milestone 44: tenant-aware database constraints
+
+After explicit approval of constraint plan
+`96d2704ac77e61af959f27a8acdfcd51e8f98515dc1ee83e535cd951993550c8`, migration
+`20260823_11` made `tenant_id` non-null on all 25 scoped tables, replaced 15 global unique
+constraints, replaced 32 global foreign keys with composite tenant-aware relationships, and added
+13 supporting parent constraints. No evidence row content was changed by the migration.
+
+Post-migration integrity reports no unassigned rows, no relationship mismatch, and no remaining
+global unique constraint. Alembic reports `20260823_11` at head with no metadata drift. A focused
+PostgreSQL test confirmed that missing tenant assignment and a cross-tenant association are both
+rejected. The full Python suite passes with the existing Starlette warning.
+
+## Milestone 43: deterministic fail-closed RLS plan
+
+Added `tenant-rls-plan`, a non-mutating policy design for all 25 scoped tables. Each planned policy
+enables and forces PostgreSQL RLS, applies the same transaction-local tenant predicate to reads and
+writes, and returns no scoped rows when context is missing or empty. Role requirements prohibit
+table ownership, superuser, and `BYPASSRLS`; session requirements prohibit ambient pooled context.
+
+The local plan is correctly `blocked_by_constraints` and has digest
+`b18a2afdaa3f594ebd77deac332bf70c1d1eadc46fd1477df73774aee3abd196`. It installs no policy and
+changes no runtime session behavior.
+
+Validation evidence:
+
+- focused RLS-plan, constraint-plan, and CLI tests: 11 passed;
+- full automated Python suite: 200 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 42: deterministic tenant-aware constraint plan
+
+Added `tenant-constraint-plan`, which derives a non-mutating schema plan directly from model
+metadata and the current integrity result. It proposes 15 tenant-scoped unique replacements, 32
+composite tenant foreign-key replacements, and 13 supporting parent constraints. Deterministic
+constraint naming respects PostgreSQL's 63-character limit.
+
+The local plan is correctly `blocked_by_integrity` while the 614-row bootstrap assignment remains
+pending. Its digest is `56726e3602fd80eda31812395068d65f1aae08550f49c273f5150f628e3543de`.
+The plan does not alter schema or authorize a later migration.
+
+Validation evidence:
+
+- focused constraint-plan, integrity, and CLI tests: 11 passed;
+- full automated Python suite: 197 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
 
 ## Milestone 41: tenant integrity readiness inspection
 

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://athena:athena@localhost:5432/athena",
         min_length=1,
     )
+    system_tenant_id: str = Field(default="athena-local", pattern=r"^[a-z0-9][a-z0-9_-]{2,62}$")
     keycloak_url: str = "http://localhost:8080"
     keycloak_realm: str = "athena"
     keycloak_client_id: str = "athena-collector"
@@ -126,6 +127,8 @@ class Settings(BaseSettings):
             errors.append("authentication must be enabled")
         if "athena:athena@" in self.database_url:
             errors.append("the default database credential is forbidden")
+        if self.system_tenant_id == "athena-local":
+            errors.append("the default system tenant is forbidden")
         if self.keycloak_client_secret.get_secret_value() == "athena-local-collector-secret":
             errors.append("the default Keycloak collector secret is forbidden")
         if not self.oidc_issuer.startswith("https://"):

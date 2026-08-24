@@ -64,6 +64,7 @@ def test_production_configuration_accepts_explicit_secure_values() -> None:
     settings = Settings(
         env="production",
         database_url="postgresql+psycopg://athena:strong-password@db:5432/athena",
+        system_tenant_id="production-system",
         keycloak_client_secret="separately-provisioned-secret",
         oidc_issuer="https://identity.example.test/realms/athena",
         auth_required=True,

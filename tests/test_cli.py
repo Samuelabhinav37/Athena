@@ -88,3 +88,17 @@ def test_tenant_integrity_command_dispatches_read_only_inspection(monkeypatch) -
     monkeypatch.setattr(cli, "tenant_integrity", lambda: 29)
 
     assert cli.main() == 29
+
+
+def test_tenant_constraint_plan_command_dispatches_read_only_plan(monkeypatch) -> None:
+    monkeypatch.setattr(cli.sys, "argv", ["athena", "tenant-constraint-plan"])
+    monkeypatch.setattr(cli, "tenant_constraint_plan", lambda: 31)
+
+    assert cli.main() == 31
+
+
+def test_tenant_rls_plan_command_dispatches_read_only_plan(monkeypatch) -> None:
+    monkeypatch.setattr(cli.sys, "argv", ["athena", "tenant-rls-plan"])
+    monkeypatch.setattr(cli, "tenant_rls_plan", lambda: 37)
+
+    assert cli.main() == 37

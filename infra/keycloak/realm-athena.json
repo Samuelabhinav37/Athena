@@ -188,6 +188,20 @@
           }
         },
         {
+          "name": "athena-tenant",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "athena_tenant_id",
+            "claim.value": "athena-local",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
           "name": "athena-api-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",

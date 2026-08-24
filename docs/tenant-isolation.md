@@ -125,3 +125,40 @@ any scoped row is unassigned or any relationship crosses tenants.
 On the current local database, all 32 scoped relationships have zero mismatches, but readiness is
 false because the 614 approved rows remain unassigned. The report also identifies 15 global unique
 constraints that require a separately approved tenant-aware schema migration after backfill.
+
+## Tenant-aware constraint plan
+
+`python -m athena.cli tenant-constraint-plan` derives a deterministic, non-mutating replacement
+plan from the same model metadata. It covers all 15 global unique constraints, all 32 scoped foreign
+keys, and the 13 supporting `(tenant_id, referenced_column)` constraints required by PostgreSQL.
+Every proposed uniqueness and relationship key begins with `tenant_id`, and generated names are
+deterministically bounded to PostgreSQL's 63-character identifier limit.
+
+The approved pre-migration plan had digest
+`96d2704ac77e61af959f27a8acdfcd51e8f98515dc1ee83e535cd951993550c8`. Migration
+`20260823_11` applied it after the bootstrap backfill and a successful integrity report. Tenant keys
+are now non-null; all 15 scoped uniqueness rules and all 32 scoped relationships include
+`tenant_id`, with 13 supporting parent constraints. PostgreSQL negative testing confirms that
+missing tenant assignment and cross-tenant associations fail closed.
+
+## Row-level-security plan
+
+`python -m athena.cli tenant-rls-plan` produces a deterministic, non-mutating plan for all 25
+scoped tables. Every policy enables and forces RLS and applies the same predicate to reads and
+writes: `tenant_id = nullif(current_setting('athena.tenant_id', true), '')`. Missing and empty
+settings therefore match no tenant row instead of falling back to a shared default.
+
+The approved plan digest was
+`0ff1c92c47d9433ac2f30b175d413850f670b813699323264fc785eb6b084a0d`. Migration
+`20260823_12` enables and forces all 25 policies for the non-owner, non-superuser,
+`NOBYPASSRLS` `athena_app` role. Athena's PostgreSQL pool assumes that role, so missing or empty
+tenant context returns no scoped rows and rejects scoped writes. Runtime code must still call
+`set_config(..., true)` inside each transaction; session-level tenant settings remain forbidden.
+
+## Runtime tenant context
+
+API sessions derive tenant authority only from the verified `athena_tenant_id` OIDC claim. CLI and
+background operations use the explicit `ATHENA_SYSTEM_TENANT_ID`. SQLAlchemy validates the context,
+sets it transaction-locally when work begins, and assigns it to new scoped ORM rows. Missing or
+invalid authority fails before API database access, while unset, empty, and stale pooled connection
+state remains fail closed.
