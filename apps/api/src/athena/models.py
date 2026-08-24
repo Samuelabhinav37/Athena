@@ -11,12 +11,14 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Table,
     Text,
     UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -432,7 +434,17 @@ class EffectiveEntitlement(TenantScopedMixin, Base):
             "tenant_id",
             "identity_id",
             "grant_id",
-            name="uq_effective_entitlements_tenant_identity_id_grant_id",
+            "lineage_version",
+            name="uq_effective_entitlements_tenant_identity_grant_version",
+        ),
+        Index(
+            "uq_effective_entitlements_one_active_lineage",
+            "tenant_id",
+            "identity_id",
+            "grant_id",
+            unique=True,
+            postgresql_where=text("active"),
+            sqlite_where=text("active = 1"),
         ),
         tenant_foreign_key(
             "identity_id",
@@ -458,6 +470,7 @@ class EffectiveEntitlement(TenantScopedMixin, Base):
     identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     permission_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     grant_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    lineage_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -467,7 +480,7 @@ class EffectiveEntitlement(TenantScopedMixin, Base):
     grant: Mapped[AccessGrant] = relationship(lazy="joined", overlaps="identity,permission")
     provenance_edges: Mapped[list["ProvenanceEdge"]] = relationship(
         back_populates="entitlement",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
         order_by="ProvenanceEdge.sequence",
         lazy="selectin",
     )
@@ -1023,6 +1036,9 @@ class MonitoringRun(TenantScopedMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     steps: Mapped[list["MonitoringStep"]] = relationship(
         back_populates="run",

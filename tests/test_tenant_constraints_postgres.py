@@ -140,10 +140,10 @@ def test_postgres_restricts_deleting_access_grant_requester_and_approver(
                 """
                 INSERT INTO resources (
                     id, tenant_id, source, external_id, resource_type, name,
-                    source_metadata, created_at, updated_at
+                    sensitivity, source_metadata, created_at, updated_at
                 ) VALUES (
                     :id, :tenant_id, 'test', :external_id, 'repository', 'Grant resource',
-                    '{}'::jsonb, now(), now()
+                    'moderate', '{}'::jsonb, now(), now()
                 )
                 """
             ),
@@ -153,10 +153,10 @@ def test_postgres_restricts_deleting_access_grant_requester_and_approver(
             text(
                 """
                 INSERT INTO permissions (
-                    id, tenant_id, resource_id, action, effect, conditions,
+                    id, tenant_id, resource_id, action, name, privileged,
                     created_at, updated_at
                 ) VALUES (
-                    :id, :tenant_id, :resource_id, 'read', 'allow', '{}'::jsonb,
+                    :id, :tenant_id, :resource_id, 'read', 'Grant permission', false,
                     now(), now()
                 )
                 """
@@ -323,7 +323,15 @@ def test_runtime_role_has_insert_only_mutation_access_to_immutable_evidence(
         for table, privilege in rows:
             privileges[table].add(privilege)
 
+        assert privileges.pop("connector_scope_revocations") == {"SELECT"}
         assert all(grants == {"INSERT", "SELECT"} for grants in privileges.values())
+
+        assert connection.scalar(
+            text(
+                "SELECT has_table_privilege("
+                "'athena_app', 'effective_entitlements', 'DELETE')"
+            )
+        ) is False
 
 
 def test_runtime_role_can_only_update_monitoring_lifecycle_columns(
@@ -337,6 +345,9 @@ def test_runtime_role_can_only_update_monitoring_lifecycle_columns(
         "completed_at",
         "error",
         "summary",
+        "lease_token",
+        "heartbeat_at",
+        "lease_expires_at",
     }
     with owner_engine.connect() as connection:
         update_columns = set(

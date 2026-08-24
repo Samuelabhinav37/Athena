@@ -17,6 +17,20 @@ Recommended alerts include sustained readiness failures, elevated 5xx rates, pol
 failed monitoring runs, connector checkpoint staleness, review deadline breaches, and remediation
 verification failures. Do not place secrets or full source payloads in labels or log fields.
 
+## Monitoring leases
+
+Each schedule slot is claimed with a database lease before connector or policy work begins. The
+default lease is 900 seconds and can be configured with `ATHENA_MONITORING_LEASE_SECONDS` between
+60 and 86400 seconds. Athena heartbeats immediately before and after every monitoring operation.
+A second worker fails closed while the lease is live; an expired or legacy missing lease is retried
+as a new attempt only after an immutable `lease_recovery` monitoring step records the interruption.
+
+Lease tokens are internal coordination values and are not returned by monitoring routes or written
+to step output. Successful and failed terminal transitions clear the ownership token and expiry,
+while retaining the last heartbeat for diagnostics. Set the lease longer than the maximum expected
+duration of any single connector operation; a provider call that outlives the lease can be safely
+reclaimed and its original worker will lose authority to append later evidence.
+
 ## Security-event envelope
 
 Athena's receiver-neutral security-event contract is documented in [telemetry.md](telemetry.md).

@@ -4,7 +4,7 @@ import sys
 import time
 import uuid
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -381,7 +381,10 @@ def run_monitoring_slot(
                 ("provenance", provenance), ("policy_evaluation", policies),
                 ("risk_assessment", risk), ("peer_anomaly", anomaly), ("review", review),
             ])
-            result = MonitoringService(session).run(schedule_key, requested_by, operations)
+            result = MonitoringService(
+                session,
+                lease_duration=timedelta(seconds=settings.monitoring_lease_seconds),
+            ).run(schedule_key, requested_by, operations)
     except (
         AzureCollectionError,
         KeycloakCollectionError,

@@ -24,10 +24,6 @@ def governance_gaps(grant: AccessGrant) -> list[str]:
     return gaps
 
 
-class ProvenanceConflictError(RuntimeError):
-    """Raised when new lineage conflicts with immutable recorded provenance."""
-
-
 class ProvenanceService:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -59,35 +55,53 @@ class ProvenanceService:
             ).unique()
         )
 
-        existing = {
-            entitlement.grant_id: entitlement
-            for entitlement in self.session.scalars(
-                select(EffectiveEntitlement).where(
-                    EffectiveEntitlement.identity_id == identity.id
-                )
+        history: dict[uuid.UUID, list[EffectiveEntitlement]] = {}
+        for entitlement in self.session.scalars(
+            select(EffectiveEntitlement)
+            .options(selectinload(EffectiveEntitlement.provenance_edges))
+            .where(EffectiveEntitlement.identity_id == identity.id)
+            .order_by(EffectiveEntitlement.grant_id, EffectiveEntitlement.lineage_version)
+        ).unique():
+            history.setdefault(entitlement.grant_id, []).append(entitlement)
+
+        current = {
+            grant_id: next(
+                (entitlement for entitlement in reversed(versions) if entitlement.active),
+                versions[-1],
             )
+            for grant_id, versions in history.items()
         }
-        for entitlement in existing.values():
+        for entitlement in current.values():
             entitlement.active = False
             entitlement.deactivated_at = now
 
         entitlements = []
         for grant in grants:
-            entitlement = existing.get(grant.id)
+            entitlement = current.get(grant.id)
             edges = self._edges(identity, grant)
             if entitlement is None:
                 entitlement = EffectiveEntitlement(
                     identity_id=identity.id,
                     permission_id=grant.permission_id,
                     grant_id=grant.id,
+                    lineage_version=1,
                 )
                 self.session.add(entitlement)
                 self.session.flush()
                 entitlement.provenance_edges = edges
             elif self._edge_signature(entitlement.provenance_edges) != self._edge_signature(edges):
-                raise ProvenanceConflictError(
-                    f"Immutable provenance changed for entitlement {entitlement.id}"
+                entitlement = EffectiveEntitlement(
+                    identity_id=identity.id,
+                    permission_id=grant.permission_id,
+                    grant_id=grant.id,
+                    lineage_version=max(
+                        version.lineage_version for version in history[grant.id]
+                    )
+                    + 1,
                 )
+                self.session.add(entitlement)
+                self.session.flush()
+                entitlement.provenance_edges = edges
             entitlement.permission_id = grant.permission_id
             entitlement.computed_at = now
             entitlement.active = True

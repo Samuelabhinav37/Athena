@@ -9,7 +9,7 @@ from athena.services.tenant_backfill import (
 )
 from athena.services.tenant_inventory import capture_tenant_inventory
 from athena.tenant_transition import BootstrapTenantApproval, tenant_inventory_digest
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
@@ -22,6 +22,8 @@ def test_transactional_backfill_preserves_and_restores_immutable_controls() -> N
     engine = create_engine(os.environ["ATHENA_TEST_DATABASE_URL"])
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with factory.begin() as session:
+        # Recreate the pre-tenant state this transition test is specifically validating.
+        session.execute(text("SET LOCAL session_replication_role = replica"))
         session.add(
             AuditEvent(
                 actor_type="test",
@@ -31,6 +33,8 @@ def test_transactional_backfill_preserves_and_restores_immutable_controls() -> N
                 entity_id="evidence-1",
             )
         )
+        session.flush()
+        session.execute(text("SET LOCAL session_replication_role = origin"))
     with factory() as session:
         counts = capture_tenant_inventory(session).table_counts
     approval = BootstrapTenantApproval(

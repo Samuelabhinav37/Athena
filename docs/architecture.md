@@ -108,7 +108,7 @@ a collector durably accepted the request.
 - **Audit event:** an append-only record of a meaningful action or state transition.
 - **Security event envelope:** bounded normalized telemetry plus immutable original-event provenance.
 
-Every effective entitlement must identify its source. Approval, business justification, and expiration are first-class governance attributes; required missing attributes create an ungoverned-access finding.
+Every effective entitlement must identify its source. Approval, business justification, and expiration are first-class governance attributes; required missing attributes create an ungoverned-access finding. Effective-entitlement lineage is versioned: an unchanged refresh reuses the active version, while a changed ordered edge chain deactivates the prior projection and appends a new version. Historical entitlement versions and their provenance edges are retained, and the runtime database role cannot delete entitlement history.
 
 IAM integrations expose a versioned, provider-neutral capability manifest alongside their existing
 provider-specific collection results. The manifest requires explicit support levels and limitation

@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     webhook_max_age_seconds: int = Field(default=300, ge=30, le=900)
     api_worker_count: int = Field(ge=1, le=1024)
     api_replica_count: int = Field(ge=1, le=1024)
+    monitoring_lease_seconds: int = Field(default=900, ge=60, le=86400)
     policy_directory: Path = Path("policies")
     control_directory: Path = Path("controls")
     github_api_url: str = "https://api.github.com"

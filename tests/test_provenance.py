@@ -16,7 +16,7 @@ from athena.models import (
     Role,
 )
 from athena.services.demo_scenario import DemoScenarioService
-from athena.services.provenance import governance_gaps
+from athena.services.provenance import ProvenanceService, governance_gaps
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -159,3 +159,37 @@ def test_provenance_edges_have_unique_order(provenance_session: Session) -> None
     for edge in edges:
         sequences.setdefault(edge.entitlement_id, []).append(edge.sequence)
     assert all(values == list(range(len(values))) for values in sequences.values())
+
+
+def test_changed_lineage_appends_version_and_preserves_history(
+    provenance_session: Session,
+) -> None:
+    DemoScenarioService(provenance_session).seed()
+    alice = provenance_session.scalar(select(Identity).where(Identity.username == "alice"))
+    assert alice is not None
+    current = provenance_session.scalar(
+        select(EffectiveEntitlement)
+        .join(EffectiveEntitlement.permission)
+        .where(
+            EffectiveEntitlement.identity_id == alice.id,
+            Permission.name == "Production Database Read",
+        )
+    )
+    assert current is not None
+    original_edge_ids = [edge.id for edge in current.provenance_edges]
+
+    current.permission.name = "Production Database Read Only"
+    ProvenanceService(provenance_session).materialize_identity(alice)
+    provenance_session.commit()
+
+    versions = list(
+        provenance_session.scalars(
+            select(EffectiveEntitlement)
+            .where(EffectiveEntitlement.grant_id == current.grant_id)
+            .order_by(EffectiveEntitlement.lineage_version)
+        )
+    )
+    assert [version.lineage_version for version in versions] == [1, 2]
+    assert [version.active for version in versions] == [False, True]
+    assert [edge.id for edge in versions[0].provenance_edges] == original_edge_ids
+    assert versions[1].provenance_edges[-1].from_label == "Production Database Read Only"
