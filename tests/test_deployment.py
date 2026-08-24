@@ -53,7 +53,16 @@ def test_request_logging_replaces_unsafe_correlation_id() -> None:
 
 def test_production_configuration_rejects_development_security_defaults() -> None:
     with pytest.raises(ValidationError, match="Invalid production configuration") as captured:
-        Settings(env="production")
+        Settings(
+            env="production",
+            database_url=(
+                "postgresql+psycopg://athena_app:athena-app-local@localhost:5432/athena"
+            ),
+            migration_database_url="postgresql+psycopg://athena:athena@localhost:5432/athena",
+            system_tenant_id="athena-local",
+            keycloak_client_secret="athena-local-collector-secret",
+            oidc_issuer="http://localhost:8080/realms/athena",
+        )
 
     message = str(captured.value)
     assert "default application database credential" in message
@@ -179,8 +188,10 @@ def test_ci_runs_postgresql_isolation_suite_as_an_explicit_required_step() -> No
     workflow = Path(".github/workflows/security-gate.yml").read_text(encoding="utf-8")
 
     assert "name: Run PostgreSQL isolation tests" in workflow
+    assert "pytest -q tests/test_tenant_backfill_postgres.py" in workflow
     assert "pytest -q tests/test_tenant_constraints_postgres.py" in workflow
-    assert "pytest -q --ignore=tests/test_tenant_constraints_postgres.py" in workflow
+    assert "--ignore=tests/test_tenant_backfill_postgres.py" in workflow
+    assert "--ignore=tests/test_tenant_constraints_postgres.py" in workflow
 
 
 def test_dashboard_exposes_bounded_advisory_attack_paths() -> None:

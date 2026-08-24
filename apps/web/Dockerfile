@@ -8,6 +8,8 @@ RUN npm run build
 
 FROM nginx:1.29.8-alpine
 
+RUN apk upgrade --no-cache
+
 COPY apps/web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /opt/athena-web/dist /usr/share/nginx/html
 

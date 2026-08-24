@@ -88,10 +88,15 @@ jobs:
           --command "ALTER ROLE athena_app PASSWORD '${ATHENA_APP_DB_PASSWORD}'"
 
       - name: Run PostgreSQL isolation tests
-        run: pytest -q tests/test_tenant_constraints_postgres.py
+        run: |
+          pytest -q tests/test_tenant_backfill_postgres.py
+          pytest -q tests/test_tenant_constraints_postgres.py
 
       - name: Run Python tests
-        run: pytest -q --ignore=tests/test_tenant_constraints_postgres.py
+        run: >-
+          pytest -q
+          --ignore=tests/test_tenant_backfill_postgres.py
+          --ignore=tests/test_tenant_constraints_postgres.py
 
       - name: Test Rego policies
         run: docker compose run --rm opa test /policies/iam /policies/system -v
