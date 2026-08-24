@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from athena import database
 from athena.config import Settings
 from athena.main import app
 from fastapi.testclient import TestClient
@@ -113,11 +114,13 @@ def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> Non
 
 def test_demo_exposes_only_an_explicit_profile_gated_schema_migration() -> None:
     compose = Path("compose.demo.yaml").read_text(encoding="utf-8")
+    api_environment = compose.split("  api:", 1)[1].split("    depends_on:", 1)[0]
 
     assert "  migrate:" in compose
     assert 'command: ["alembic", "upgrade", "head"]' in compose
     assert 'profiles: ["migration"]' in compose
     assert "ATHENA_MIGRATION_DATABASE_URL:" in compose
+    assert "ATHENA_MIGRATION_DATABASE_URL:" not in api_environment
     assert "condition: service_completed_successfully" not in compose
 
 
@@ -126,6 +129,23 @@ def test_existing_volume_upgrade_documents_interactive_runtime_password_provisio
 
     assert "Existing PostgreSQL volumes" in deployment
     assert "\\password athena_app" in deployment
+
+
+def test_administrative_session_factory_uses_separate_migration_identity(monkeypatch) -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://athena_app:runtime@runtime-db/athena",
+        migration_database_url="postgresql+psycopg://athena_migrator:owner@admin-db/athena",
+    )
+    monkeypatch.setattr(database, "get_settings", lambda: settings)
+    database.get_administrative_engine.cache_clear()
+    try:
+        factory = database.get_administrative_session_factory()
+        assert str(factory.kw["bind"].url).startswith(
+            "postgresql+psycopg://athena_migrator:***@admin-db/athena"
+        )
+        assert factory.kw["info"] == {}
+    finally:
+        database.get_administrative_engine.cache_clear()
 
 
 def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:

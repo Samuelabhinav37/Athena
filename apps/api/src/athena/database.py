@@ -22,6 +22,11 @@ def get_engine() -> Engine:
     return create_engine(get_settings().database_url, pool_pre_ping=True)
 
 
+@lru_cache
+def get_administrative_engine() -> Engine:
+    return create_engine(get_settings().migration_database_url, pool_pre_ping=True)
+
+
 def get_session_factory(tenant_id: str | None = None) -> sessionmaker[Session]:
     return sessionmaker(
         bind=get_engine(),
@@ -33,6 +38,15 @@ def get_session_factory(tenant_id: str | None = None) -> sessionmaker[Session]:
 
 def get_system_session_factory() -> sessionmaker[Session]:
     return get_session_factory(get_settings().system_tenant_id)
+
+
+def get_administrative_session_factory() -> sessionmaker[Session]:
+    return sessionmaker(
+        bind=get_administrative_engine(),
+        autoflush=False,
+        expire_on_commit=False,
+        info={},
+    )
 
 
 def get_db_session(

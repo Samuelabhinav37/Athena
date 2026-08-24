@@ -14,7 +14,7 @@ from athena.collectors.azure import AzureCollectionError, AzureCollector
 from athena.collectors.github import GitHubCollectionError, GitHubCollector
 from athena.collectors.keycloak import KeycloakCollectionError, KeycloakCollector
 from athena.config import get_settings
-from athena.database import get_session_factory, get_system_session_factory
+from athena.database import get_administrative_session_factory, get_session_factory
 from athena.models import Identity, ReviewDecision
 from athena.policy.opa import OpaAuthorizationAdapter, OpaClient, OpaEvaluationError
 from athena.services.attack_paths import AttackPathError, Neo4jAttackPathAdapter, build_projection
@@ -413,7 +413,7 @@ def monitoring_loop(
 
 def tenant_inventory() -> int:
     try:
-        with get_system_session_factory()() as session:
+        with get_administrative_session_factory()() as session:
             snapshot = capture_tenant_inventory(session)
     except (SQLAlchemyError, TenantInventoryError) as error:
         print(f"Tenant inventory failed: {error}", file=sys.stderr)
@@ -425,7 +425,7 @@ def tenant_inventory() -> int:
 def tenant_backfill_plan(approval_file: Path) -> int:
     try:
         approval = load_bootstrap_approval(approval_file)
-        with get_system_session_factory()() as session:
+        with get_administrative_session_factory()() as session:
             plan = build_bootstrap_backfill_plan(session, approval)
     except (
         OSError,
@@ -443,7 +443,7 @@ def tenant_backfill_plan(approval_file: Path) -> int:
 def tenant_backfill(approval_file: Path, confirmed_plan_sha256: str) -> int:
     try:
         approval = load_bootstrap_approval(approval_file)
-        with get_system_session_factory().begin() as session:
+        with get_administrative_session_factory().begin() as session:
             result = execute_bootstrap_backfill(
                 session,
                 approval,
@@ -464,7 +464,7 @@ def tenant_backfill(approval_file: Path, confirmed_plan_sha256: str) -> int:
 
 def tenant_integrity() -> int:
     try:
-        with get_system_session_factory()() as session:
+        with get_administrative_session_factory()() as session:
             report = inspect_tenant_integrity(session)
     except (SQLAlchemyError, TenantIntegrityError) as error:
         print(f"Tenant integrity inspection failed: {error}", file=sys.stderr)
@@ -475,7 +475,7 @@ def tenant_integrity() -> int:
 
 def tenant_constraint_plan() -> int:
     try:
-        with get_system_session_factory()() as session:
+        with get_administrative_session_factory()() as session:
             integrity = inspect_tenant_integrity(session)
             plan = build_tenant_constraint_plan(integrity)
     except (SQLAlchemyError, TenantIntegrityError) as error:
@@ -487,7 +487,7 @@ def tenant_constraint_plan() -> int:
 
 def tenant_rls_plan() -> int:
     try:
-        with get_system_session_factory()() as session:
+        with get_administrative_session_factory()() as session:
             integrity = inspect_tenant_integrity(session)
             constraints = build_tenant_constraint_plan(integrity)
             plan = build_tenant_rls_plan(constraints)

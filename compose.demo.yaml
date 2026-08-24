@@ -81,7 +81,6 @@ services:
     environment:
       ATHENA_ENV: demo
       ATHENA_DATABASE_URL: postgresql+psycopg://athena_app:${ATHENA_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
-      ATHENA_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
       ATHENA_OPA_URL: http://opa:8181
       ATHENA_KEYCLOAK_URL: http://keycloak:8080
       ATHENA_NEO4J_ENABLED: "true"
