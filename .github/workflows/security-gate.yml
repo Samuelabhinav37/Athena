@@ -84,8 +84,11 @@ jobs:
           psql --host localhost --username athena --dbname athena
           --command "ALTER ROLE athena_app PASSWORD '${ATHENA_APP_DB_PASSWORD}'"
 
-      - name: Run Python and PostgreSQL isolation tests
-        run: pytest -q
+      - name: Run PostgreSQL isolation tests
+        run: pytest -q tests/test_tenant_constraints_postgres.py
+
+      - name: Run Python tests
+        run: pytest -q --ignore=tests/test_tenant_constraints_postgres.py
 
       - name: Test Rego policies
         run: docker compose run --rm opa test /policies/iam /policies/system -v

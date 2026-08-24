@@ -111,11 +111,36 @@ def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> Non
     assert '"7687:7687"' not in compose
 
 
+def test_demo_exposes_only_an_explicit_profile_gated_schema_migration() -> None:
+    compose = Path("compose.demo.yaml").read_text(encoding="utf-8")
+
+    assert "  migrate:" in compose
+    assert 'command: ["alembic", "upgrade", "head"]' in compose
+    assert 'profiles: ["migration"]' in compose
+    assert "ATHENA_MIGRATION_DATABASE_URL:" in compose
+    assert "condition: service_completed_successfully" not in compose
+
+
+def test_existing_volume_upgrade_documents_interactive_runtime_password_provisioning() -> None:
+    deployment = Path("docs/deployment.md").read_text(encoding="utf-8")
+
+    assert "Existing PostgreSQL volumes" in deployment
+    assert "\\password athena_app" in deployment
+
+
 def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
     workflow = Path(".github/workflows/security-gate.yml").read_text(encoding="utf-8")
 
     assert "NEO4J_AUTH: neo4j/ci-compose-validation" in workflow
     assert "NEO4J_PASSWORD: ci-compose-validation" in workflow
+
+
+def test_ci_runs_postgresql_isolation_suite_as_an_explicit_required_step() -> None:
+    workflow = Path(".github/workflows/security-gate.yml").read_text(encoding="utf-8")
+
+    assert "name: Run PostgreSQL isolation tests" in workflow
+    assert "pytest -q tests/test_tenant_constraints_postgres.py" in workflow
+    assert "pytest -q --ignore=tests/test_tenant_constraints_postgres.py" in workflow
 
 
 def test_dashboard_exposes_bounded_advisory_attack_paths() -> None:

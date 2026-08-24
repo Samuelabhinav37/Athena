@@ -23,6 +23,7 @@ stack requires non-empty values for:
 
 ```dotenv
 POSTGRES_PASSWORD=<local-demo-password>
+ATHENA_APP_DB_PASSWORD=<separate-local-runtime-password>
 KEYCLOAK_ADMIN=<local-demo-administrator>
 KEYCLOAK_ADMIN_PASSWORD=<local-demo-password>
 ```
@@ -43,9 +44,26 @@ docker compose -f compose.demo.yaml up -d postgres keycloak opa
 Applying migrations changes the database and therefore requires explicit operator approval:
 
 ```powershell
-docker compose -f compose.demo.yaml run --rm api alembic upgrade head
+docker compose -f compose.demo.yaml --profile migration run --rm migrate
 docker compose -f compose.demo.yaml up -d api web
 ```
+
+The migration profile never runs as an API dependency. Starting or restarting the application does
+not authorize a schema change; an operator must invoke the profile explicitly after reviewing the
+forward migration plan and obtaining approval.
+
+Fresh PostgreSQL volumes provision the restricted `athena_app` login from
+`infra/postgres/init-runtime-role.sh`. Existing PostgreSQL volumes do not rerun initialization
+scripts. Before upgrading such a volume to the separated runtime identity, an authorized operator
+must provision or rotate the runtime password interactively so it is not placed in shell history:
+
+```powershell
+docker compose -f compose.demo.yaml exec postgres psql --username athena --dbname athena
+```
+
+At the `psql` prompt, run `\password athena_app`, enter the same separately managed value supplied
+as `ATHENA_APP_DB_PASSWORD`, exit, and only then invoke the approved migration profile. Do not put
+the password in the command line, logs, repository, or migration file.
 
 Open <http://localhost:3000>. Keycloak remains at <http://localhost:8080>. PostgreSQL and OPA are
 not published to the host by this stack.
