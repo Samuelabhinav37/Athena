@@ -53,7 +53,7 @@ class TenantIsolationPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     contract_version: Literal[TENANT_CONTRACT_VERSION] = TENANT_CONTRACT_VERSION
-    status: Literal["design_only", "ready"] = "design_only"
+    status: Literal["design_only", "ready"]
     current_mode: Literal["single_tenant"] = "single_tenant"
     target_mode: Literal["shared_database_row_isolation"] = "shared_database_row_isolation"
     tenant_claim: Literal["athena_tenant_id"] = "athena_tenant_id"
@@ -64,6 +64,7 @@ class TenantIsolationPlan(BaseModel):
 
 
 TENANT_ISOLATION_PLAN = TenantIsolationPlan(
+    status="ready",
     invariants=(
         "Every persisted business and evidence row has one non-null Athena tenant key.",
         "Every uniqueness constraint includes the Athena tenant key unless data is global.",
@@ -93,18 +94,7 @@ TENANT_ISOLATION_PLAN = TenantIsolationPlan(
         "derived_graph_nodes_and_edges",
         "report_and_export_artifacts",
     ),
-    blockers=(
-        "Choose and document the authoritative OIDC tenant claim and issuer binding.",
-        "Design a non-destructive backfill for every existing row before non-null enforcement.",
-        "Add composite foreign keys and tenant-aware uniqueness constraints in a reviewed "
-        "migration.",
-        "Add database row-level security with transaction-local tenant context and "
-        "fail-closed pooling.",
-        "Make every query, cache key, job key, connector scope, and graph projection tenant-aware.",
-        "Add cross-tenant negative tests at ORM, SQL, API, job, export, and graph boundaries.",
-        "Define tenant-scoped encryption, backup, restore, retention, deletion, and "
-        "residency controls.",
-    ),
+    blockers=(),
 )
 
 

@@ -46,13 +46,13 @@ derived by Athena; callers cannot supply a locator or source format. Invalid inp
 error that never echoes source content.
 
 The receiver permits 60 requests per authenticated subject per 60-second window and returns `429`
-with `Retry-After` when exceeded. The limiter is bounded to 10,000 subjects and is intentionally
-process-local. Startup requires declared API worker and replica counts of exactly one; deployments
-must set `ATHENA_API_WORKER_COUNT` and `ATHENA_API_REPLICA_COUNT` to match their actual topology.
-Multi-worker or distributed deployments remain blocked until Athena implements an external shared
-rate limit. Successful responses use `Cache-Control: no-store` and return the normalized envelope
-with the original-byte digest. A `200` response means validation and normalization succeeded—it
-does not mean the event was queued, persisted, or exported.
+with `Retry-After` when exceeded. Development defaults to a bounded process-local limiter and must
+declare exactly one worker and replica. With `ATHENA_SHARED_REQUEST_CONTROLS_ENABLED=true`, Athena
+uses tenant-scoped PostgreSQL buckets that are atomic across workers and replicas. Deployments must
+set `ATHENA_API_WORKER_COUNT` and `ATHENA_API_REPLICA_COUNT` to match their actual topology.
+Successful responses use `Cache-Control: no-store` and return the normalized envelope with the
+original-byte digest. A `200` response means validation and normalization succeeded—it does not
+mean the event was queued, persisted, or exported.
 
 ## OTLP/HTTP JSON normalization
 
@@ -90,8 +90,8 @@ the corresponding OpenTelemetry severity band. The response preserves the digest
 the complete request and, for octet-counted input, separately preserves the enclosed RFC 5424
 message digest. NIL timestamps use receipt time with an explicit warning.
 
-This HTTP endpoint requires an Athena administrator token and shares the bounded process-local
-limiter. It is a parser and normalization boundary—not a UDP/TCP syslog listener. Athena does not
+This HTTP endpoint requires an Athena administrator token and shares the selected process-local or
+PostgreSQL-backed limiter. It is a parser and normalization boundary—not a UDP/TCP syslog listener. Athena does not
 bind port 514, terminate syslog TLS, authenticate devices, persist messages, or acknowledge durable
 delivery. A future network listener must use a reviewed TLS transport and bind authenticated peer
 identity to provenance rather than trusting the message's HOSTNAME.
@@ -111,9 +111,9 @@ mappings and fields fail closed. Exact body bytes become webhook provenance; sec
 are never returned. A verified delivery ID is consumed even when its signed payload fails schema
 validation, preventing repeated processing attempts with the same authenticated delivery.
 
-Replay tracking is bounded to 10,000 IDs but is process-local. Multi-worker or multi-instance
-deployments are rejected by the declared topology settings and require a shared atomic replay store
-and gateway rate limit before that restriction can be removed.
+Development replay tracking is bounded to 10,000 process-local IDs. Shared request controls instead
+reserve tenant-scoped delivery IDs atomically in PostgreSQL and use the same shared rate limiter;
+production requires this mode before multi-worker or multi-instance startup.
 The HMAC secret must contain at least 32 characters and must be provisioned separately to each
 authorized sender. This slice does not provide secret rotation overlap, provider-specific mappings,
 mutual TLS, persistence, queues, or durable delivery acknowledgement.

@@ -1,11 +1,16 @@
 # Release readiness
 
 `governance/readiness.json` is the canonical reconciliation manifest for the enterprise hardening
-workstreams. Each entry names repository evidence and distinguishes implemented controls from code
-that still requires an approved database migration. A release cannot claim readiness while any entry
-is `pending_migration` or `blocked`, even when unit tests pass.
+workstreams and production promotion. It deliberately distinguishes two claims:
 
-Promotion requires the Python and PostgreSQL suites, Rego tests, migration drift check, deterministic
-security gate, disposable restore exercise, and supply-chain workflow. Operational ownership must
-also supply approved regions, backup storage, alert destinations, OIDC issuer administration, and
-break-glass custodians; repository defaults are not production approvals.
+- `implementation_ready` means every repository workstream is implemented and its evidence exists;
+- `production_ready` additionally requires `production_status: ready` and no deployment blockers.
+
+Athena is implementation-ready but not production-ready. Passing tests and implemented controls do
+not substitute for deployment-specific recovery and operational evidence.
+
+Promotion requires the Python and disposable PostgreSQL suites, Rego tests, migration drift check,
+deterministic security gate, and supply-chain workflow. Operational ownership must also close every
+`production_blockers` entry—including a real isolated restore rehearsal—with approved platform
+evidence. Repository defaults, local connector runs, and disposable schema tests are not production
+approvals.

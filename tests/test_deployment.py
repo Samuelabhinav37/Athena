@@ -55,9 +55,7 @@ def test_production_configuration_rejects_development_security_defaults() -> Non
     with pytest.raises(ValidationError, match="Invalid production configuration") as captured:
         Settings(
             env="production",
-            database_url=(
-                "postgresql+psycopg://athena_app:athena-app-local@localhost:5432/athena"
-            ),
+            database_url=("postgresql+psycopg://athena_app:athena-app-local@localhost:5432/athena"),
             migration_database_url="postgresql+psycopg://athena:athena@localhost:5432/athena",
             system_tenant_id="athena-local",
             keycloak_client_secret="athena-local-collector-secret",
@@ -71,19 +69,21 @@ def test_production_configuration_rejects_development_security_defaults() -> Non
     assert "OIDC issuer must use HTTPS" in message
 
 
-def test_production_configuration_rejects_incomplete_tenant_isolation() -> None:
-    with pytest.raises(ValidationError, match="tenant isolation is not production-ready"):
-        Settings(
-            env="production",
-            database_url="postgresql+psycopg://athena_app:strong-app-password@db:5432/athena",
-            migration_database_url=(
-                "postgresql+psycopg://athena_migrator:strong-owner-password@db:5432/athena"
-            ),
-            system_tenant_id="production-system",
-            keycloak_client_secret="separately-provisioned-secret",
-            oidc_issuer="https://identity.example.test/realms/athena",
-            auth_required=True,
-        )
+def test_production_configuration_accepts_completed_tenant_isolation() -> None:
+    settings = Settings(
+        env="production",
+        database_url="postgresql+psycopg://athena_app:strong-app-password@db:5432/athena",
+        migration_database_url=(
+            "postgresql+psycopg://athena_migrator:strong-owner-password@db:5432/athena"
+        ),
+        system_tenant_id="production-system",
+        keycloak_client_secret="separately-provisioned-secret",
+        oidc_issuer="https://identity.example.test/realms/athena",
+        auth_required=True,
+        shared_request_controls_enabled=True,
+    )
+
+    assert settings.env == "production"
 
 
 def test_configuration_rejects_multiple_api_workers_with_process_local_controls() -> None:

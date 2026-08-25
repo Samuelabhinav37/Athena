@@ -1,5 +1,13 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
+  "production_status": "blocked",
+  "production_blockers": [
+    "approved deployment platform, regions, topology, and operational ownership",
+    "production TLS, secret management, OIDC administration, and break-glass custody",
+    "high-availability PostgreSQL backup, point-in-time recovery, and restore-rehearsal evidence",
+    "centralized telemetry, alert routing, availability objectives, and incident-response evidence",
+    "immutable image promotion and production-scale reconciliation evidence"
+  ],
   "workstreams": [
     {"id": "connector-administration", "status": "implemented", "evidence": ["apps/api/src/athena/services/connector_admin.py", "migrations/versions/20260824_20_tenant_connector_scope_uniqueness.py"]},
     {"id": "shared-request-controls", "status": "implemented", "evidence": ["apps/api/src/athena/services/request_controls.py", "migrations/versions/20260824_21_shared_request_controls.py"]},

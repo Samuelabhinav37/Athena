@@ -40,11 +40,13 @@ bytes. Authenticated HTTP normalization routes exist for bounded JSON, OTLP/JSON
 plus a signed generic webhook route. They do not provide a durable telemetry store or acknowledged
 external delivery. Operators must not treat normalization success as ingestion durability.
 
-The initial JSON normalization endpoint is administrator-protected and process-rate-limited, but it
-does not persist events. Do not treat `200` as durable ingestion. Multi-worker deployments must add
-an authenticated gateway or shared limiter because the built-in 60-request window is process-local.
+The initial JSON normalization endpoint is administrator-protected and rate-limited, but it does
+not persist events. Do not treat `200` as durable ingestion. Development may use the built-in
+process-local window only in a one-worker, one-replica topology. Production and multi-replica
+deployments must enable Athena's PostgreSQL-backed shared request controls; a gateway may add a
+separate perimeter limit but does not replace Athena's tenant-scoped control.
 
-The OTLP/JSON endpoint shares the same administrator authentication, process-local limiter, 1 MiB
+The OTLP/JSON endpoint shares the same administrator authentication, selected request limiter, 1 MiB
 request bound, no-store response policy, and non-persistence boundary. It is not a standard
 `/v1/logs` collector endpoint. Configure test clients with Athena's explicit normalization URL and
 do not interpret accepted-record counts as durable storage acknowledgements.
@@ -56,9 +58,9 @@ requires a separately reviewed TLS listener or authenticated gateway that suppli
 
 The generic webhook route remains hidden unless `ATHENA_WEBHOOK_ENABLED=true`. Configure a distinct
 secret of at least 32 characters through `ATHENA_WEBHOOK_SECRET`; never place it in source control or
-request content. The built-in five-minute freshness check and replay cache are process-local.
-Production multi-worker deployments require an external atomic replay store, gateway rate limit,
-and an explicit secret-rotation procedure before enabling the endpoint.
+request content. The five-minute freshness check is local clock validation. Replay protection uses
+the process-local cache in development or tenant-scoped PostgreSQL reservations when shared request
+controls are enabled. Production requires the shared mode and an explicit secret-rotation procedure.
 
 The deterministic JSON exporter returns bytes to its caller but does not write or send them. Treat
 export packages as sensitive because normalized event bodies and provenance may contain identity or

@@ -1,11 +1,12 @@
 # Tenant-isolation contract and threat model
 
-Athena's development runtime now carries validated tenant context through its primary API,
-database, connector, graph, and report paths, but the production-readiness manifest remains
-`design_only`. Azure tenant IDs, GitHub organizations, Keycloak realms, connector scopes, and
-identity sources remain collected evidence—not Athena tenant authority. Production startup is
-blocked until every isolation and recovery gate in this contract is complete and separately
-authorized.
+Athena carries validated tenant context through its primary API, database, connector, graph, and
+report paths. The tenant-isolation plan is `ready`: its backfill, non-null keys, tenant-aware
+constraints, forced RLS, runtime context, connector binding, and negative tests are implemented.
+Azure tenant IDs, GitHub organizations, Keycloak realms, connector scopes, and identity sources
+remain collected evidence—not Athena tenant authority. This code-level claim does not make a
+deployment production-ready; recovery, residency, scale, and operational evidence remain separate
+release gates in `governance/readiness.json`.
 
 Contract `1.0` defines the target as shared-database row isolation. A canonical lowercase Athena
 tenant ID must come from a validated context bound to an approved identity issuer or internal
@@ -44,17 +45,17 @@ comparison rule used by tenant-scoped runtime boundaries.
 | Graph edge crossing tenants | Tenant-partitioned projection and edge constraints; cross-tenant path fixtures |
 | Backup or residency violation | Tenant-aware encryption, retention, restore authorization, and region policy |
 
-## Migration preconditions
+## Implemented migration sequence
 
-The `TENANT_ISOLATION_PLAN` enumerates the affected entity families and blockers. Implementation
-requires a reviewed, non-destructive migration sequence: introduce nullable keys; assign every
-existing row to an explicitly approved bootstrap tenant; validate referential consistency; replace
-unique and foreign-key constraints with tenant-aware forms; add and test RLS; then enforce non-null
-keys. No guessed backfill is permitted.
+The `TENANT_ISOLATION_PLAN` enumerates the affected entity families and completed invariants. Athena
+used a reviewed, non-destructive migration sequence: introduce nullable keys; assign every existing
+row to an explicitly approved bootstrap tenant; validate referential consistency; replace unique
+and foreign-key constraints with tenant-aware forms; add and test RLS; then enforce non-null keys.
+No guessed backfill is permitted for installations that still need this one-time transition.
 
-Authentication and database changes are deliberately absent from this phase. Production tenancy
-must not be enabled until API, ORM, direct SQL, background jobs, exports, Neo4j projections,
-connectors, caches, backup/restore, and residency controls all pass cross-tenant denial tests.
+Authentication, database enforcement, and runtime tenant propagation are implemented. Production
+promotion still requires platform-specific backup/restore, residency, scale, and operations
+evidence; those gates do not change the completed tenant-isolation implementation status.
 
 ## Bootstrap transition plan
 
@@ -130,8 +131,8 @@ any scoped row is unassigned or any relationship crosses tenants.
 
 On the current local database, all approved rows are assigned, all scoped relationships have zero
 mismatches, and no tenant-scoped uniqueness rule remains global. This integrity result allowed the
-separately approved constraint and RLS migrations; it does not by itself make the broader
-production-readiness manifest `ready`.
+separately approved constraint and RLS migrations. The broader production-readiness manifest
+remains blocked only by deployment-specific evidence.
 
 ## Tenant-aware constraint plan
 

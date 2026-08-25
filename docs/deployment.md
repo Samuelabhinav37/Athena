@@ -84,10 +84,10 @@ the allowed destination merely to make a demo work.
 ## Production requirements
 
 `ATHENA_ENV=production` fails startup when authentication is disabled, the default database
-credential or Keycloak collector secret remains, the OIDC issuer is not HTTPS, or the checked-in
-tenant-isolation manifest is not `ready`. The manifest remains `design_only`, so production startup
-is intentionally blocked until every isolation and recovery gate is implemented, tested, reviewed,
-and separately authorized. A production deployment must additionally provide:
+credential or Keycloak collector secret remains, the OIDC issuer is not HTTPS, shared database
+request controls are disabled, or the checked-in tenant-isolation plan is not `ready`. The tenant
+isolation implementation is ready; the canonical release manifest remains production-blocked until
+deployment and recovery evidence is supplied. A production deployment must provide:
 
 - externally managed PostgreSQL with encrypted connections, backups, and point-in-time recovery;
 - production-mode Keycloak behind TLS, without the imported demonstration realm or default users;
@@ -98,6 +98,8 @@ and separately authorized. A production deployment must additionally provide:
 - separately authorized migration, backup, restore, and remediation-executor procedures.
 
 All deployments must declare `ATHENA_API_WORKER_COUNT` and `ATHENA_API_REPLICA_COUNT` to match the
-actual process and platform topology. Both must remain `1` while telemetry rate limiting and webhook
-replay protection are process-local; startup rejects larger values until shared atomic controls are
-implemented.
+actual process and platform topology. Development may use the bounded process-local request controls
+only with one worker and one replica. Production requires
+`ATHENA_SHARED_REQUEST_CONTROLS_ENABLED=true`, which uses the tenant-scoped PostgreSQL replay and
+rate-limit tables created by migrations `20260824_20` and `20260824_21` and permits a declared
+multi-worker or multi-replica topology.

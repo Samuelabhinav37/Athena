@@ -82,9 +82,10 @@ identity. Network listeners, device authentication, TLS termination, and durable
 remain outside the API normalization boundary.
 
 The generic webhook adapter is a separate machine-to-machine authentication boundary. It verifies
-an HMAC over timestamp, delivery ID, and exact body before parsing, then atomically marks the delivery
-ID in a bounded replay cache. Its process-local cache is sufficient only for controlled single-process
-use; distributed durable ingestion requires a shared replay store and independent rate limit.
+an HMAC over timestamp, delivery ID, and exact body before parsing, then atomically marks the
+delivery ID. Development can use the bounded process-local cache; when shared request controls are
+enabled, replay reservations and rate-limit buckets are tenant-scoped and atomic in PostgreSQL
+across workers and replicas.
 
 Export is also separated from transport. The first vendor-neutral JSON exporter deterministically
 serializes already-validated envelopes, preserves original provenance, and covers package facts with
@@ -144,9 +145,9 @@ Athena now carries a required tenant context through authenticated requests and 
 Every business and evidence row has a non-null tenant key; tenant-aware constraints and forced
 PostgreSQL row-level security provide defense in depth without an application-role bypass. Provider
 tenant IDs remain provenance rather than platform authority. Approved connector-scope bindings
-must match the runtime tenant before collection begins. Production remains blocked while the wider
-isolation, recovery, scale, residency, and operational evidence in the
-[tenant-isolation threat model](tenant-isolation.md) is incomplete.
+must match the runtime tenant before collection begins. The tenant-isolation implementation is
+ready. Production promotion remains blocked on the deployment-specific recovery, scale, residency,
+and operational evidence recorded in the canonical [readiness manifest](readiness.md).
 
 The bootstrap transition is a separate reviewed contract, not an implicit migration default. It
 requires approved counts for all 25 current tables and aborts if observed inventory differs. Its

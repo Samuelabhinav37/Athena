@@ -386,6 +386,7 @@ Athena/
 - [x] Deterministic fail-closed PostgreSQL RLS plan
 - [x] Forced fail-closed PostgreSQL RLS policies and non-bypass application role
 - [x] Validated transaction-local request, CLI, and background-job tenant context
+- [x] Implementation-readiness reconciliation with explicit production blockers
 - [ ] Production deployment and recovery evidence (HA, backup/restore rehearsal, residency, scale)
 - [x] Neo4j identity attack-path foundation
 - [x] Authenticated attack-path dashboard presentation
@@ -406,6 +407,7 @@ Athena/
 - [Neo4j attack-path analysis](docs/attack-paths.md)
 - [Machine and workload identity governance](docs/machine-identities.md)
 - [Deployment and controlled demonstration](docs/deployment.md)
+- [Release readiness and production blockers](docs/readiness.md)
 - [Operations, observability, backup, and recovery](docs/operations.md)
 - [Vendor-neutral security-event telemetry](docs/telemetry.md)
 - [Contribution guide](CONTRIBUTING.md)
