@@ -14,3 +14,8 @@ deterministic security gate, and supply-chain workflow. Operational ownership mu
 `production_blockers` entry—including a real isolated restore rehearsal—with approved platform
 evidence. Repository defaults, local connector runs, and disposable schema tests are not production
 approvals.
+
+The ordered Azure baseline, human decision points, recovery rehearsal, and promotion gates are in
+[production deployment and recovery plan](production-deployment-plan.md). The checked-in
+`governance/production-evidence.example.json` is a placeholder schema only and must never be treated
+as completed evidence.

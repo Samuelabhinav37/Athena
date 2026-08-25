@@ -408,6 +408,7 @@ Athena/
 - [Machine and workload identity governance](docs/machine-identities.md)
 - [Deployment and controlled demonstration](docs/deployment.md)
 - [Release readiness and production blockers](docs/readiness.md)
+- [Production deployment and recovery plan](docs/production-deployment-plan.md)
 - [Operations, observability, backup, and recovery](docs/operations.md)
 - [Vendor-neutral security-event telemetry](docs/telemetry.md)
 - [Contribution guide](CONTRIBUTING.md)

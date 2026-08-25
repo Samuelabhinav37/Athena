@@ -103,3 +103,7 @@ only with one worker and one replica. Production requires
 `ATHENA_SHARED_REQUEST_CONTROLS_ENABLED=true`, which uses the tenant-scoped PostgreSQL replay and
 rate-limit tables created by migrations `20260824_20` and `20260824_21` and permits a declared
 multi-worker or multi-replica topology.
+
+The proposed Azure service mapping, approval boundaries, recovery rehearsal, and production
+acceptance sequence are maintained in the
+[production deployment and recovery plan](production-deployment-plan.md).
