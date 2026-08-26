@@ -25,13 +25,23 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install project and pinned analysis tools
-        run: >-
-          python -m pip install -e .
-          pip-audit==2.10.1
-          cyclonedx-bom==7.3.1
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-deps -e .
+          python -m pip install pip-tools==7.6.1 pip-audit==2.10.1 cyclonedx-bom==7.3.1
+
+      - name: Verify Python dependency lock
+        run: |
+          pip-compile pyproject.toml \
+            --output-file requirements.lock \
+            --generate-hashes \
+            --strip-extras \
+            --resolver backtracking \
+            --quiet
+          git diff --exit-code -- requirements.lock
 
       - name: Audit Python dependencies
-        run: python -m pip_audit --strict .
+        run: python -m pip_audit --strict --requirement requirements.lock
 
       - name: Generate CycloneDX SBOM
         run: |

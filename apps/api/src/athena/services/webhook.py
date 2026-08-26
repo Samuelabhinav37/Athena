@@ -104,7 +104,6 @@ class SignedWebhookAdapter:
         ).hexdigest()
         if not hmac.compare_digest(expected, signature_match.group(1)):
             raise WebhookAuthenticationError("Webhook signature is invalid")
-        self.replay_cache.check_and_mark(delivery_id, now + max_age, original_bytes)
         try:
             payload = WebhookEventInput.model_validate_json(original_bytes)
             event = build_security_event(
@@ -127,6 +126,7 @@ class SignedWebhookAdapter:
             )
         except (ValidationError, ValueError) as error:
             raise ValueError("Invalid signed webhook event") from error
+        self.replay_cache.check_and_mark(delivery_id, now + max_age, original_bytes)
         return WebhookNormalizationResponse(
             request_sha256=hashlib.sha256(original_bytes).hexdigest(),
             request_byte_count=len(original_bytes),

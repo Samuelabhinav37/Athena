@@ -216,5 +216,37 @@ def test_webhook_endpoint_rejects_tampering_and_unknown_mapping_without_echo(
     assert SECRET not in accepted_text(tampered, unknown)
 
 
+def test_invalid_signed_webhook_does_not_consume_delivery_id(client: TestClient) -> None:
+    timestamp = int(time.time())
+    invalid_body = _body(_payload() | {"mapping": "vendor.magic.v9"})
+    delivery_id = "delivery-retry"
+    invalid_headers = {
+        "Content-Type": "application/json",
+        "X-Athena-Webhook-Timestamp": str(timestamp),
+        "X-Athena-Webhook-ID": delivery_id,
+        "X-Athena-Webhook-Signature": _signature(invalid_body, delivery_id, timestamp),
+    }
+
+    invalid = client.post(
+        "/v1/telemetry/webhooks/athena-generic",
+        content=invalid_body,
+        headers=invalid_headers,
+    )
+
+    corrected_body = _body()
+    corrected_headers = {
+        **invalid_headers,
+        "X-Athena-Webhook-Signature": _signature(corrected_body, delivery_id, timestamp),
+    }
+    corrected = client.post(
+        "/v1/telemetry/webhooks/athena-generic",
+        content=corrected_body,
+        headers=corrected_headers,
+    )
+
+    assert invalid.status_code == 422
+    assert corrected.status_code == 200
+
+
 def accepted_text(*responses: object) -> str:
     return "".join(getattr(response, "text", "") for response in responses)

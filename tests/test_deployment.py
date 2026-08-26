@@ -111,6 +111,9 @@ def test_runtime_images_are_versioned_and_drop_root() -> None:
     assert api.startswith("FROM python:3.13.14-slim-bookworm\n")
     assert "USER 10001:10001" in api
     assert "--no-access-log" in api
+    assert "COPY pyproject.toml requirements.lock README.md ./" in api
+    assert "--require-hashes -r requirements.lock" in api
+    assert "--no-deps ." in api
     assert web.startswith("FROM node:24.14.1-alpine3.23 AS build\n")
     assert "FROM nginx:1.29.8-alpine" in web
     assert "USER nginx" in web
@@ -120,6 +123,14 @@ def test_runtime_images_are_versioned_and_drop_root() -> None:
     assert "resolver 127.0.0.11" in nginx
     assert "proxy_pass $api_upstream" in nginx
     assert "proxy_set_header X-Request-ID $http_x_request_id" in nginx
+    assert "Content-Security-Policy" in nginx
+    assert "frame-ancestors 'none'" in nginx
+    assert "object-src 'none'" in nginx
+    assert "Permissions-Policy" in nginx
+    assert 'Referrer-Policy "no-referrer"' in nginx
+    assert "Strict-Transport-Security" in nginx
+    assert 'X-Content-Type-Options "nosniff"' in nginx
+    assert 'X-Frame-Options "DENY"' in nginx
 
 
 def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> None:
@@ -182,6 +193,16 @@ def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
 
     assert "NEO4J_AUTH: neo4j/ci-compose-validation" in workflow
     assert "NEO4J_PASSWORD: ci-compose-validation" in workflow
+
+
+def test_supply_chain_verifies_and_audits_python_dependency_lock() -> None:
+    workflow = Path(".github/workflows/supply-chain.yml").read_text(encoding="utf-8")
+
+    assert "pip-tools==7.6.1" in workflow
+    assert "name: Verify Python dependency lock" in workflow
+    assert "pip-compile pyproject.toml" in workflow
+    assert "git diff --exit-code -- requirements.lock" in workflow
+    assert "python -m pip_audit --strict --requirement requirements.lock" in workflow
 
 
 def test_ci_runs_postgresql_isolation_suite_as_an_explicit_required_step() -> None:
