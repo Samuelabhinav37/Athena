@@ -232,3 +232,16 @@ def test_dashboard_exposes_machine_identity_posture_without_access_changes() -> 
     assert "Machine identity" in application
     assert "Read-only analysis" in application
     assert "no automatic access changes" in application
+
+
+def test_dashboard_exposes_analyst_command_center_and_safe_setup_status() -> None:
+    application = Path("apps/web/src/App.tsx").read_text(encoding="utf-8")
+
+    assert 'label: "Command center"' in application
+    assert 'label: "Investigations"' in application
+    assert 'label: "System setup"' in application
+    assert "Priority work queue" in application
+    assert "Environment posture" in application
+    assert "Identity and application sources" in application
+    assert "Credentials stay outside the browser" in application
+    assert "No automatic access changes" in application

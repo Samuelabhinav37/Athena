@@ -17,15 +17,16 @@ import type {
   RiskAssessment
 } from "./types";
 
-type Page = "overview" | "identities" | "machines" | "reviews" | "operations";
+type Page = "overview" | "identities" | "machines" | "reviews" | "operations" | "setup";
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 const NAV: { id: Page; label: string; eyebrow: string }[] = [
-  { id: "overview", label: "Command center", eyebrow: "01" },
-  { id: "identities", label: "Identity evidence", eyebrow: "02" },
-  { id: "machines", label: "Machine identities", eyebrow: "03" },
-  { id: "reviews", label: "Review queue", eyebrow: "04" },
-  { id: "operations", label: "System operations", eyebrow: "05" }
+  { id: "overview", label: "Command center", eyebrow: "⌂" },
+  { id: "reviews", label: "Investigations", eyebrow: "◇" },
+  { id: "identities", label: "Identity evidence", eyebrow: "♙" },
+  { id: "machines", label: "Machine identities", eyebrow: "▦" },
+  { id: "operations", label: "Reports & operations", eyebrow: "▤" },
+  { id: "setup", label: "System setup", eyebrow: "⚙" }
 ];
 
 function formatDate(value: string | null): string {
@@ -145,7 +146,7 @@ function Dashboard({ user }: { user: User }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">A</span><div><strong>Athena</strong><small>Evidence plane</small></div></div>
+        <div className="brand"><span className="brand-mark">A</span><div><strong>Athena</strong><small>Analyst center</small></div></div>
         <nav aria-label="Primary navigation">
           {NAV.map((item) => (
             <button key={item.id} className={page === item.id ? "nav-item active" : "nav-item"} onClick={() => setPage(item.id)}>
@@ -153,39 +154,36 @@ function Dashboard({ user }: { user: User }) {
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          <span className="status-dot" /> Policy engine connected
-          <small>Deterministic decisions only</small>
-        </div>
+        <div className="sidebar-foot"><span className="status-dot" /> Policy engine connected<small>Deterministic decisions only</small></div>
       </aside>
       <main className="workspace">
         <header className="topbar">
-          <div><p className="kicker">Athena / {NAV.find((item) => item.id === page)?.label}</p></div>
+          <div className="topbar-title"><strong>{NAV.find((item) => item.id === page)?.label}</strong><small>Tenant-scoped authorization evidence</small></div>
           <div className="user-menu"><div><strong>{principal?.username ?? "Authenticated user"}</strong><small>{principal?.roles.at(-1)?.replace("athena-", "") ?? "loading role"}</small></div><button className="icon-button" title="Sign out" onClick={() => void userManager.signoutRedirect()}>↗</button></div>
         </header>
         {state === "loading" && <Splash message="Loading authorization evidence…" />}
         {state === "error" && <div className="notice notice--error"><strong>Evidence unavailable.</strong> {error}</div>}
-        {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} />}
+        {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} connectors={connectors} onNavigate={setPage} />}
         {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
         {state === "ready" && page === "machines" && <MachineIdentities user={user} />}
         {state === "ready" && page === "reviews" && <Reviews user={user} principal={principal} reviews={reviews} identities={identities} onReviewsChanged={setReviews} onExecutionCreated={(execution) => setExecutions((current) => [execution, ...current])} />}
         {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
+        {state === "ready" && page === "setup" && <SystemSetup connectors={connectors} latestRun={latestRun} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
       </main>
     </div>
   );
 }
 
-function Overview({ identities, openReviews, staleConnectors, latestRun, executions }: { identities: Identity[]; openReviews: ReviewCase[]; staleConnectors: Connector[]; latestRun?: MonitoringRun; executions: Execution[] }) {
+function Overview({ identities, openReviews, staleConnectors, latestRun, executions, connectors, onNavigate }: { identities: Identity[]; openReviews: ReviewCase[]; staleConnectors: Connector[]; latestRun?: MonitoringRun; executions: Execution[]; connectors: Connector[]; onNavigate: (page: Page) => void }) {
   const active = identities.filter((identity) => identity.active).length;
-  return <div className="page"><section className="hero"><div><p className="kicker">Authorization posture</p><h1>Evidence you can<br /><em>defend.</em></h1></div><p>One view of identity lineage, governed access, deterministic policy decisions, and human review.</p></section>
-    <section className="metric-grid">
-      <Metric label="Observed identities" value={String(identities.length)} detail={`${active} currently active`} accent="mint" />
-      <Metric label="Open reviews" value={String(openReviews.length)} detail={openReviews.length ? "Human attention required" : "Queue is clear"} accent="amber" />
-      <Metric label="Stale connectors" value={String(staleConnectors.length)} detail="Older than 24 hours" accent="coral" />
-      <Metric label="Pending executions" value={String(executions.filter((item) => item.status === "pending").length)} detail="Never auto-executed" accent="blue" />
+  const pending = executions.filter((item) => item.status === "pending").length;
+  const connectorNames = new Set(connectors.map((connector) => connector.connector));
+  return <div className="page command-page"><section className="command-welcome"><div><p className="kicker">Authorization posture</p><h1>Good morning, analyst</h1><span>Here is what needs attention across your identity environment.</span></div><button className="button button--secondary" onClick={() => onNavigate("reviews")}>Open work queue →</button></section>
+    <section className="metric-grid command-metrics"><Metric label="Open investigations" value={String(openReviews.length)} detail={openReviews.length ? "Human attention required" : "Queue is clear"} accent="coral" /><Metric label="Pending executions" value={String(pending)} detail="Never auto-executed" accent="amber" /><Metric label="Observed identities" value={String(identities.length)} detail={`${active} currently active`} accent="blue" /><Metric label="Connected sources" value={String(connectorNames.size)} detail={staleConnectors.length ? `${staleConnectors.length} needs attention` : "All reporting fresh"} accent="mint" /></section>
+    <section className="command-grid"><article className="panel command-queue"><header className="command-panel-head"><div><h2>Priority work queue</h2><p>Open cases sorted by due date</p></div><button onClick={() => onNavigate("reviews")}>View all →</button></header>{openReviews.length ? <div className="command-table"><div className="command-table-head"><span>Investigation</span><span>Owner</span><span>Due</span><span>Status</span></div>{openReviews.slice(0, 6).map((review) => <button key={review.id} onClick={() => onNavigate("reviews")}><span><i /> <strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><Badge value={review.status} /></button>)}</div> : <Empty>No open review cases.</Empty>}</article>
+      <aside className="panel command-posture"><header className="command-panel-head"><div><h2>Environment posture</h2><p>Live control status</p></div></header><div className="posture-score"><strong>{staleConnectors.length ? "Needs attention" : "Healthy"}</strong><small>{connectorNames.size} connected sources</small></div><div className="setup-check"><span className="status-dot" /><p><strong>Tenant isolation</strong><small>Database-enforced scope</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Policy authority</strong><small>Deterministic OPA decisions</small></p></div><div className={staleConnectors.length ? "setup-check setup-check--warning" : "setup-check"}><span className="status-dot" /><p><strong>Connector freshness</strong><small>{staleConnectors.length ? `${staleConnectors.length} checkpoint overdue` : "All checkpoints current"}</small></p></div><button className="button button--secondary" onClick={() => onNavigate("setup")}>Open system setup</button></aside>
+      <article className="panel command-cycle"><header className="command-panel-head"><div><h2>Latest monitoring cycle</h2><p>Retryable, append-only pipeline evidence</p></div><button onClick={() => onNavigate("operations")}>History →</button></header>{latestRun ? <div className="command-run"><div className="run-ring"><span>{latestRun.steps.filter((step) => step.status === "completed").length}</span><small>steps</small></div><div><Badge value={latestRun.status} /><h3>{latestRun.schedule_key}</h3><p>Requested by {latestRun.requested_by}</p><small>{formatDate(latestRun.completed_at)}</small></div></div> : <Empty>No monitoring runs recorded.</Empty>}</article>
     </section>
-    <section className="split-grid"><article className="panel"><PanelTitle eyebrow="Latest cycle" title="Monitoring evidence" /><div className="run-summary"><div className="run-ring"><span>{latestRun?.steps.filter((step) => step.status === "completed").length ?? 0}</span><small>steps</small></div><div>{latestRun ? <><Badge value={latestRun.status} /><h3>{latestRun.schedule_key}</h3><p>Requested by {latestRun.requested_by}</p><small>{formatDate(latestRun.completed_at)}</small></> : <Empty>No monitoring runs recorded.</Empty>}</div></div></article>
-      <article className="panel"><PanelTitle eyebrow="Review pressure" title="Cases approaching decision" />{openReviews.length ? <div className="stack-list">{openReviews.slice(0, 4).map((review) => <div className="stack-row" key={review.id}><div><strong>{review.title}</strong><small>Due {formatDate(review.due_at)}</small></div><Badge value={review.status} /></div>)}</div> : <Empty>No open review cases.</Empty>}</article></section>
   </div>;
 }
 
@@ -342,6 +340,26 @@ function Reviews({ user, principal, reviews, identities, onReviewsChanged, onExe
     {actionError && <div className="notice notice--error">{actionError}</div>}
     {canOpen && <section className="panel action-panel"><PanelTitle eyebrow="New evidence review" title="Open a case" /><div className="action-form"><select value={identityId} onChange={(event) => setIdentityId(event.target.value)}>{identities.map((identity) => <option value={identity.id} key={identity.id}>{identity.display_name}</option>)}</select><input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Optional owner" /><button className="button button--secondary" disabled={!identityId || actionState === "loading"} onClick={() => void act(() => apiPost(user, "/v1/reviews", { identity_id: identityId, owner: owner || null, due_days: 7 }))}>Open review</button></div></section>}
     <section className="panel table-panel"><div className="review-table table-header"><span>Case</span><span>Identity</span><span>Owner</span><span>Due</span><span>Status / actions</span></div>{reviews.length ? reviews.map((review) => <div className="review-table" key={review.id}><span><strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{nameFor(review.identity_id)}</span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><span><Badge value={review.status} />{canReview && review.status !== "resolved" && <div className="review-actions"><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Evidence-based reason" />{review.status === "open" && <button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/assign`, { owner: owner || principal?.username, reason }))}>Assign</button>}{review.status === "in_review" && <><select value={decision} onChange={(event) => setDecision(event.target.value)}><option value="retain">Retain</option><option value="revoke">Revoke</option><option value="extend">Extend</option><option value="exception">Exception</option></select><button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/decide`, { decision, reason }))}>Decide</button></>}</div>}{isAdmin && review.status === "resolved" && review.resolution === "revoke" && <button className="button button--secondary" onClick={() => void requestExecution(review)}>Request execution</button>}</span></div>) : <Empty>No review cases recorded.</Empty>}</section>
+  </div>;
+}
+
+function SystemSetup({ connectors, latestRun, isAdmin }: { connectors: Connector[]; latestRun?: MonitoringRun; isAdmin: boolean }) {
+  const latestByConnector = new Map<string, Connector>();
+  connectors.forEach((connector) => {
+    const current = latestByConnector.get(connector.connector);
+    if (!current || Date.parse(connector.observed_at) > Date.parse(current.observed_at)) latestByConnector.set(connector.connector, connector);
+  });
+  const knownSources = [
+    { id: "keycloak", name: "Keycloak", detail: "Users, groups, roles, and service accounts" },
+    { id: "github", name: "GitHub", detail: "Organization members, teams, and repositories" },
+    { id: "azure", name: "Microsoft Azure", detail: "Entra identities and Azure RBAC assignments" }
+  ];
+  return <div className="page setup-page"><section className="page-heading"><div><p className="kicker">Administration</p><h1>System setup</h1></div><p className="heading-note">Review data-source readiness and operating boundaries. Credentials stay outside the browser and access-changing actions require separate authorization.</p></section>
+    {!isAdmin && <div className="notice setup-notice">Administrator role is required to change deployment configuration. This view remains read-only.</div>}
+    <section className="setup-summary"><article><small>Configured sources</small><strong>{latestByConnector.size} / {knownSources.length}</strong><span>Reporting connector evidence</span></article><article><small>Latest monitoring run</small><strong>{latestRun?.status ?? "Not run"}</strong><span>{latestRun ? formatDate(latestRun.completed_at) : "No schedule evidence"}</span></article><article><small>Safety boundary</small><strong>Human approval</strong><span>No automatic access changes</span></article></section>
+    <section className="setup-layout"><article className="panel setup-sources"><header className="command-panel-head"><div><h2>Identity and application sources</h2><p>Read-only connector status from recorded checkpoints</p></div></header>{knownSources.map((source) => { const checkpoint = latestByConnector.get(source.id); const fresh = checkpoint && Date.now() - Date.parse(checkpoint.observed_at) <= 86_400_000; return <div className="setup-source" key={source.id}><span className={fresh ? "source-icon source-icon--healthy" : "source-icon"}>{checkpoint ? "✓" : "+"}</span><div><strong>{source.name}</strong><small>{source.detail}</small></div><div className="source-status"><Badge value={checkpoint ? (fresh ? "active" : "stale") : "not_configured"} /><small>{checkpoint ? `Last evidence ${formatDate(checkpoint.observed_at)}` : "Use the deployment guide to connect"}</small></div></div>; })}</article>
+      <aside className="panel setup-boundaries"><header className="command-panel-head"><div><h2>Protected boundaries</h2><p>Non-negotiable platform controls</p></div></header><div className="setup-check"><span className="status-dot" /><p><strong>Read-only collection</strong><small>Connectors cannot grant or revoke access</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Tenant-scoped evidence</strong><small>PostgreSQL row-level isolation</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Deterministic policy</strong><small>OPA remains the decision authority</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Human remediation approval</strong><small>Destructive requests remain pending</small></p></div></aside>
+    </section>
   </div>;
 }
 
