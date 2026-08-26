@@ -18,3 +18,20 @@ and avoiding a permissive API CORS policy. Authentication uses authorization cod
 npm run typecheck
 npm run build
 ```
+
+## Windows desktop preview
+
+The Tauri shell reuses the same React dashboard and keeps Athena's API, identity provider,
+policy engine, connectors, and evidence store on the server. It does not expose native commands
+to the webview or store service credentials on the analyst workstation.
+
+Prerequisites:
+
+1. Install the Rust stable MSVC toolchain and Microsoft's C++ build tools.
+2. Start Athena's local API and identity services.
+3. Run `npm run desktop:dev` from this directory.
+
+Create Windows installers with `npm run desktop:build`. Installers are written beneath
+`src-tauri/target/release/bundle`. The current shell is a local preview: production distribution
+still requires a desktop-safe OIDC callback, HTTPS server configuration, code signing, and an
+update policy.
