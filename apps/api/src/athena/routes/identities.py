@@ -22,7 +22,8 @@ from athena.schemas import (
 )
 from athena.services.explanations import (
     ExplanationError,
-    OllamaExplanationService,
+    ExplanationService,
+    build_ai_provider,
 )
 from athena.services.peer_anomaly import load_anomaly_results
 from athena.services.policy_evaluation import load_policy_evaluations
@@ -160,7 +161,7 @@ def explain_identity(
     if identity is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     try:
-        return OllamaExplanationService(session, settings).explain(identity)
+        return ExplanationService(session, build_ai_provider(settings)).explain(identity)
     except ExplanationError as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

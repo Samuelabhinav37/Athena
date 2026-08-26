@@ -3,6 +3,8 @@ from typing import Any
 
 import httpx
 
+from athena.policy.contracts import CanonicalPolicyRequest
+
 
 class OpaEvaluationError(RuntimeError):
     """Raised when OPA cannot return a complete, valid decision."""
@@ -50,3 +52,14 @@ class OpaClient:
             allow=result["allow"],
             violations=sorted(violations, key=lambda item: str(item.get("code", ""))),
         )
+
+
+class OpaAuthorizationAdapter:
+    """Translate Athena's canonical request to the existing authoritative Rego input."""
+
+    def __init__(self, client: OpaClient) -> None:
+        self.client = client
+        self.policy_path = client.policy_path
+
+    def evaluate(self, request: CanonicalPolicyRequest) -> OpaDecision:
+        return self.client.evaluate(request.to_opa_v1_input())

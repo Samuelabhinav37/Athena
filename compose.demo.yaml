@@ -7,14 +7,29 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-athena}
       POSTGRES_USER: ${POSTGRES_USER:-athena}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD for the demo stack}
+      ATHENA_APP_DB_PASSWORD: ${ATHENA_APP_DB_PASSWORD:?Set ATHENA_APP_DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init-runtime-role.sh:/docker-entrypoint-initdb.d/10-athena-runtime-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    profiles: ["migration"]
+    environment:
+      ATHENA_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -65,7 +80,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       ATHENA_ENV: demo
-      ATHENA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
+      ATHENA_DATABASE_URL: postgresql+psycopg://athena_app:${ATHENA_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
       ATHENA_OPA_URL: http://opa:8181
       ATHENA_KEYCLOAK_URL: http://keycloak:8080
       ATHENA_NEO4J_ENABLED: "true"
@@ -73,9 +88,12 @@ services:
       ATHENA_NEO4J_USER: neo4j
       ATHENA_NEO4J_PASSWORD: ${NEO4J_PASSWORD:?Set NEO4J_PASSWORD for the demo API}
       ATHENA_AUTH_REQUIRED: "true"
+      ATHENA_API_WORKER_COUNT: "1"
+      ATHENA_API_REPLICA_COUNT: "1"
       ATHENA_OIDC_ISSUER: http://localhost:8080/realms/athena
       ATHENA_OIDC_JWKS_URL: http://keycloak:8080/realms/athena/protocol/openid-connect/certs
       ATHENA_OIDC_AUDIENCE: athena-api
+      ATHENA_OIDC_IDENTITY_SOURCE: keycloak
     depends_on:
       postgres:
         condition: service_healthy

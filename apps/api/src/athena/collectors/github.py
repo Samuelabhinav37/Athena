@@ -5,11 +5,36 @@ from typing import Any
 
 import httpx
 
+from athena.collectors.contracts import (
+    CapabilitySupport,
+    ConnectorCapability,
+    ConnectorCapabilityDeclaration,
+    ConnectorManifest,
+)
 from athena.config import Settings
 
 
 class GitHubCollectionError(RuntimeError):
     pass
+
+
+def _manifest(
+    connector_id: str,
+    display_name: str,
+    provider: str,
+    declarations: dict[ConnectorCapability, tuple[str, str]],
+) -> ConnectorManifest:
+    return ConnectorManifest(
+        connector_id=connector_id,
+        display_name=display_name,
+        provider=provider,
+        capabilities={
+            capability: ConnectorCapabilityDeclaration(
+                support=CapabilitySupport(support), detail=detail
+            )
+            for capability, (support, detail) in declarations.items()
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -25,6 +50,51 @@ class GitHubSnapshot:
 
 
 class GitHubCollector:
+    @classmethod
+    def manifest(cls) -> ConnectorManifest:
+        declarations = {
+            ConnectorCapability.IDENTITY_DISCOVERY: ("supported", "Collects organization members."),
+            ConnectorCapability.PAGINATION: ("supported", "Follows GitHub REST pagination."),
+            ConnectorCapability.INCREMENTAL_CURSORS: (
+                "partial",
+                "Uses endpoint ETags but has no provider-wide change cursor.",
+            ),
+            ConnectorCapability.RETRIES: (
+                "unsupported",
+                "Fails closed on request errors; retry orchestration is external.",
+            ),
+            ConnectorCapability.COLLECTION_FRESHNESS: (
+                "partial",
+                "Synchronization records observation time outside the collector snapshot.",
+            ),
+            ConnectorCapability.AUTHORIZATION_INHERITANCE: (
+                "partial",
+                "Collects teams and calculated effective permissions without complete "
+                "grant lineage.",
+            ),
+            ConnectorCapability.NESTED_GROUPS: (
+                "unsupported",
+                "Does not collect or resolve parent-team relationships.",
+            ),
+            ConnectorCapability.DENY_RULES: (
+                "unsupported",
+                "GitHub organization collection does not expose explicit deny rules.",
+            ),
+            ConnectorCapability.PRIVILEGED_ELIGIBILITY: (
+                "unsupported",
+                "Does not collect time-bound privileged eligibility.",
+            ),
+            ConnectorCapability.MACHINE_IDENTITIES: (
+                "unsupported",
+                "Collects organization members and does not inventory GitHub Apps or bots.",
+            ),
+            ConnectorCapability.ACTIVITY_SIGNALS: (
+                "unsupported",
+                "Does not collect audit-log or last-used activity signals.",
+            ),
+        }
+        return _manifest("github", "GitHub organization", "GitHub", declarations)
+
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self.settings = settings
         self.client = client or httpx.Client(timeout=httpx.Timeout(20.0))

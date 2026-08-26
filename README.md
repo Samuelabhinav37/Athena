@@ -2,321 +2,293 @@
 
 # Athena
 
-### Continuous Authorization Provenance & Identity Governance
+### Continuous authorization provenance and identity governance
 
-**See who has access, understand why, detect when it no longer makes sense, and preserve the evidence.**
+Understand who has access, why they have it, whether it remains appropriate, and how to prove it.
 
-[![Security Gate](https://github.com/Samuelabhinav37/Athena-/actions/workflows/security-gate.yml/badge.svg)](https://github.com/Samuelabhinav37/Athena-/actions/workflows/security-gate.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.116%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![OPA](https://img.shields.io/badge/policy-OPA%20%2F%20Rego-7D64FF)](https://www.openpolicyagent.org/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Security Gate](https://github.com/Samuelabhinav37/Athena/actions/workflows/security-gate.yml/badge.svg)](https://github.com/Samuelabhinav37/Athena/actions/workflows/security-gate.yml)
+[![Supply Chain](https://github.com/Samuelabhinav37/Athena/actions/workflows/supply-chain.yml/badge.svg)](https://github.com/Samuelabhinav37/Athena/actions/workflows/supply-chain.yml)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-[Architecture](docs/architecture.md) · [Quick Start](#quick-start) · [Demo](#end-to-end-demo) · [API](#api-evidence) · [Project Journal](docs/project-journal.md)
+[Getting started](#getting-started) · [Architecture](#architecture) · [Security](#security-model) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
----
+> [!IMPORTANT]
+> Athena is pre-release software. The repository controls are implementation-ready, but production
+> deployment remains blocked until the recovery, residency, scaling, and operational evidence in
+> the [readiness manifest](governance/readiness.json) is complete.
 
-## The Five Questions
+## Overview
 
-Athena is an open-source identity-governance platform built to answer five questions for every identity:
+Athena is an open-source identity-governance platform for reconstructing authorization lineage and
+producing audit-ready evidence. It collects identity and access data from Keycloak, GitHub,
+Microsoft Entra ID, and Azure RBAC; normalizes it into a tenant-isolated evidence model; evaluates
+deterministic policy; detects stale or unusual access; and coordinates human review.
 
-> **Who are you? What can you access? Why can you access it? Are you still supposed to have it? Can we prove that to an auditor?**
+Athena is designed to answer five questions:
 
-It normalizes identity and entitlement data, reconstructs authorization lineage, evaluates policy as code, detects access drift, coordinates human review, and continuously produces audit-ready evidence.
+1. Who is this identity?
+2. What can it access?
+3. Why does that access exist?
+4. Is the access still appropriate?
+5. Can the decision and its evidence be reproduced?
 
-> **The LLM explains. ML recommends. The policy engine decides. A human approves destructive actions.**
+The governing safety rule is intentionally simple:
 
-## Business Scenario
+> **The LLM explains. ML recommends. OPA decides. A human approves destructive actions.**
 
-Alice begins as a developer and later transfers to the Security team. Her identity changes—but several developer permissions remain active.
+Athena does not grant or revoke access automatically. Connector credentials are read-only, model
+output is advisory, policy decisions are deterministic, and destructive requests remain pending
+until a separately authorized executor acts and verifies the upstream result.
 
-Athena traces those permissions to their source, identifies stale and peer-deviating access, evaluates deterministic controls, calculates explainable risk, opens a human review, and proves that a `revoke` decision does **not** silently remove access before an authorized executor exists.
+## Capabilities
 
-```text
-Alice: Developer → Security Analyst
+| Area | Current capability |
+|---|---|
+| Identity collection | Incremental Keycloak, GitHub organization, Microsoft Entra ID, and Azure RBAC connectors |
+| Authorization provenance | Ordered lineage from identities and groups to grants, resources, and effective permissions |
+| Governance | Approval, justification, expiration, incomplete-lineage, and retained-access findings |
+| Policy | Versioned OPA/Rego decisions with reproducible inputs and allow/deny fixtures |
+| Analytics | Explainable access-decay scoring and fixed-seed peer anomaly analysis |
+| Human review | Owned cases, immutable decision history, and idempotent execution requests |
+| Continuous monitoring | Retryable schedules, database leases, checkpoints, and append-only step evidence |
+| Tenant isolation | Non-null tenant keys, composite constraints, forced PostgreSQL RLS, and fail-closed context |
+| Attack paths | Bounded Neo4j projections derived from PostgreSQL authorization evidence |
+| Machine identities | Owner, activity, credential-age, and access-governance posture |
+| Reporting | Digest-verified JSON and Markdown evidence packages plus NIST/OSCAL-compatible mappings |
+| Explanations | Provider-neutral advisory explanations through local Ollama or guarded Azure AI |
+| Telemetry | Bounded JSON, OTLP/JSON, RFC 5424, and signed-webhook normalization and export contracts |
 
-Expected access     Security tools, SIEM, security logs
-Retained access     GitHub write, Development DB, Production DB
-Athena outcome      Explain → Evaluate → Score → Review → Preserve evidence
-```
+For exact implementation boundaries, see the [architecture](docs/architecture.md),
+[connector capability contract](docs/connector-sdk.md), and [release readiness](docs/readiness.md).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Sources["Identity & Access Sources<br/>Keycloak · GitHub · AWS IAM"] --> Collect["Read-only Collectors"]
-    Collect --> Normalize["Canonical Identity Model"]
-    Normalize --> DB[(PostgreSQL<br/>Evidence System of Record)]
+    Sources["Identity and access sources<br/>Keycloak · GitHub · Entra ID · Azure RBAC"]
+    Collectors["Read-only collectors"]
+    Evidence[("PostgreSQL<br/>evidence system of record")]
+    Policy["OPA / Rego<br/>deterministic policy"]
+    Analytics["Risk and anomaly analytics<br/>advisory only"]
+    Review["Human review and approval"]
+    Reports["Immutable evidence and reports"]
+    Graph[("Neo4j<br/>derived projection")]
 
-    DB --> Provenance["Authorization Provenance"]
-    DB --> Policy["OPA / Rego<br/>Deterministic Policy"]
-    DB --> Analytics["Risk + Isolation Forest<br/>Advisory Analytics"]
-
-    Provenance --> Review["Human Review Workflow"]
-    Policy --> Review
-    Analytics --> Review
-    Review --> Evidence["Immutable Decisions<br/>& Control Evidence"]
-
-    Scheduler["Durable Monitoring Pipeline"] --> Collect
-    Scheduler --> Provenance
-    Scheduler --> Policy
-    Scheduler --> Analytics
-
-    subgraph Safety["Safety boundary"]
-        Review
-        Evidence
-    end
+    Sources --> Collectors --> Evidence
+    Evidence --> Policy --> Review
+    Evidence --> Analytics --> Review
+    Evidence --> Graph
+    Review --> Reports
 ```
 
-## What Athena Does Today
+PostgreSQL is authoritative. Neo4j is a rebuildable, read-only projection for bounded attack-path
+queries. OPA is the policy authority. AI-generated text and ML scores cannot make or execute access
+decisions.
 
-| Capability | Delivered behavior |
-|---|---|
-| Identity ingestion | Keycloak, GitHub organization, and AWS IAM authorization data |
-| Authorization provenance | Ordered explanation of how an identity received each effective permission |
-| Governance detection | Missing approval, business justification, expiration, and incomplete lineage |
-| Policy as code | Deterministic OPA/Rego allow and deny decisions with versioned evidence |
-| Identity drift | Controlled role-transition history and retained-access detection |
-| Explainable risk | Seven weighted access-decay factors with per-entitlement findings |
-| Peer analytics | Governed cohorts, fixed-seed Isolation Forest, drift and false-positive metrics |
-| Human remediation | Owned reviews plus administrator-authorized, idempotent execution requests |
-| Continuous monitoring | Idempotent, retryable pipeline with immutable per-step evidence |
-| Attack paths | Bounded Neo4j queries over a derived, read-only provenance projection |
-| Machine identities | Deterministic owner, usage, credential-age, and access-governance posture |
-| Compliance evidence | Automated mappings for NIST SP 800-53 AC-2, AC-5, and AC-6 |
+## Security model
 
-## Authorization Provenance
+Athena treats identity data, connector responses, and model inputs as untrusted data.
 
-Athena’s defining capability is answering **why** effective access exists.
+- Every authenticated request and background job carries a validated Athena tenant context.
+- PostgreSQL enforces non-null tenant scope, tenant-aware relationships, forced RLS, and a
+  non-owner `NOBYPASSRLS` runtime role.
+- Audit events, policy evaluations, role transitions, risk and anomaly results, review events, and
+  monitoring steps are append-only evidence.
+- OIDC validation binds signature, issuer, audience, expiry, key ID, identity source, and the
+  dedicated `athena_tenant_id` claim.
+- Replay protection and rate limiting can use tenant-scoped PostgreSQL controls across replicas.
+- Connector status and evidence APIs never return credentials or cached provider payloads.
+- Destructive remediation remains pending until a separately approved executor verifies the
+  external change.
 
-```text
-Alice
-  ↓ assigned role / member of / reported effective permission
-Developer or GitHub Team
-  ↓ grants
-Repository Write
-  ↓ applies to
-Athena Repository
-```
+Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md). Do not open a
+public issue for a potential security defect.
 
-Every entitlement can carry its source, approval, justification, policy reference, grant time, expiration, governance gaps, and ordered relationship chain.
-
-GitHub’s API reports the highest calculated repository role but not always the exact contributing direct, team, organization, or enterprise grant. Athena records this honestly as `reported_effective_permission` with incomplete lineage instead of inventing a direct grant.
-
-## Security Decision Model
-
-```text
-Detect → Explain → Recommend → Human reviews → Authorized executor acts
-```
-
-- OPA decisions are deterministic and versioned.
-- ML output is advisory and cannot grant, deny, or revoke access.
-- Human decisions are append-only evidence.
-- Destructive decisions become durable execution requests; local access changes only after an
-  injected source adapter verifies the upstream revocation.
-- Collector credentials are read-only and secrets are never returned by status APIs.
-- API access tokens are validated for signature, issuer, audience, expiry, and fixed `RS256` use.
-- Review actors come from the authenticated token and cannot be supplied in request payloads.
-
-## Quick Start
+## Getting started
 
 ### Prerequisites
 
 - Docker with Docker Compose
-- Python 3.12+
+- Python 3.12 or later
+- Git
 
-### 1. Start the identity lab
+Neo4j and Ollama are optional for attack-path and local-explanation features.
+
+### 1. Configure the local environment
+
+Create a local environment file from the checked-in example. The example contains development-only
+values; never reuse them in production or commit the resulting `.env` file.
+
+```bash
+cp .env.example .env
+```
+
+On PowerShell, use `Copy-Item .env.example .env`.
+
+### 2. Start the required services
 
 ```bash
 docker compose up -d postgres keycloak opa
 ```
 
-The version-controlled Acme Corp realm is imported automatically. See the [Keycloak lab guide](infra/keycloak/README.md) for seeded identities and local credentials.
+The local stack starts PostgreSQL, imports the version-controlled Keycloak demonstration realm, and
+loads the OPA policies. See the [identity-lab guide](infra/keycloak/README.md) for local users and
+realm details.
 
-### 2. Install Athena
+### 3. Install the application
 
 ```bash
 python -m venv .venv
+```
+
+Activate the environment:
+
+```bash
+# Linux and macOS
+source .venv/bin/activate
+
+# PowerShell
+.venv\Scripts\Activate.ps1
+```
+
+Install Athena and its development dependencies, then apply forward migrations:
+
+```bash
 python -m pip install -e ".[dev]"
 alembic upgrade head
 ```
 
-### 3. Start the API
+### 4. Start the API
 
 ```bash
 uvicorn athena.main:app --reload --app-dir apps/api/src
 ```
 
-Open:
-
-- Health: `http://localhost:8000/health`
-- Readiness: `http://localhost:8000/ready`
-- OpenAPI: `http://localhost:8000/docs`
-
-Health and readiness are public. All `/v1` evidence and workflow endpoints require a Keycloak access
-token for the `athena-api` audience. See [authentication and API roles](docs/authentication.md).
-
-## End-to-End Demo
-
-Run the complete Alice identity-drift story:
-
-```bash
-python -m athena.cli sync-keycloak
-python -m athena.cli seed-provenance-demo
-python -m athena.cli project-attack-graph
-python -m athena.cli evaluate-policies --username alice
-python -m athena.cli apply-drift-demo
-python -m athena.cli assess-risk --username alice
-python -m athena.cli run-peer-anomaly --username alice
-python -m athena.cli open-review --username alice --actor athena-risk-engine --due-days 7
-```
-
-Run the durable monitoring pipeline:
-
-```bash
-python -m athena.cli monitor-once \
-  --username alice \
-  --schedule-key manual:demo
-```
-
-Reusing the same completed schedule key is an idempotent no-op.
-
-Run the CI-equivalent security gate:
-
-```bash
-python -m athena.cli security-gate \
-  --output-directory artifacts/security-gate
-```
-
-## GitHub Connector
-
-Configure a least-privilege, read-only token in your local `.env`:
-
-```dotenv
-ATHENA_GITHUB_ORG=your-organization
-ATHENA_GITHUB_TOKEN=your-read-only-token
-```
-
-Then synchronize organization members, teams, repositories, and effective repository permissions:
-
-```bash
-python -m athena.cli sync-github
-```
-
-The connector uses API-version headers, pagination, ETags, cached checkpoints, content fingerprints, and revocation detection. Never commit `.env` or production credentials.
-
-## AWS IAM Connector
-
-Athena uses the standard AWS credential chain, so credentials stay in AWS-supported environment,
-profile, workload-role, or instance-role providers. Configure an optional profile and region:
-
-```dotenv
-ATHENA_AWS_PROFILE=athena-read-only
-ATHENA_AWS_REGION=us-east-1
-ATHENA_AWS_ENABLED=true
-```
-
-Run a read-only synchronization:
-
-```bash
-python -m athena.cli sync-aws-iam
-```
-
-The connector collects users, groups, roles, role trust policies, managed and inline policies, and
-access-key status and age. It normalizes Allow actions over AWS resource patterns, detects removed
-grants, and skips unchanged snapshots. See the [AWS IAM connector guide](docs/aws-iam.md) for the
-minimum collector policy and authorization limitations.
-
-## API Evidence
-
-| Endpoint | Evidence |
+| Endpoint | Purpose |
 |---|---|
-| `GET /v1/identities` | Normalized identity inventory |
-| `GET /v1/identities/{id}/entitlements` | Effective access and ordered provenance |
-| `GET /v1/identities/{id}/policy-evaluations` | Versioned OPA inputs, decisions, and violations |
-| `GET /v1/identities/{id}/risk-assessments` | Explainable access-decay scores and findings |
-| `GET /v1/identities/{id}/anomaly-assessments` | Model, cohort, drift, score, and explanation evidence |
-| `GET /v1/reviews` | Human remediation cases and immutable decision history |
-| `GET /v1/monitoring/runs` | Scheduled pipeline attempts and ordered step evidence |
-| `GET /v1/attack-paths/identities/{id}` | Bounded privileged-resource paths from Neo4j |
-| `GET /v1/machine-identities` | Bounded non-human identity lifecycle posture |
-| `GET /v1/connectors` | Sanitized connector checkpoints without cached payloads |
-| `GET /v1/auth/me` | Validated caller identity and Athena roles |
-| `GET /v1/executions` | Administrator-only remediation execution and verification evidence |
-| `POST /v1/identities/{id}/explanation` | Local, structured explanation with evidence references and digest |
-| `GET /v1/reports/evidence[.md]` | Administrator-only JSON or Markdown authorization evidence report |
+| `http://localhost:8000/health` | Process health |
+| `http://localhost:8000/ready` | PostgreSQL readiness |
+| `http://localhost:8000/docs` | Interactive OpenAPI documentation |
 
-## Evidence-Driven Engineering
+Health and readiness are public. `/v1` endpoints require a Keycloak access token for the
+`athena-api` audience with a valid `athena_tenant_id` claim. See
+[authentication and API roles](docs/authentication.md).
 
-Athena treats evidence as a product feature, not an afterthought.
+### 5. Run a controlled demonstration
 
-- Python tests, Rego tests, migrations, schema-drift checks, and control mappings run in CI.
-- Policy changes are evaluated against required allow and deny fixtures.
-- Audit events, policy evaluations, role transitions, risk assessments, anomaly runs, review events, and monitoring steps are protected by append-only or immutable controls.
-- The [project journal](docs/project-journal.md) records milestones, architectural decisions, failures, fixes, validation results, commits, and hosted workflow runs.
+```bash
+python -m athena.cli sync-keycloak --tenant-id athena-local
+python -m athena.cli seed-provenance-demo --tenant-id athena-local
+python -m athena.cli evaluate-policies --tenant-id athena-local --username alice
+python -m athena.cli assess-risk --tenant-id athena-local --username alice
+python -m athena.cli open-review \
+  --tenant-id athena-local \
+  --username alice \
+  --actor athena-risk-engine \
+  --due-days 7
+```
 
-## Repository Map
+The demonstration creates local evidence and review state. It does not change access in Keycloak,
+GitHub, or Azure. The complete workflow, optional graph projection, and monitoring commands are in
+the [deployment and demonstration guide](docs/deployment.md).
+
+## Connectors
+
+All production connectors are read-only by contract and require an approved tenant-to-provider
+scope binding before collection.
+
+| Connector | Collected evidence | Configuration guide |
+|---|---|---|
+| Keycloak | Users, groups, memberships, realm roles, clients, and service accounts | [Keycloak lab](infra/keycloak/README.md) |
+| GitHub | Organization members, teams, repositories, and reported effective permissions | [Connector administration](docs/connector-administration.md) |
+| Microsoft Azure | Entra identities, groups, service principals, managed identities, RBAC assignments, owners, and credential expiry | [Azure connector](docs/azure.md) |
+
+Never commit connector tokens, client secrets, private keys, database credentials, or `.env` files.
+
+## Development and verification
+
+Install the development dependencies before running checks:
+
+```bash
+python -m pip install -e ".[dev]"
+ruff check .
+pytest
+docker compose run --rm opa test /policies/iam /policies/system -v
+alembic check
+python -m athena.cli security-gate --output-directory artifacts/security-gate
+```
+
+The CI security gate also builds runtime images, applies migrations to disposable PostgreSQL, runs
+tenant-isolation tests, evaluates Rego fixtures, and uploads a deterministic evidence report. The
+independent supply-chain workflow audits Python dependencies, produces a CycloneDX SBOM, and scans
+both runtime images.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and review expectations.
+
+## Repository structure
 
 ```text
 Athena/
-├── apps/api/              FastAPI backend, collectors, services, and CLI
-├── apps/web/              Authenticated React evidence dashboard
-├── controls/              Machine-readable NIST control mappings
-├── docs/                  Architecture, decisions, and project journal
-├── infra/keycloak/        Reproducible Acme Corp identity lab
-├── migrations/            Versioned PostgreSQL schema
-├── policies/              OPA/Rego rules, tests, and fixtures
-├── tests/                 Unit, integration, security, and acceptance tests
-└── compose.yaml           Local PostgreSQL, Keycloak, and OPA stack
+├── apps/api/          FastAPI API, collectors, domain services, and CLI
+├── apps/web/          Authenticated React evidence dashboard
+├── controls/          Machine-readable security-control mappings
+├── docs/              Architecture, operations, and integration guides
+├── governance/        Readiness, lifecycle, and approved-plan metadata
+├── infra/             Local identity and database bootstrap assets
+├── migrations/        Forward-only Alembic migrations
+├── policies/          OPA/Rego policy packages, fixtures, and tests
+├── tenancy/           Reviewed bootstrap-tenant approval metadata
+└── tests/             Unit, integration, security, and acceptance tests
 ```
 
-## Roadmap
+## Project status
 
-- [x] Controlled Keycloak identity lab
-- [x] Canonical identity and entitlement model
-- [x] Authorization provenance
-- [x] OPA policy enforcement and CI security gate
-- [x] Identity drift and explainable access-decay scoring
-- [x] Governed peer anomaly analytics
-- [x] Human remediation workflow
-- [x] Durable continuous monitoring
-- [x] Incremental GitHub authorization connector
-- [x] Incremental AWS IAM authorization connector
-- [x] Athena OIDC token validation and role-based API authorization
-- [x] Authorized remediation execution framework
-- [ ] GitHub and AWS write adapters for approved remediation
-- [x] React identity, risk, review, and audit dashboard
-- [x] Local Ollama explanations
-- [x] Production deployment and recovery hardening
-- [x] Neo4j identity attack-path foundation
-- [x] Authenticated attack-path dashboard presentation
-- [x] Machine and workload identity posture foundation
-- [x] Authenticated machine identity posture dashboard
-- [x] AWS role owner and last-used lifecycle evidence
+Athena's repository-level hardening workstreams are implemented and continuously verified. It is
+not yet approved for production deployment.
+
+Current release blockers are:
+
+- approved Azure regions, topology, budget, and operational ownership;
+- production TLS, secret management, OIDC administration, and break-glass custody;
+- high-availability PostgreSQL backup, point-in-time recovery, and restore-rehearsal evidence;
+- centralized telemetry, alert delivery, availability objectives, and incident response; and
+- digest-pinned image promotion and production-scale reconciliation.
+
+See the [production deployment and recovery plan](docs/production-deployment-plan.md) for the ordered
+acceptance gates. Planned product work includes separately authorized GitHub and Azure remediation
+adapters, durable telemetry ingestion, and additional report formats.
 
 ## Documentation
 
-- [Architecture and trust boundaries](docs/architecture.md)
-- [Complete project journal](docs/project-journal.md)
-- [Branch protection recommendations](docs/branch-protection.md)
-- [Keycloak identity lab](infra/keycloak/README.md)
-- [AWS IAM connector](docs/aws-iam.md)
-- [OIDC authentication and API roles](docs/authentication.md)
-- [Local Ollama explanation boundary](docs/ollama-explanations.md)
-- [Authorization evidence reports](docs/evidence-reports.md)
-- [Neo4j attack-path analysis](docs/attack-paths.md)
-- [Machine and workload identity governance](docs/machine-identities.md)
-- [Deployment and controlled demonstration](docs/deployment.md)
-- [Operations, observability, backup, and recovery](docs/operations.md)
-- [Contribution guide](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+| Topic | Guide |
+|---|---|
+| System design and trust boundaries | [Architecture](docs/architecture.md) |
+| Authentication and authorization | [Authentication](docs/authentication.md) |
+| Tenant isolation and migration safety | [Tenant isolation](docs/tenant-isolation.md) |
+| Production readiness | [Readiness](docs/readiness.md) |
+| Deployment and recovery | [Production deployment plan](docs/production-deployment-plan.md) |
+| Operations, backup, and restore | [Operations](docs/operations.md) |
+| Connector contracts | [Connector SDK](docs/connector-sdk.md) |
+| Security telemetry | [Telemetry](docs/telemetry.md) |
+| Evidence and report formats | [Portable reports](docs/portable-reports.md) |
+| Milestone history | [Project journal](docs/project-journal.md) |
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Please report suspected vulnerabilities privately using [SECURITY.md](SECURITY.md), not through a public issue.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Changes affecting policy, authentication, tenant isolation, evidence immutability, connectors, or
+remediation require focused security tests and an explicit security-impact description.
+
+## Support
+
+Use [GitHub Issues](https://github.com/Samuelabhinav37/Athena/issues) for reproducible defects and
+feature proposals. Include the Athena revision, environment, expected behavior, observed behavior,
+and minimal reproduction. Security reports must follow the private process in
+[SECURITY.md](SECURITY.md) instead.
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+Athena is licensed under the [Apache License 2.0](LICENSE).

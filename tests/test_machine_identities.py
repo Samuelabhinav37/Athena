@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from athena.database import get_db_session
@@ -25,13 +25,13 @@ def machine_session() -> Generator[Session]:
         session.add_all(
             [
                 Identity(
-                    source="aws_iam",
+                    source="azure_entra",
                     external_id="role-1",
                     username="deploy-role",
                     identity_type=IdentityType.SERVICE_ACCOUNT,
                     display_name="Deploy Role",
                     active=True,
-                    source_metadata={"account_id": "123456789012", "trust_policy": {}},
+                    source_metadata={"tenant_id": "tenant-1"},
                 ),
                 Identity(
                     source="internal",
@@ -101,19 +101,35 @@ def test_machine_identity_api_rejects_unbounded_limit(machine_session: Session) 
     assert response.status_code == 422
 
 
-def test_machine_identity_uses_connector_role_last_used_evidence(
+def test_machine_identity_api_excludes_another_tenant_posture(
+    machine_session: Session,
+) -> None:
+    machine_session.info["tenant_id"] = "tenant-with-no-machine-identities"
+    app.dependency_overrides[get_db_session] = lambda: machine_session
+    try:
+        response = TestClient(app).get("/v1/machine-identities")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_machine_identity_uses_azure_credential_expiration_evidence(
     machine_session: Session,
 ) -> None:
     identity = Identity(
-        source="aws_iam",
-        external_id="role-with-usage",
+        source="azure_entra",
+        external_id="application-with-expiring-credential",
         username="deployer",
         display_name="deployer",
-        identity_type=IdentityType.SERVICE_ACCOUNT,
+        identity_type=IdentityType.APPLICATION,
         active=True,
         source_metadata={
             "owner": "platform-team",
-            "role_last_used_at": "2026-08-01T00:00:00+00:00",
+            "credential_expirations": [
+                (datetime.now(UTC) + timedelta(days=15)).isoformat()
+            ],
         },
     )
     machine_session.add(identity)
@@ -126,5 +142,7 @@ def test_machine_identity_uses_connector_role_last_used_evidence(
     )
 
     assert posture.owner == "platform-team"
-    assert posture.last_used_at == datetime(2026, 8, 1, tzinfo=UTC)
-    assert all(finding.code != "usage_unknown" for finding in posture.findings)
+    assert [finding.code for finding in posture.findings] == [
+        "usage_unknown",
+        "credential_expiring",
+    ]

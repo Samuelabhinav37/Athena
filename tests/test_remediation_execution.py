@@ -23,6 +23,7 @@ from athena.services.execution import (
     ExecutionError,
     ExecutionService,
     ExecutionTarget,
+    ExecutionWorker,
     VerificationResult,
 )
 from athena.services.remediation import RemediationService, load_case
@@ -189,6 +190,21 @@ def test_verified_execution_revokes_local_evidence_and_replay_is_noop(
     assert [event.action for event in completed.events] == ["requested", "started", "verified"]
 
 
+def test_worker_claims_and_runs_an_eligible_execution(risk_session: Session) -> None:
+    case = approved_case(risk_session)
+    execution = ExecutionService(risk_session).request(case, "frank", "worker-revocation")
+    adapter = FakeAdapter(source=execution.source)
+
+    completed = ExecutionWorker(risk_session, actor="athena-executor").run_next(
+        {adapter.source: adapter}
+    )
+
+    assert completed is not None
+    assert completed.id == execution.id
+    assert completed.status == ExecutionStatus.SUCCEEDED
+    assert len(adapter.calls) == 1
+
+
 def test_failure_and_verification_failure_preserve_active_access(risk_session: Session) -> None:
     case = approved_case(risk_session)
     service = ExecutionService(risk_session)
@@ -256,3 +272,22 @@ def test_execution_api_requires_administrator_and_uses_authenticated_actor(
     assert created.json()["status"] == "pending"
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [created.json()["id"]]
+
+
+def test_execution_detail_returns_not_found_for_another_tenant_execution_id(
+    risk_session: Session,
+) -> None:
+    case = approved_case(risk_session)
+    execution = ExecutionService(risk_session).request(case, "frank", "cross-tenant-lookup")
+    risk_session.info["tenant_id"] = "tenant-with-no-execution-evidence"
+    app.dependency_overrides[get_db_session] = lambda: risk_session
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        "user-frank", "frank", frozenset({"athena-administrator"}), {}
+    )
+    try:
+        response = TestClient(app).get(f"/v1/executions/{execution.id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Execution not found"}

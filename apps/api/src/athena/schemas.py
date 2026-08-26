@@ -295,6 +295,18 @@ class ConnectorCheckpointResponse(BaseModel):
     cached_endpoints: int
 
 
+class ConnectorScopeResponse(BaseModel):
+    id: uuid.UUID
+    connector: str
+    scope: str
+    approval_reference: str
+    approved_by: str
+    approved_at: datetime
+    active: bool
+    revoked_at: datetime | None
+    revocation_reference: str | None
+
+
 class AuthenticatedPrincipalResponse(BaseModel):
     subject: str
     username: str
@@ -311,6 +323,8 @@ class IdentityExplanationResponse(GeneratedExplanationContent):
     identity_id: uuid.UUID
     generated_at: datetime
     model: str
+    provider: str
+    provider_metadata: dict[str, str]
     evidence_digest: str
     evidence_references: list[str]
     disclaimer: str

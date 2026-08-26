@@ -20,6 +20,7 @@ from athena.models import (
     RiskAssessment,
 )
 from athena.schemas import EvidenceControlResponse, EvidenceReportResponse
+from athena.tenant_queries import apply_tenant_scope
 
 AUTHORITATIVE_SOURCES = [
     "identities",
@@ -45,13 +46,16 @@ LIMITATIONS = [
 
 def _count(session: Session, model: type, *criteria: Any) -> int:
     statement = select(func.count()).select_from(model)
+    statement = apply_tenant_scope(session, statement, model)
     if criteria:
         statement = statement.where(*criteria)
     return int(session.scalar(statement) or 0)
 
 
 def _enum_counts(session: Session, model: type, column: Any) -> dict[str, int]:
-    rows = session.execute(select(column, func.count()).select_from(model).group_by(column))
+    statement = select(column, func.count()).select_from(model).group_by(column)
+    statement = apply_tenant_scope(session, statement, model)
+    rows = session.execute(statement)
     return {
         (value.value if hasattr(value, "value") else str(value)): int(count)
         for value, count in rows
@@ -79,12 +83,34 @@ def _digest_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def evidence_report_facts(report: EvidenceReportResponse) -> dict[str, Any]:
+    return {
+        "schema_version": report.schema_version,
+        "scope": report.scope,
+        "inventory": report.inventory,
+        "policy_decisions": report.policy_decisions,
+        "review_statuses": report.review_statuses,
+        "execution_statuses": report.execution_statuses,
+        "monitoring_statuses": report.monitoring_statuses,
+        "controls": [control.model_dump() for control in report.controls],
+        "authoritative_sources": report.authoritative_sources,
+        "limitations": report.limitations,
+    }
+
+
+def verify_evidence_report(report: EvidenceReportResponse) -> bool:
+    return _digest_payload(evidence_report_facts(report)) == report.evidence_digest
+
+
 class EvidenceReportService:
     def __init__(self, session: Session, control_directory: Path) -> None:
         self.session = session
         self.control_directory = control_directory
 
     def build(self) -> EvidenceReportResponse:
+        maximum_risk = apply_tenant_scope(
+            self.session, select(func.max(RiskAssessment.score)), RiskAssessment
+        )
         inventory: dict[str, int | float | None] = {
             "identities": _count(self.session, Identity),
             "active_identities": _count(self.session, Identity, Identity.active.is_(True)),
@@ -93,7 +119,7 @@ class EvidenceReportService:
             ),
             "policy_evaluations": _count(self.session, PolicyEvaluation),
             "risk_assessments": _count(self.session, RiskAssessment),
-            "maximum_risk_score": self.session.scalar(select(func.max(RiskAssessment.score))),
+            "maximum_risk_score": self.session.scalar(maximum_risk),
             "anomalies": _count(self.session, AnomalyResult, AnomalyResult.is_anomaly.is_(True)),
             "review_cases": _count(self.session, ReviewCase),
             "remediation_executions": _count(self.session, RemediationExecution),
@@ -128,37 +154,6 @@ class EvidenceReportService:
 
     @staticmethod
     def markdown(report: EvidenceReportResponse) -> str:
-        lines = [
-            "# Athena Authorization Evidence Report",
-            "",
-            f"**Generated:** {report.generated_at.isoformat()}",
-            f"**Evidence digest:** `{report.evidence_digest}`",
-            f"**Scope:** {report.scope}",
-            "",
-            "## Inventory",
-            "",
-            "| Measure | Value |",
-            "|---|---:|",
-        ]
-        lines.extend(
-            f"| {name.replace('_', ' ').title()} | {value if value is not None else 'N/A'} |"
-            for name, value in report.inventory.items()
-        )
-        lines.extend(
-            [
-                "",
-                "## NIST control mappings",
-                "",
-                "| Control | Status | Checks |",
-                "|---|---|---:|",
-            ]
-        )
-        lines.extend(
-            f"| {control.control_id} — {control.title} | {control.status} | "
-            f"{control.automated_checks} |"
-            for control in report.controls
-        )
-        lines.extend(["", "## Limitations", ""])
-        lines.extend(f"- {limitation}" for limitation in report.limitations)
-        lines.extend(["", "Generated LLM explanations are not authoritative report evidence.", ""])
-        return "\n".join(lines)
+        from athena.services.report_renderers import MarkdownEvidenceRenderer
+
+        return MarkdownEvidenceRenderer().render(report).content.decode()

@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from athena import database
 from athena.config import Settings
 from athena.main import app
 from fastapi.testclient import TestClient
@@ -52,24 +53,55 @@ def test_request_logging_replaces_unsafe_correlation_id() -> None:
 
 def test_production_configuration_rejects_development_security_defaults() -> None:
     with pytest.raises(ValidationError, match="Invalid production configuration") as captured:
-        Settings(env="production")
+        Settings(
+            env="production",
+            database_url=("postgresql+psycopg://athena_app:athena-app-local@localhost:5432/athena"),
+            migration_database_url="postgresql+psycopg://athena:athena@localhost:5432/athena",
+            system_tenant_id="athena-local",
+            keycloak_client_secret="athena-local-collector-secret",
+            oidc_issuer="http://localhost:8080/realms/athena",
+        )
 
     message = str(captured.value)
-    assert "default database credential" in message
+    assert "default application database credential" in message
+    assert "default migration database credential" in message
     assert "default Keycloak collector secret" in message
     assert "OIDC issuer must use HTTPS" in message
 
 
-def test_production_configuration_accepts_explicit_secure_values() -> None:
+def test_production_configuration_accepts_completed_tenant_isolation() -> None:
     settings = Settings(
         env="production",
-        database_url="postgresql+psycopg://athena:strong-password@db:5432/athena",
+        database_url="postgresql+psycopg://athena_app:strong-app-password@db:5432/athena",
+        migration_database_url=(
+            "postgresql+psycopg://athena_migrator:strong-owner-password@db:5432/athena"
+        ),
+        system_tenant_id="production-system",
         keycloak_client_secret="separately-provisioned-secret",
         oidc_issuer="https://identity.example.test/realms/athena",
         auth_required=True,
+        shared_request_controls_enabled=True,
     )
 
-    assert settings.auth_required is True
+    assert settings.env == "production"
+
+
+def test_configuration_rejects_multiple_api_workers_with_process_local_controls() -> None:
+    with pytest.raises(ValidationError, match="process-local telemetry controls require one API"):
+        Settings(api_worker_count=2)
+
+
+def test_configuration_rejects_multiple_api_replicas_with_process_local_controls() -> None:
+    with pytest.raises(ValidationError, match="process-local telemetry controls require one API"):
+        Settings(api_replica_count=2)
+
+
+def test_configuration_requires_explicit_api_topology(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ATHENA_API_WORKER_COUNT", raising=False)
+    monkeypatch.delenv("ATHENA_API_REPLICA_COUNT", raising=False)
+
+    with pytest.raises(ValidationError, match="api_worker_count"):
+        Settings(_env_file=None)
 
 
 def test_runtime_images_are_versioned_and_drop_root() -> None:
@@ -79,6 +111,9 @@ def test_runtime_images_are_versioned_and_drop_root() -> None:
     assert api.startswith("FROM python:3.13.14-slim-bookworm\n")
     assert "USER 10001:10001" in api
     assert "--no-access-log" in api
+    assert "COPY pyproject.toml requirements.lock README.md ./" in api
+    assert "--require-hashes -r requirements.lock" in api
+    assert "--no-deps ." in api
     assert web.startswith("FROM node:24.14.1-alpine3.23 AS build\n")
     assert "FROM nginx:1.29.8-alpine" in web
     assert "USER nginx" in web
@@ -88,6 +123,14 @@ def test_runtime_images_are_versioned_and_drop_root() -> None:
     assert "resolver 127.0.0.11" in nginx
     assert "proxy_pass $api_upstream" in nginx
     assert "proxy_set_header X-Request-ID $http_x_request_id" in nginx
+    assert "Content-Security-Policy" in nginx
+    assert "frame-ancestors 'none'" in nginx
+    assert "object-src 'none'" in nginx
+    assert "Permissions-Policy" in nginx
+    assert 'Referrer-Policy "no-referrer"' in nginx
+    assert "Strict-Transport-Security" in nginx
+    assert 'X-Content-Type-Options "nosniff"' in nginx
+    assert 'X-Frame-Options "DENY"' in nginx
 
 
 def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> None:
@@ -100,10 +143,49 @@ def test_demo_stack_requires_secrets_and_does_not_publish_data_services() -> Non
     assert "read_only: true" in compose
     assert "Host: localhost" in compose
     assert "ATHENA_KEYCLOAK_URL: http://keycloak:8080" in compose
+    assert "ATHENA_OIDC_IDENTITY_SOURCE: keycloak" in compose
+    assert 'ATHENA_API_WORKER_COUNT: "1"' in compose
+    assert 'ATHENA_API_REPLICA_COUNT: "1"' in compose
     assert "neo4j:2026.06.0-community" in compose
     assert "NEO4J_AUTH:?Set NEO4J_AUTH" in compose
     assert '"7474:7474"' not in compose
     assert '"7687:7687"' not in compose
+
+
+def test_demo_exposes_only_an_explicit_profile_gated_schema_migration() -> None:
+    compose = Path("compose.demo.yaml").read_text(encoding="utf-8")
+    api_environment = compose.split("  api:", 1)[1].split("    depends_on:", 1)[0]
+
+    assert "  migrate:" in compose
+    assert 'command: ["alembic", "upgrade", "head"]' in compose
+    assert 'profiles: ["migration"]' in compose
+    assert "ATHENA_MIGRATION_DATABASE_URL:" in compose
+    assert "ATHENA_MIGRATION_DATABASE_URL:" not in api_environment
+    assert "condition: service_completed_successfully" not in compose
+
+
+def test_existing_volume_upgrade_documents_interactive_runtime_password_provisioning() -> None:
+    deployment = Path("docs/deployment.md").read_text(encoding="utf-8")
+
+    assert "Existing PostgreSQL volumes" in deployment
+    assert "\\password athena_app" in deployment
+
+
+def test_administrative_session_factory_uses_separate_migration_identity(monkeypatch) -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://athena_app:runtime@runtime-db/athena",
+        migration_database_url="postgresql+psycopg://athena_migrator:owner@admin-db/athena",
+    )
+    monkeypatch.setattr(database, "get_settings", lambda: settings)
+    database.get_administrative_engine.cache_clear()
+    try:
+        factory = database.get_administrative_session_factory()
+        assert str(factory.kw["bind"].url).startswith(
+            "postgresql+psycopg://athena_migrator:***@admin-db/athena"
+        )
+        assert factory.kw["info"] == {"administrative_scope": "migration"}
+    finally:
+        database.get_administrative_engine.cache_clear()
 
 
 def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
@@ -111,6 +193,28 @@ def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
 
     assert "NEO4J_AUTH: neo4j/ci-compose-validation" in workflow
     assert "NEO4J_PASSWORD: ci-compose-validation" in workflow
+
+
+def test_supply_chain_verifies_and_audits_python_dependency_lock() -> None:
+    workflow = Path(".github/workflows/supply-chain.yml").read_text(encoding="utf-8")
+
+    assert "uv==0.12.6" in workflow
+    assert "name: Verify Python dependency lock" in workflow
+    assert "uv lock --check" in workflow
+    assert "uv export" in workflow
+    assert "--no-emit-project" in workflow
+    assert "git diff --exit-code -- requirements.lock" in workflow
+    assert "python -m pip_audit --strict --requirement requirements.lock" in workflow
+
+
+def test_ci_runs_postgresql_isolation_suite_as_an_explicit_required_step() -> None:
+    workflow = Path(".github/workflows/security-gate.yml").read_text(encoding="utf-8")
+
+    assert "name: Run PostgreSQL isolation tests" in workflow
+    assert "pytest -q tests/test_tenant_backfill_postgres.py" in workflow
+    assert "pytest -q tests/test_tenant_constraints_postgres.py" in workflow
+    assert "--ignore=tests/test_tenant_backfill_postgres.py" in workflow
+    assert "--ignore=tests/test_tenant_constraints_postgres.py" in workflow
 
 
 def test_dashboard_exposes_bounded_advisory_attack_paths() -> None:

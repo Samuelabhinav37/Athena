@@ -1,6 +1,5 @@
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any
 
 import pytest
 from athena.models import (
@@ -11,6 +10,7 @@ from athena.models import (
     PolicyEvaluation,
     Role,
 )
+from athena.policy.contracts import CanonicalPolicyRequest
 from athena.policy.opa import OpaDecision, OpaEvaluationError
 from athena.services.demo_scenario import DemoScenarioService
 from athena.services.policy_evaluation import PolicyEvaluationService, hash_policy_bundle
@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session, sessionmaker
 class DeterministicEngine:
     policy_path = "athena/authorization/evaluate"
 
-    def evaluate(self, policy_input: dict[str, Any]) -> OpaDecision:
-        if policy_input["permission"]["privileged"]:
+    def evaluate(self, policy_input: CanonicalPolicyRequest) -> OpaDecision:
+        if policy_input.action.privileged:
             return OpaDecision(
                 allow=False,
                 violations=[
@@ -39,7 +39,7 @@ class DeterministicEngine:
 class UnavailableEngine:
     policy_path = "athena/authorization/evaluate"
 
-    def evaluate(self, _: dict[str, Any]) -> OpaDecision:
+    def evaluate(self, _: CanonicalPolicyRequest) -> OpaDecision:
         raise OpaEvaluationError("OPA unavailable")
 
 
@@ -101,6 +101,8 @@ def test_policy_evaluations_are_versioned_and_persisted(
         select(PolicyEvaluation).where(PolicyEvaluation.decision == PolicyDecision.FAIL)
     )
     assert production is not None
+    assert production.input_snapshot["schema_version"] == "2.0"
+    assert production.input_snapshot["principal"]["username"] == "alice"
     assert production.input_snapshot["resource"]["external_id"] == "production-database"
     assert production.violations[0]["code"] == "UNGOVERNED_PRIVILEGED_ACCESS"
 

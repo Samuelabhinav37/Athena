@@ -23,6 +23,7 @@ stack requires non-empty values for:
 
 ```dotenv
 POSTGRES_PASSWORD=<local-demo-password>
+ATHENA_APP_DB_PASSWORD=<separate-local-runtime-password>
 KEYCLOAK_ADMIN=<local-demo-administrator>
 KEYCLOAK_ADMIN_PASSWORD=<local-demo-password>
 ```
@@ -43,9 +44,26 @@ docker compose -f compose.demo.yaml up -d postgres keycloak opa
 Applying migrations changes the database and therefore requires explicit operator approval:
 
 ```powershell
-docker compose -f compose.demo.yaml run --rm api alembic upgrade head
+docker compose -f compose.demo.yaml --profile migration run --rm migrate
 docker compose -f compose.demo.yaml up -d api web
 ```
+
+The migration profile never runs as an API dependency. Starting or restarting the application does
+not authorize a schema change; an operator must invoke the profile explicitly after reviewing the
+forward migration plan and obtaining approval.
+
+Fresh PostgreSQL volumes provision the restricted `athena_app` login from
+`infra/postgres/init-runtime-role.sh`. Existing PostgreSQL volumes do not rerun initialization
+scripts. Before upgrading such a volume to the separated runtime identity, an authorized operator
+must provision or rotate the runtime password interactively so it is not placed in shell history:
+
+```powershell
+docker compose -f compose.demo.yaml exec postgres psql --username athena --dbname athena
+```
+
+At the `psql` prompt, run `\password athena_app`, enter the same separately managed value supplied
+as `ATHENA_APP_DB_PASSWORD`, exit, and only then invoke the approved migration profile. Do not put
+the password in the command line, logs, repository, or migration file.
 
 Open <http://localhost:3000>. Keycloak remains at <http://localhost:8080>. PostgreSQL and OPA are
 not published to the host by this stack.
@@ -66,8 +84,10 @@ the allowed destination merely to make a demo work.
 ## Production requirements
 
 `ATHENA_ENV=production` fails startup when authentication is disabled, the default database
-credential or Keycloak collector secret remains, or the OIDC issuer is not HTTPS. A production
-deployment must additionally provide:
+credential or Keycloak collector secret remains, the OIDC issuer is not HTTPS, shared database
+request controls are disabled, or the checked-in tenant-isolation plan is not `ready`. The tenant
+isolation implementation is ready; the canonical release manifest remains production-blocked until
+deployment and recovery evidence is supplied. A production deployment must provide:
 
 - externally managed PostgreSQL with encrypted connections, backups, and point-in-time recovery;
 - production-mode Keycloak behind TLS, without the imported demonstration realm or default users;
@@ -76,3 +96,14 @@ deployment must additionally provide:
 - immutable image digests, vulnerability and SBOM scanning, and a promotion process;
 - centralized logs, alerting, availability objectives, and incident response ownership; and
 - separately authorized migration, backup, restore, and remediation-executor procedures.
+
+All deployments must declare `ATHENA_API_WORKER_COUNT` and `ATHENA_API_REPLICA_COUNT` to match the
+actual process and platform topology. Development may use the bounded process-local request controls
+only with one worker and one replica. Production requires
+`ATHENA_SHARED_REQUEST_CONTROLS_ENABLED=true`, which uses the tenant-scoped PostgreSQL replay and
+rate-limit tables created by migrations `20260824_20` and `20260824_21` and permits a declared
+multi-worker or multi-replica topology.
+
+The proposed Azure service mapping, approval boundaries, recovery rehearsal, and production
+acceptance sequence are maintained in the
+[production deployment and recovery plan](production-deployment-plan.md).

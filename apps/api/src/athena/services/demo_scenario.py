@@ -14,6 +14,7 @@ from athena.models import (
     Role,
     Sensitivity,
 )
+from athena.repositories import IdentityRepository
 from athena.services.provenance import ProvenanceService
 
 
@@ -106,7 +107,7 @@ class DemoScenarioService:
         return {"grants_created": created, "entitlements_materialized": len(entitlements)}
 
     def _identity(self, username: str) -> Identity:
-        identity = self.session.scalar(select(Identity).where(Identity.username == username))
+        identity = IdentityRepository(self.session).get_by_username(username)
         if identity is None:
             raise DemoScenarioError(
                 f"Identity {username} is missing; synchronize Keycloak first"

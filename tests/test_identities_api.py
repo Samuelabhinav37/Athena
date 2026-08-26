@@ -118,3 +118,42 @@ def test_list_identities_validates_pagination(client: TestClient) -> None:
     response = client.get("/v1/identities?limit=201")
 
     assert response.status_code == 422
+
+
+def test_identity_detail_returns_not_found_for_another_tenant_object_id() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-a"},
+    )
+    with factory.begin() as session:
+        other_tenant_identity = Identity(
+            tenant_id="tenant-b",
+            source="keycloak",
+            external_id="tenant-b-user",
+            username="tenant-b-user",
+            identity_type=IdentityType.HUMAN,
+            display_name="Tenant B User",
+            active=True,
+        )
+        session.add(other_tenant_identity)
+
+    def override_session() -> Generator[Session]:
+        with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = override_session
+    try:
+        response = TestClient(app).get(f"/v1/identities/{other_tenant_identity.id}")
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Identity not found"}

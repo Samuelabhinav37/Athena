@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "authoritative_store": "postgresql",
+  "backup": {
+    "rpo_minutes": 15,
+    "rto_minutes": 120,
+    "encryption_required": true,
+    "restore_test_interval_days": 30
+  },
+  "residency": {
+    "allowed_regions": ["deployment-defined"],
+    "cross_region_replication": "explicit-approval-only"
+  },
+  "retention": {
+    "immutable_evidence_days": 2555,
+    "operational_control_days": 30,
+    "security_gate_artifact_days": 30
+  },
+  "deletion": {
+    "automatic_evidence_deletion": false,
+    "requires_approval_reference": true,
+    "requires_export_digest": true,
+    "requires_audit_event": true
+  }
+}

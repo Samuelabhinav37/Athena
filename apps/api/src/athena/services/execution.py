@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import (
@@ -17,6 +16,7 @@ from athena.models import (
     ReviewStatus,
 )
 from athena.services.provenance import ProvenanceService
+from athena.tenant_queries import tenant_select
 
 
 class ExecutionError(RuntimeError):
@@ -57,7 +57,9 @@ class ExecutionService:
         if not key:
             raise ExecutionError("An idempotency key is required")
         existing = self.session.scalar(
-            select(RemediationExecution).where(
+            tenant_select(
+                self.session,
+                RemediationExecution,
                 (RemediationExecution.case_id == case.id)
                 | (RemediationExecution.idempotency_key == key)
             )
@@ -70,10 +72,20 @@ class ExecutionService:
             raise ExecutionError("Only a resolved revoke decision can create an execution")
         if case.entitlement_id is None:
             raise ExecutionError("The review does not identify an entitlement to revoke")
-        entitlement = self.session.get(EffectiveEntitlement, case.entitlement_id)
+        entitlement = self.session.scalar(
+            tenant_select(
+                self.session,
+                EffectiveEntitlement,
+                EffectiveEntitlement.id == case.entitlement_id,
+            )
+        )
         if entitlement is None or not entitlement.active:
             raise ExecutionError("The reviewed entitlement is not active")
-        grant = self.session.get(AccessGrant, entitlement.grant_id)
+        grant = self.session.scalar(
+            tenant_select(
+                self.session, AccessGrant, AccessGrant.id == entitlement.grant_id
+            )
+        )
         if grant is None or grant.revoked_at is not None:
             raise ExecutionError("The reviewed grant is already revoked or unavailable")
         target = self._target(entitlement, grant)
@@ -116,10 +128,20 @@ class ExecutionService:
             raise ExecutionError("Execution is already running")
         if adapter.source != execution.source:
             raise ExecutionError("Adapter source does not match the execution source")
-        entitlement = self.session.get(EffectiveEntitlement, execution.entitlement_id)
+        entitlement = self.session.scalar(
+            tenant_select(
+                self.session,
+                EffectiveEntitlement,
+                EffectiveEntitlement.id == execution.entitlement_id,
+            )
+        )
         if entitlement is None:
             raise ExecutionError("Execution entitlement is unavailable")
-        grant = self.session.get(AccessGrant, entitlement.grant_id)
+        grant = self.session.scalar(
+            tenant_select(
+                self.session, AccessGrant, AccessGrant.id == entitlement.grant_id
+            )
+        )
         if grant is None:
             raise ExecutionError("Execution grant is unavailable")
         target = self._target(entitlement, grant)
@@ -213,19 +235,55 @@ class ExecutionService:
         )
 
 
+class ExecutionWorker:
+    """Claim and run one authorized execution through an injected source adapter."""
+
+    def __init__(self, session: Session, *, actor: str) -> None:
+        self.session = session
+        self.actor = actor
+
+    def run_next(
+        self, adapters: dict[str, RemediationAdapter]
+    ) -> RemediationExecution | None:
+        if not adapters:
+            return None
+        statement = (
+            tenant_select(
+                self.session,
+                RemediationExecution,
+                RemediationExecution.source.in_(adapters),
+                RemediationExecution.status.in_(
+                    [
+                        ExecutionStatus.PENDING,
+                        ExecutionStatus.FAILED,
+                        ExecutionStatus.VERIFICATION_FAILED,
+                    ]
+                ),
+            )
+            .order_by(RemediationExecution.created_at, RemediationExecution.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        execution = self.session.scalar(statement)
+        if execution is None:
+            return None
+        return ExecutionService(self.session).run(
+            execution, self.actor, adapters[execution.source]
+        )
+
+
 def load_execution(session: Session, execution_id: uuid.UUID) -> RemediationExecution | None:
-    return session.scalar(
-        select(RemediationExecution)
+    statement = (
+        tenant_select(session, RemediationExecution, RemediationExecution.id == execution_id)
         .options(selectinload(RemediationExecution.events))
-        .where(RemediationExecution.id == execution_id)
     )
+    return session.scalar(statement)
 
 
 def load_executions(session: Session) -> list[RemediationExecution]:
-    return list(
-        session.scalars(
-            select(RemediationExecution)
-            .options(selectinload(RemediationExecution.events))
-            .order_by(RemediationExecution.created_at.desc())
-        )
+    statement = (
+        tenant_select(session, RemediationExecution)
+        .options(selectinload(RemediationExecution.events))
+        .order_by(RemediationExecution.created_at.desc())
     )
+    return list(session.scalars(statement))

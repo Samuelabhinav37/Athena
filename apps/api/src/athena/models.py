@@ -10,12 +10,15 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Table,
     Text,
     UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -31,6 +34,17 @@ class Base(DeclarativeBase):
 
 
 json_type = JSON().with_variant(JSONB(), "postgresql")
+
+
+def tenant_foreign_key(
+    column: str, parent: str, name: str, *, ondelete: str
+) -> ForeignKeyConstraint:
+    return ForeignKeyConstraint(
+        ["tenant_id", column],
+        [f"{parent}.tenant_id", f"{parent}.id"],
+        name=name,
+        ondelete=ondelete,
+    )
 
 
 class IdentityType(StrEnum):
@@ -117,16 +131,42 @@ class ExecutionStatus(StrEnum):
 identity_groups = Table(
     "identity_groups",
     Base.metadata,
-    Column("identity_id", Uuid, ForeignKey("identities.id", ondelete="CASCADE"), primary_key=True),
-    Column("group_id", Uuid, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+    Column("tenant_id", String(63), ForeignKey("tenants.id"), nullable=False, index=True),
+    Column("identity_id", Uuid, primary_key=True),
+    Column("group_id", Uuid, primary_key=True),
+    ForeignKeyConstraint(
+        ["tenant_id", "identity_id"],
+        ["identities.tenant_id", "identities.id"],
+        name="fk_identity_groups_tenant_identity_id_identities",
+        ondelete="CASCADE",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "group_id"],
+        ["groups.tenant_id", "groups.id"],
+        name="fk_identity_groups_tenant_group_id_groups",
+        ondelete="CASCADE",
+    ),
 )
 
 
 identity_roles = Table(
     "identity_roles",
     Base.metadata,
-    Column("identity_id", Uuid, ForeignKey("identities.id", ondelete="CASCADE"), primary_key=True),
-    Column("role_id", Uuid, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
+    Column("tenant_id", String(63), ForeignKey("tenants.id"), nullable=False, index=True),
+    Column("identity_id", Uuid, primary_key=True),
+    Column("role_id", Uuid, primary_key=True),
+    ForeignKeyConstraint(
+        ["tenant_id", "identity_id"],
+        ["identities.tenant_id", "identities.id"],
+        name="fk_identity_roles_tenant_identity_id_identities",
+        ondelete="CASCADE",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "role_id"],
+        ["roles.tenant_id", "roles.id"],
+        name="fk_identity_roles_tenant_role_id_roles",
+        ondelete="CASCADE",
+    ),
 )
 
 
@@ -137,7 +177,24 @@ class TimestampMixin:
     )
 
 
-class Identity(TimestampMixin, Base):
+class TenantScopedMixin:
+    tenant_id: Mapped[str] = mapped_column(
+        String(63), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+
+
+class Tenant(TimestampMixin, Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(63), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    approval_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    authorized_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    inventory_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class Identity(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "identities"
     __table_args__ = (
         CheckConstraint(
@@ -145,7 +202,10 @@ class Identity(TimestampMixin, Base):
             "('human', 'service_account', 'application', 'workload', 'api_client', 'agent')",
             name="ck_identities_identity_type",
         ),
-        UniqueConstraint("source", "external_id", name="uq_identity_source_external"),
+        UniqueConstraint("tenant_id", "id", name="uq_identities_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "source", "external_id", name="uq_identities_tenant_source_external_id"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -179,9 +239,14 @@ class Identity(TimestampMixin, Base):
     )
 
 
-class Group(TimestampMixin, Base):
+class Group(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "groups"
-    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_group_source_external"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_groups_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "source", "external_id", name="uq_groups_tenant_source_external_id"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -195,9 +260,14 @@ class Group(TimestampMixin, Base):
     )
 
 
-class Role(TimestampMixin, Base):
+class Role(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "roles"
-    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_role_source_external"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_roles_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "source", "external_id", name="uq_roles_tenant_source_external_id"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -211,10 +281,13 @@ class Role(TimestampMixin, Base):
     )
 
 
-class Resource(TimestampMixin, Base):
+class Resource(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "resources"
     __table_args__ = (
-        UniqueConstraint("source", "external_id", name="uq_resource_source_external"),
+        UniqueConstraint("tenant_id", "id", name="uq_resources_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "source", "external_id", name="uq_resources_tenant_source_external_id"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -246,16 +319,23 @@ class Resource(TimestampMixin, Base):
     )
 
 
-class Permission(TimestampMixin, Base):
+class Permission(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "permissions"
     __table_args__ = (
-        UniqueConstraint("resource_id", "action", name="uq_permission_resource_action"),
+        UniqueConstraint("tenant_id", "id", name="uq_permissions_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "resource_id", "action", name="uq_permissions_tenant_resource_id_action"
+        ),
+        tenant_foreign_key(
+            "resource_id",
+            "resources",
+            "fk_permissions_tenant_resource_id_resources",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    resource_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False
-    )
+    resource_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     action: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1024))
@@ -265,7 +345,7 @@ class Permission(TimestampMixin, Base):
     grants: Mapped[list["AccessGrant"]] = relationship(back_populates="permission")
 
 
-class AccessGrant(TimestampMixin, Base):
+class AccessGrant(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "access_grants"
     __table_args__ = (
         CheckConstraint(
@@ -274,7 +354,43 @@ class AccessGrant(TimestampMixin, Base):
             "CASE WHEN role_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
             name="ck_access_grants_exactly_one_subject",
         ),
-        UniqueConstraint("source", "external_id", name="uq_access_grant_source_external"),
+        UniqueConstraint("tenant_id", "id", name="uq_access_grants_tenant_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "source",
+            "external_id",
+            name="uq_access_grants_tenant_source_external_id",
+        ),
+        tenant_foreign_key(
+            "identity_id",
+            "identities",
+            "fk_access_grants_tenant_identity_id_identities",
+            ondelete="CASCADE",
+        ),
+        tenant_foreign_key(
+            "group_id", "groups", "fk_access_grants_tenant_group_id_groups", ondelete="CASCADE"
+        ),
+        tenant_foreign_key(
+            "role_id", "roles", "fk_access_grants_tenant_role_id_roles", ondelete="CASCADE"
+        ),
+        tenant_foreign_key(
+            "permission_id",
+            "permissions",
+            "fk_access_grants_tenant_permission_id_permissions",
+            ondelete="CASCADE",
+        ),
+        tenant_foreign_key(
+            "requested_by_identity_id",
+            "identities",
+            "fk_access_grants_tenant_requested_by_identity_id_identities",
+            ondelete="RESTRICT",
+        ),
+        tenant_foreign_key(
+            "approved_by_identity_id",
+            "identities",
+            "fk_access_grants_tenant_approved_by_identity_id_identities",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -289,24 +405,12 @@ class AccessGrant(TimestampMixin, Base):
         ),
         nullable=False,
     )
-    identity_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="CASCADE")
-    )
-    group_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("groups.id", ondelete="CASCADE")
-    )
-    role_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("roles.id", ondelete="CASCADE")
-    )
-    permission_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("permissions.id", ondelete="CASCADE"), nullable=False
-    )
-    requested_by_identity_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="SET NULL")
-    )
-    approved_by_identity_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="SET NULL")
-    )
+    identity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    role_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    permission_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    requested_by_identity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    approved_by_identity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     business_reason: Mapped[str | None] = mapped_column(Text)
     policy_reference: Mapped[str | None] = mapped_column(String(255))
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -322,47 +426,85 @@ class AccessGrant(TimestampMixin, Base):
     approved_by: Mapped[Identity | None] = relationship(foreign_keys=[approved_by_identity_id])
 
 
-class EffectiveEntitlement(Base):
+class EffectiveEntitlement(TenantScopedMixin, Base):
     __tablename__ = "effective_entitlements"
     __table_args__ = (
-        UniqueConstraint("identity_id", "grant_id", name="uq_entitlement_identity_grant"),
+        UniqueConstraint("tenant_id", "id", name="uq_effective_entitlements_tenant_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "identity_id",
+            "grant_id",
+            "lineage_version",
+            name="uq_effective_entitlements_tenant_identity_grant_version",
+        ),
+        Index(
+            "uq_effective_entitlements_one_active_lineage",
+            "tenant_id",
+            "identity_id",
+            "grant_id",
+            unique=True,
+            postgresql_where=text("active"),
+            sqlite_where=text("active = 1"),
+        ),
+        tenant_foreign_key(
+            "identity_id",
+            "identities",
+            "fk_effective_entitlements_tenant_identity_id_identities",
+            ondelete="CASCADE",
+        ),
+        tenant_foreign_key(
+            "permission_id",
+            "permissions",
+            "fk_effective_entitlements_tenant_permission_id_permissions",
+            ondelete="CASCADE",
+        ),
+        tenant_foreign_key(
+            "grant_id",
+            "access_grants",
+            "fk_effective_entitlements_tenant_grant_id_access_grants",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    identity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    permission_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("permissions.id", ondelete="CASCADE"), nullable=False
-    )
-    grant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("access_grants.id", ondelete="CASCADE"), nullable=False
-    )
+    identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    permission_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    grant_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    lineage_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     identity: Mapped[Identity] = relationship()
-    permission: Mapped[Permission] = relationship(lazy="joined")
-    grant: Mapped[AccessGrant] = relationship(lazy="joined")
+    permission: Mapped[Permission] = relationship(lazy="joined", overlaps="identity")
+    grant: Mapped[AccessGrant] = relationship(lazy="joined", overlaps="identity,permission")
     provenance_edges: Mapped[list["ProvenanceEdge"]] = relationship(
         back_populates="entitlement",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
         order_by="ProvenanceEdge.sequence",
         lazy="selectin",
     )
 
 
-class ProvenanceEdge(Base):
+class ProvenanceEdge(TenantScopedMixin, Base):
     __tablename__ = "provenance_edges"
     __table_args__ = (
-        UniqueConstraint("entitlement_id", "sequence", name="uq_provenance_edge_sequence"),
+        UniqueConstraint(
+            "tenant_id",
+            "entitlement_id",
+            "sequence",
+            name="uq_provenance_edges_tenant_entitlement_id_sequence",
+        ),
+        tenant_foreign_key(
+            "entitlement_id",
+            "effective_entitlements",
+            "fk_provenance_edges_tenant_entitlement_id_effective_en_e5c909d5",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    entitlement_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("effective_entitlements.id", ondelete="CASCADE"), nullable=False
-    )
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     from_type: Mapped[str] = mapped_column(String(64), nullable=False)
     from_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
@@ -375,7 +517,7 @@ class ProvenanceEdge(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(back_populates="provenance_edges")
 
 
-class AuditEvent(Base):
+class AuditEvent(TenantScopedMixin, Base):
     __tablename__ = "audit_events"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -397,13 +539,21 @@ class AuditEvent(Base):
     model_version: Mapped[str | None] = mapped_column(String(255))
 
 
-class PolicyEvaluation(Base):
+class PolicyEvaluation(TenantScopedMixin, Base):
     __tablename__ = "policy_evaluations"
+
+    __table_args__ = (
+        tenant_foreign_key(
+            "entitlement_id",
+            "effective_entitlements",
+            "fk_policy_evaluations_tenant_entitlement_id_effective__a53ac551",
+            ondelete="CASCADE",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     entitlement_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        ForeignKey("effective_entitlements.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -428,13 +578,20 @@ class PolicyEvaluation(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
 
 
-class RoleTransition(Base):
+class RoleTransition(TenantScopedMixin, Base):
     __tablename__ = "role_transitions"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    identity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="CASCADE"), nullable=False, index=True
+    __table_args__ = (
+        tenant_foreign_key(
+            "identity_id",
+            "identities",
+            "fk_role_transitions_tenant_identity_id_identities",
+            ondelete="CASCADE",
+        ),
     )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     from_department: Mapped[str | None] = mapped_column(String(128))
     to_department: Mapped[str | None] = mapped_column(String(128))
     from_roles: Mapped[list] = mapped_column(json_type, nullable=False)
@@ -448,16 +605,26 @@ class RoleTransition(Base):
     identity: Mapped[Identity] = relationship()
 
 
-class AccessObservation(Base):
+class AccessObservation(TenantScopedMixin, Base):
     __tablename__ = "access_observations"
     __table_args__ = (
-        UniqueConstraint("source", "external_id", name="uq_access_observation_source_external"),
+        UniqueConstraint(
+            "tenant_id",
+            "source",
+            "external_id",
+            name="uq_access_observations_tenant_source_external_id",
+        ),
+        tenant_foreign_key(
+            "entitlement_id",
+            "effective_entitlements",
+            "fk_access_observations_tenant_entitlement_id_effective_cc0bf557",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     entitlement_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        ForeignKey("effective_entitlements.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -471,16 +638,21 @@ class AccessObservation(Base):
     entitlement: Mapped[EffectiveEntitlement] = relationship()
 
 
-class RiskAssessment(Base):
+class RiskAssessment(TenantScopedMixin, Base):
     __tablename__ = "risk_assessments"
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_assessment_score_range"),
+        UniqueConstraint("tenant_id", "id", name="uq_risk_assessments_tenant_id"),
+        tenant_foreign_key(
+            "identity_id",
+            "identities",
+            "fk_risk_assessments_tenant_identity_id_identities",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    identity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, index=True
     )
@@ -507,19 +679,27 @@ class RiskAssessment(Base):
     )
 
 
-class RiskFinding(Base):
+class RiskFinding(TenantScopedMixin, Base):
     __tablename__ = "risk_findings"
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_finding_score_range"),
+        tenant_foreign_key(
+            "assessment_id",
+            "risk_assessments",
+            "fk_risk_findings_tenant_assessment_id_risk_assessments",
+            ondelete="CASCADE",
+        ),
+        tenant_foreign_key(
+            "entitlement_id",
+            "effective_entitlements",
+            "fk_risk_findings_tenant_entitlement_id_effective_entitlements",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    assessment_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("risk_assessments.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    entitlement_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("effective_entitlements.id", ondelete="RESTRICT"), nullable=False
-    )
+    assessment_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     finding_type: Mapped[RiskFindingType] = mapped_column(
         Enum(
             RiskFindingType,
@@ -534,11 +714,15 @@ class RiskFinding(Base):
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
 
     assessment: Mapped[RiskAssessment] = relationship(back_populates="findings")
-    entitlement: Mapped[EffectiveEntitlement] = relationship(lazy="joined")
+    entitlement: Mapped[EffectiveEntitlement] = relationship(
+        lazy="joined", overlaps="assessment,findings"
+    )
 
 
-class AnomalyModelRun(Base):
+class AnomalyModelRun(TenantScopedMixin, Base):
     __tablename__ = "anomaly_model_runs"
+
+    __table_args__ = (UniqueConstraint("tenant_id", "id", name="uq_anomaly_model_runs_tenant_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     algorithm: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -560,17 +744,33 @@ class AnomalyModelRun(Base):
     )
 
 
-class AnomalyResult(Base):
+class AnomalyResult(TenantScopedMixin, Base):
     __tablename__ = "anomaly_results"
-    __table_args__ = (UniqueConstraint("run_id", "subject_key", name="uq_anomaly_result_subject"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_anomaly_results_tenant_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "run_id",
+            "subject_key",
+            name="uq_anomaly_results_tenant_run_id_subject_key",
+        ),
+        tenant_foreign_key(
+            "run_id",
+            "anomaly_model_runs",
+            "fk_anomaly_results_tenant_run_id_anomaly_model_runs",
+            ondelete="CASCADE",
+        ),
+        tenant_foreign_key(
+            "identity_id",
+            "identities",
+            "fk_anomaly_results_tenant_identity_id_identities",
+            ondelete="RESTRICT",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("anomaly_model_runs.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    identity_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="RESTRICT"), index=True
-    )
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    identity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
     subject_key: Mapped[str] = mapped_column(String(255), nullable=False)
     synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False)
     score_samples: Mapped[float] = mapped_column(Float, nullable=False)
@@ -580,73 +780,121 @@ class AnomalyResult(Base):
     explanation: Mapped[dict] = mapped_column(json_type, nullable=False)
 
     run: Mapped[AnomalyModelRun] = relationship(back_populates="results")
-    identity: Mapped[Identity | None] = relationship()
+    identity: Mapped[Identity | None] = relationship(overlaps="results,run")
 
 
-class ReviewCase(TimestampMixin, Base):
+class ReviewCase(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "review_cases"
     __table_args__ = (
         CheckConstraint(
             "risk_assessment_id IS NOT NULL OR anomaly_result_id IS NOT NULL",
             name="ck_review_case_has_evidence",
         ),
+        UniqueConstraint("tenant_id", "id", name="uq_review_cases_tenant_id"),
+        tenant_foreign_key(
+            "identity_id",
+            "identities",
+            "fk_review_cases_tenant_identity_id_identities",
+            ondelete="RESTRICT",
+        ),
+        tenant_foreign_key(
+            "entitlement_id",
+            "effective_entitlements",
+            "fk_review_cases_tenant_entitlement_id_effective_entitlements",
+            ondelete="RESTRICT",
+        ),
+        tenant_foreign_key(
+            "risk_assessment_id",
+            "risk_assessments",
+            "fk_review_cases_tenant_risk_assessment_id_risk_assessments",
+            ondelete="RESTRICT",
+        ),
+        tenant_foreign_key(
+            "anomaly_result_id",
+            "anomaly_results",
+            "fk_review_cases_tenant_anomaly_result_id_anomaly_results",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    identity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("identities.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    entitlement_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("effective_entitlements.id", ondelete="RESTRICT"), index=True
-    )
-    risk_assessment_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("risk_assessments.id", ondelete="RESTRICT"), index=True
-    )
-    anomaly_result_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("anomaly_results.id", ondelete="RESTRICT"), index=True
-    )
+    identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    entitlement_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    risk_assessment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    anomaly_result_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[ReviewStatus] = mapped_column(
-        Enum(ReviewStatus, name="review_status", native_enum=False,
-             values_callable=lambda members: [member.value for member in members]),
-        nullable=False, default=ReviewStatus.OPEN,
+        Enum(
+            ReviewStatus,
+            name="review_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+        default=ReviewStatus.OPEN,
     )
     owner: Mapped[str | None] = mapped_column(String(255), index=True)
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     resolution: Mapped[ReviewDecision | None] = mapped_column(
-        Enum(ReviewDecision, name="review_decision", native_enum=False,
-             values_callable=lambda members: [member.value for member in members])
+        Enum(
+            ReviewDecision,
+            name="review_decision",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        )
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     identity: Mapped[Identity] = relationship()
     events: Mapped[list["ReviewEvent"]] = relationship(
-        back_populates="case", cascade="all, delete-orphan",
-        order_by="ReviewEvent.occurred_at", lazy="selectin"
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="ReviewEvent.occurred_at",
+        lazy="selectin",
     )
 
 
-class ReviewEvent(Base):
+class ReviewEvent(TenantScopedMixin, Base):
     __tablename__ = "review_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    case_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("review_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    __table_args__ = (
+        tenant_foreign_key(
+            "case_id",
+            "review_cases",
+            "fk_review_events_tenant_case_id_review_cases",
+            ondelete="CASCADE",
+        ),
     )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     actor: Mapped[str] = mapped_column(String(255), nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     from_status: Mapped[ReviewStatus | None] = mapped_column(
-        Enum(ReviewStatus, name="review_event_from_status", native_enum=False,
-             values_callable=lambda members: [member.value for member in members])
+        Enum(
+            ReviewStatus,
+            name="review_event_from_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        )
     )
     to_status: Mapped[ReviewStatus] = mapped_column(
-        Enum(ReviewStatus, name="review_event_to_status", native_enum=False,
-             values_callable=lambda members: [member.value for member in members]), nullable=False
+        Enum(
+            ReviewStatus,
+            name="review_event_to_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
     )
     decision: Mapped[ReviewDecision | None] = mapped_column(
-        Enum(ReviewDecision, name="review_event_decision", native_enum=False,
-             values_callable=lambda members: [member.value for member in members])
+        Enum(
+            ReviewDecision,
+            name="review_event_decision",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        )
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_snapshot: Mapped[dict] = mapped_column(json_type, nullable=False)
@@ -657,20 +905,33 @@ class ReviewEvent(Base):
     case: Mapped[ReviewCase] = relationship(back_populates="events")
 
 
-class RemediationExecution(TimestampMixin, Base):
+class RemediationExecution(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "remediation_executions"
     __table_args__ = (
-        UniqueConstraint("case_id", name="uq_remediation_execution_case"),
-        UniqueConstraint("idempotency_key", name="uq_remediation_execution_idempotency"),
+        UniqueConstraint("tenant_id", "id", name="uq_remediation_executions_tenant_id"),
+        UniqueConstraint("tenant_id", "case_id", name="uq_remediation_executions_tenant_case_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_remediation_executions_tenant_idempotency_key",
+        ),
+        tenant_foreign_key(
+            "case_id",
+            "review_cases",
+            "fk_remediation_executions_tenant_case_id_review_cases",
+            ondelete="RESTRICT",
+        ),
+        tenant_foreign_key(
+            "entitlement_id",
+            "effective_entitlements",
+            "fk_remediation_executions_tenant_entitlement_id_effect_3119a53f",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    case_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("review_cases.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    entitlement_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("effective_entitlements.id", ondelete="RESTRICT"), nullable=False
-    )
+    case_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     target_external_id: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -695,7 +956,7 @@ class RemediationExecution(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
 
     case: Mapped[ReviewCase] = relationship()
-    entitlement: Mapped[EffectiveEntitlement] = relationship()
+    entitlement: Mapped[EffectiveEntitlement] = relationship(overlaps="case")
     events: Mapped[list["RemediationExecutionEvent"]] = relationship(
         back_populates="execution",
         cascade="all, delete-orphan",
@@ -704,13 +965,21 @@ class RemediationExecution(TimestampMixin, Base):
     )
 
 
-class RemediationExecutionEvent(Base):
+class RemediationExecutionEvent(TenantScopedMixin, Base):
     __tablename__ = "remediation_execution_events"
+
+    __table_args__ = (
+        tenant_foreign_key(
+            "execution_id",
+            "remediation_executions",
+            "fk_remediation_execution_events_tenant_execution_id_re_c6ee28cc",
+            ondelete="CASCADE",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     execution_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        ForeignKey("remediation_executions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -740,16 +1009,26 @@ class RemediationExecutionEvent(Base):
     execution: Mapped[RemediationExecution] = relationship(back_populates="events")
 
 
-class MonitoringRun(Base):
+class MonitoringRun(TenantScopedMixin, Base):
     __tablename__ = "monitoring_runs"
-    __table_args__ = (UniqueConstraint("schedule_key", name="uq_monitoring_run_schedule_key"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_monitoring_runs_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "schedule_key", name="uq_monitoring_runs_tenant_schedule_key"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     schedule_key: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[MonitoringStatus] = mapped_column(
-        Enum(MonitoringStatus, name="monitoring_status", native_enum=False,
-             values_callable=lambda members: [member.value for member in members]),
-        nullable=False, default=MonitoringStatus.PENDING,
+        Enum(
+            MonitoringStatus,
+            name="monitoring_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
+        default=MonitoringStatus.PENDING,
     )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -757,29 +1036,45 @@ class MonitoringRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     steps: Mapped[list["MonitoringStep"]] = relationship(
-        back_populates="run", cascade="all, delete-orphan",
-        order_by="MonitoringStep.sequence", lazy="selectin"
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="MonitoringStep.sequence",
+        lazy="selectin",
     )
 
 
-class MonitoringStep(Base):
+class MonitoringStep(TenantScopedMixin, Base):
     __tablename__ = "monitoring_steps"
     __table_args__ = (
-        UniqueConstraint("run_id", "sequence", name="uq_monitoring_step_sequence"),
+        UniqueConstraint(
+            "tenant_id", "run_id", "sequence", name="uq_monitoring_steps_tenant_run_id_sequence"
+        ),
+        tenant_foreign_key(
+            "run_id",
+            "monitoring_runs",
+            "fk_monitoring_steps_tenant_run_id_monitoring_runs",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("monitoring_runs.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[MonitoringStatus] = mapped_column(
-        Enum(MonitoringStatus, name="monitoring_step_status", native_enum=False,
-             values_callable=lambda members: [member.value for member in members]), nullable=False
+        Enum(
+            MonitoringStatus,
+            name="monitoring_step_status",
+            native_enum=False,
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        nullable=False,
     )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -789,9 +1084,99 @@ class MonitoringStep(Base):
     run: Mapped[MonitoringRun] = relationship(back_populates="steps")
 
 
-class ConnectorCheckpoint(Base):
+class RequestReplay(TenantScopedMixin, Base):
+    __tablename__ = "request_replays"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "namespace", "idempotency_key", name="uq_request_replays_tenant_key"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    namespace: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RateLimitBucket(TenantScopedMixin, Base):
+    __tablename__ = "rate_limit_buckets"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "namespace",
+            "subject",
+            "window_started_at",
+            name="uq_rate_limit_buckets_tenant_subject_window",
+        ),
+        CheckConstraint("request_count > 0", name="ck_rate_limit_buckets_positive_count"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    namespace: Mapped[str] = mapped_column(String(128), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConnectorScopeBinding(TenantScopedMixin, Base):
+    __tablename__ = "connector_scope_bindings"
+    __table_args__ = (
+        CheckConstraint("connector = lower(connector)", name="ck_connector_scope_connector_lower"),
+        CheckConstraint("scope = lower(scope)", name="ck_connector_scope_scope_lower"),
+        UniqueConstraint("tenant_id", "id", name="uq_connector_scope_bindings_tenant_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "connector",
+            "scope",
+            name="uq_connector_scope_bindings_tenant_connector_scope",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    connector: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope: Mapped[str] = mapped_column(String(255), nullable=False)
+    approval_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConnectorScopeRevocation(TenantScopedMixin, Base):
+    __tablename__ = "connector_scope_revocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "binding_id",
+            name="uq_connector_scope_revocations_tenant_binding_id",
+        ),
+        tenant_foreign_key(
+            "binding_id",
+            "connector_scope_bindings",
+            "fk_connector_scope_revocations_tenant_binding_id_bindings",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    binding_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    approval_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    revoked_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ConnectorCheckpoint(TenantScopedMixin, Base):
     __tablename__ = "connector_checkpoints"
-    __table_args__ = (UniqueConstraint("connector", "scope", name="uq_connector_checkpoint"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "connector",
+            "scope",
+            name="uq_connector_checkpoints_tenant_connector_scope",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     connector: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -805,6 +1190,12 @@ class ConnectorCheckpoint(Base):
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
     raise ValueError("Audit events are append-only")
+
+
+@event.listens_for(RequestReplay, "before_update")
+@event.listens_for(RequestReplay, "before_delete")
+def prevent_request_replay_mutation(*_: object) -> None:
+    raise ValueError("Request replay reservations are append-only")
 
 
 @event.listens_for(PolicyEvaluation, "before_update")
@@ -849,3 +1240,9 @@ def prevent_remediation_execution_event_mutation(*_: object) -> None:
 @event.listens_for(MonitoringStep, "before_delete")
 def prevent_monitoring_step_mutation(*_: object) -> None:
     raise ValueError("Monitoring steps are immutable")
+
+
+@event.listens_for(ConnectorScopeRevocation, "before_update")
+@event.listens_for(ConnectorScopeRevocation, "before_delete")
+def prevent_connector_scope_revocation_mutation(*_: object) -> None:
+    raise ValueError("Connector scope revocations are immutable")

@@ -2,7 +2,7 @@
 
 This document is Athena's living engineering record. Update it whenever a milestone changes the architecture, introduces a decision, encounters a meaningful problem, or produces new validation evidence.
 
-Last updated: August 18, 2026
+Last updated: August 20, 2026
 
 ## Project objective
 
@@ -20,7 +20,7 @@ The governing safety rule is:
 
 ## Current status
 
-**Active milestone:** Human review workflow presentation
+**Active milestone:** Enterprise tenant isolation
 
 **Completed:**
 
@@ -49,7 +49,7 @@ The governing safety rule is:
 - Human remediation review workflow
 - Durable continuous monitoring
 - Incremental GitHub authorization connector
-- Incremental AWS IAM authorization connector
+- Incremental Microsoft Entra ID and Azure RBAC connector
 - Keycloak OIDC authentication and role-based API authorization
 - Authorized remediation execution framework
 - Guarded local Ollama evidence explanations
@@ -58,10 +58,11 @@ The governing safety rule is:
 - Authenticated attack-path dashboard presentation
 - Machine and workload identity posture foundation
 - Authenticated machine identity posture dashboard
-- AWS role owner and last-used lifecycle evidence
+- Azure service-principal owner and credential-expiration evidence
+- Provider-neutral AI explanation contract with Ollama and Azure AI adapters
 
-**Next outcome:** Expose review assignment and human decision forms without allowing the UI to
-bypass policy evaluation or the separately authorized execution boundary.
+**Next outcome:** Extend tenant-aware negative coverage to caches, graph projection, exports, and
+connector/job keys, then define tenant-scoped lifecycle and recovery controls.
 
 ## Roadmap
 
@@ -76,7 +77,7 @@ bypass policy evaluation or the separately authorized execution boundary.
 | 6. Explain and present | Ollama explanations, React dashboard, and evidence report | Complete |
 | 7. Remediation and monitoring | Human decisions and durable scheduled evidence | Complete |
 | 8. GitHub connector | Incremental organization authorization evidence | Complete |
-| 9. AWS IAM connector | Incremental account policy and identity evidence | Complete |
+| 9. Azure connector | Incremental Entra identity and Azure RBAC evidence | Complete |
 | 10. API access control | OIDC authentication and role-based authorization | Complete |
 | 11. Authorized execution | Approved remediation execution and verification evidence | Complete |
 | 12. React dashboard | Authenticated identity, risk, review, and audit interface | Complete |
@@ -85,11 +86,662 @@ bypass policy evaluation or the separately authorized execution boundary.
 | 15. Attack-path presentation | Authenticated dashboard graph paths and failure isolation | Complete |
 | 16. Machine identity governance | Owner, usage, credential, and access posture | Complete |
 | 17. Machine identity presentation | Searchable posture inventory and evidence detail console | Complete |
-| 18. AWS role lifecycle evidence | Read-only owner and role-use posture enrichment | Complete |
+| 18. Azure workload lifecycle evidence | Owner and credential-expiration posture | Complete |
+| 20. Azure replacement | Remove AWS runtime and make Azure the cloud authorization source | Complete |
+| 21. AI portability | Provider-neutral explanation contract with Ollama and Azure AI adapters | Complete |
+| 22. AI boundary verification | Provider conformance, failure, isolation, and state invariants | Complete |
+| 23. Security-event envelope | OpenTelemetry-aligned contract and original provenance | Complete |
+| 24. JSON telemetry receiver | Authenticated bounded normalization without persistence | Complete |
+| 25. OTLP/JSON normalization | Stable log mapping with explicit loss and provenance | Complete |
+| 26. Syslog normalization | RFC 5424 parsing and explicit transport boundary | Complete |
+| 27. Signed webhook normalization | HMAC authentication and replay protection | Complete |
+| 28. JSON telemetry export | Deterministic packages and offline integrity verification | Complete |
+| 29. OTLP/JSON telemetry export | Stable OpenTelemetry log requests with explicit mapping loss | Complete |
+| 30. IAM connector SDK contract | Read-only provider manifests and conformance rules | Complete |
+| 31. Compliance framework contract | Deterministic NIST pack and OSCAL component definition | Complete |
+| 32. Policy interoperability contract | Canonical requests and an explicit OPA adapter | Complete |
+| 33. Portable report renderer contract | Digest-verified deterministic JSON and Markdown | Complete |
+| 34. Report format readiness | Explicit OSCAL, PDF, and Word implementation gates | Complete |
+| 35. Tenant-isolation contract | Default-deny scope contract and threat model | Complete |
+| 36. Tenant transition plan | Approved inventory guard and ordered schema transition | Complete |
+| 37. Bootstrap inventory | Read-only complete table counts and approval digest | Complete |
+| 38. Additive tenant schema | Registry and nullable tenant keys without backfill | Complete |
+| 39. Bootstrap backfill dry-run | Digest-verified, deterministic, non-mutating plan | Complete |
+| 40. Bootstrap backfill executor | Locked, atomic assignment with immutable controls restored | Complete |
+| 41. Tenant integrity readiness | Metadata-derived assignment, relationship, and uniqueness checks | Complete |
+| 42. Tenant constraint plan | Deterministic composite uniqueness and relationship design | Complete |
+| 43. Tenant RLS plan | Fail-closed policies and pooled-session safety requirements | Complete |
+| 44. Tenant constraints | Tenant-scoped uniqueness and composite relationship enforcement | Complete |
+| 45. Tenant RLS | Forced policies and a non-owner, non-bypass application role | Complete |
+| 46. Runtime tenant context | Validated OIDC/system authority and pooled-session isolation | Complete |
+
+## Milestone 46: transaction-local runtime tenant context
+
+Protected API database sessions now require the signed `athena_tenant_id` claim. Invalid or missing
+claims fail before database access. Local auth-disabled operation and CLI/background commands use
+the explicit `ATHENA_SYSTEM_TENANT_ID`; production rejects the local bootstrap default. The local
+Keycloak realm emits `athena_tenant_id=athena-local` for dashboard access tokens.
+
+SQLAlchemy sets `athena.tenant_id` with transaction-local `set_config` and propagates that validated
+context to new ORM rows. Tests reuse pooled PostgreSQL connections across `athena-local`, missing,
+and other-tenant contexts and confirm every transaction returns to fail-closed state.
+
+## Milestone 45: forced fail-closed row-level security
+
+After explicit approval of RLS plan
+`0ff1c92c47d9433ac2f30b175d413850f670b813699323264fc785eb6b084a0d`, migration
+`20260823_12` installed one read/write policy on each of the 25 scoped tables, enabled and forced
+RLS, and granted scoped access to the non-login `athena_app` role. The role is neither a table
+owner nor a superuser and has no `BYPASSRLS`; Athena's PostgreSQL pool assumes it on connection.
+
+PostgreSQL verification confirms all 25 policies and forced flags are present. Through
+`athena_app`, unset and empty tenant settings return no identities, the `athena-local` setting
+returns its seven identities, and a write without context is rejected. Runtime transaction-local
+tenant selection remains a separate milestone.
+
+## Milestone 44: tenant-aware database constraints
+
+After explicit approval of constraint plan
+`96d2704ac77e61af959f27a8acdfcd51e8f98515dc1ee83e535cd951993550c8`, migration
+`20260823_11` made `tenant_id` non-null on all 25 scoped tables, replaced 15 global unique
+constraints, replaced 32 global foreign keys with composite tenant-aware relationships, and added
+13 supporting parent constraints. No evidence row content was changed by the migration.
+
+Post-migration integrity reports no unassigned rows, no relationship mismatch, and no remaining
+global unique constraint. Alembic reports `20260823_11` at head with no metadata drift. A focused
+PostgreSQL test confirmed that missing tenant assignment and a cross-tenant association are both
+rejected. The full Python suite passes with the existing Starlette warning.
+
+## Milestone 43: deterministic fail-closed RLS plan
+
+Added `tenant-rls-plan`, a non-mutating policy design for all 25 scoped tables. Each planned policy
+enables and forces PostgreSQL RLS, applies the same transaction-local tenant predicate to reads and
+writes, and returns no scoped rows when context is missing or empty. Role requirements prohibit
+table ownership, superuser, and `BYPASSRLS`; session requirements prohibit ambient pooled context.
+
+The local plan is correctly `blocked_by_constraints` and has digest
+`b18a2afdaa3f594ebd77deac332bf70c1d1eadc46fd1477df73774aee3abd196`. It installs no policy and
+changes no runtime session behavior.
+
+Validation evidence:
+
+- focused RLS-plan, constraint-plan, and CLI tests: 11 passed;
+- full automated Python suite: 200 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 42: deterministic tenant-aware constraint plan
+
+Added `tenant-constraint-plan`, which derives a non-mutating schema plan directly from model
+metadata and the current integrity result. It proposes 15 tenant-scoped unique replacements, 32
+composite tenant foreign-key replacements, and 13 supporting parent constraints. Deterministic
+constraint naming respects PostgreSQL's 63-character limit.
+
+The local plan is correctly `blocked_by_integrity` while the 614-row bootstrap assignment remains
+pending. Its digest is `56726e3602fd80eda31812395068d65f1aae08550f49c273f5150f628e3543de`.
+The plan does not alter schema or authorize a later migration.
+
+Validation evidence:
+
+- focused constraint-plan, integrity, and CLI tests: 11 passed;
+- full automated Python suite: 197 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 41: tenant integrity readiness inspection
+
+Added `tenant-integrity`, a read-only metadata-derived inspection across all scoped tables and
+foreign keys. It reports unassigned rows, cross-tenant relationship counts, global unique
+constraints that still require tenant scope, and a fail-closed readiness result. Sessions with
+pending ORM changes are rejected.
+
+The local report found zero mismatches across all 32 scoped relationships and identified 15 global
+unique constraints for later conversion. Readiness remains false, as designed, because all 614
+approved rows are still unassigned pending separately authorized backfill execution.
+
+Validation evidence:
+
+- focused integrity, backfill, and CLI tests: 13 passed;
+- full automated Python suite: 194 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 40: transactional bootstrap backfill executor
+
+Added `tenant-backfill`, which requires both the reviewed approval artifact and exact dry-run plan
+digest. It exclusively locks the full transition surface, repeats the inventory and assignment
+guards, creates the approved tenant, assigns only null tenant keys, and verifies per-table counts in
+one transaction. Any mismatch rolls back the complete operation.
+
+Immutable PostgreSQL trigger functions remain installed throughout the operation. Inside the
+transaction they accept only a null-to-approved-tenant change when every other row field is equal,
+then their unconditional rejection bodies are restored before commit. A disposable PostgreSQL test
+proved assignment of an append-only audit row, preservation of its fields, and rejection of a later
+content update. The disposable database was removed and confirmed absent.
+
+The executable has not been run against the local 614-row database. Doing so remains a separately
+authorized database mutation.
+
+Validation evidence:
+
+- focused executor and CLI tests: 9 passed with the PostgreSQL-only case correctly skipped;
+- the PostgreSQL-only executor case passed independently on a migrated disposable database;
+- full automated Python suite: 190 passed, 1 PostgreSQL-only skip, and the existing Starlette
+  deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the unchanged local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 39: digest-verified bootstrap backfill dry-run
+
+Added `tenant-backfill-plan`, a read-only command that loads the reviewed approval artifact,
+recaptures the canonical 25-table inventory, verifies exact counts and digest, and fails closed if
+the bootstrap tenant already exists or any scoped row is already assigned. The returned plan is
+deterministic, declares `database_mutation: false`, and identifies immutable evidence families.
+
+The planner ran successfully against the local PostgreSQL database: all 614 rows still match digest
+`22171f72521d682c73ebdcdf8aad035a5bb643c04449026aeee29f2c48825cac`; its plan digest is
+`c9ec5582876176fd0e4e23d43cd0f0b50805245a086c44353ae6fd040ec721a3`. No tenant record or row
+assignment was written. Executable backfill code and execution remain separately reviewed and
+approved work.
+
+Validation evidence:
+
+- focused tenant backfill, inventory, transition, and CLI tests: 13 passed;
+- full automated Python suite: 188 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- Alembic reports the local database at `20260820_10` head with no schema drift;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 38: additive tenant schema foundation
+
+Recorded the approved `athena-local` bootstrap artifact with all 25 table counts, 614 total rows,
+inventory digest `22171f72521d682c73ebdcdf8aad035a5bb643c04449026aeee29f2c48825cac`,
+approval `LOCAL-BOOTSTRAP-2026-001`, and approver `samue`. Approval validation recomputes the digest
+from the counts and fails closed on any mismatch.
+
+Added global `tenants` metadata and nullable, indexed tenant foreign keys to all 25 scoped model
+tables. Migration `20260820_10` performs only those additive schema operations. It contains no SQL
+backfill, row update, RLS policy, non-null enforcement, tenant-aware constraint replacement, token
+change, or runtime selection. Existing rows and behavior remain single-tenant and unassigned.
+
+The complete migration chain applied successfully to a named disposable PostgreSQL database and
+`alembic check` reported no schema drift. The disposable database was removed and confirmed absent.
+After explicit operator approval, migration `20260820_10` was applied to the local PostgreSQL
+database. Alembic reports the database at head with no schema drift, and a post-migration inventory
+confirmed all 614 scoped rows and the approved digest
+`22171f72521d682c73ebdcdf8aad035a5bb643c04449026aeee29f2c48825cac` remain unchanged.
+
+Validation evidence:
+
+- focused tenant migration, transition, inventory, and model tests: 10 passed;
+- full automated Python suite: 183 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- the complete migration chain and `alembic check` passed on a disposable PostgreSQL database, which
+  was then removed and confirmed absent;
+- Rego policy tests: 5/5 passed; and
+- the security gate passed all 4 fixtures and all 3 controls.
+
+## Milestone 37: read-only bootstrap tenant inventory
+
+Added `tenant-inventory` as a read-only CLI command covering the exact 25-table transition surface.
+It rejects sessions with pending changes, verifies that the transition table list still matches
+SQLAlchemy metadata, counts rows without autoflush, and returns only observation time, table counts,
+total rows, and a deterministic digest. It exposes no row content and commits no transaction.
+
+The digest excludes observation time, so unchanged counts remain stable for approval. Any added or
+removed row changes the facts and prevents the observed inventory from matching a stale bootstrap
+approval. This command does not choose a tenant, approve a backfill, add a column, or execute a
+migration.
+
+Validation evidence:
+
+- focused tenant-inventory and CLI tests: 5 passed;
+- full automated Python suite: 180 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+The first live inventory invocation could not reach the configured local database and was stopped
+without output or mutation. A concrete bootstrap inventory remains pending until PostgreSQL and its
+configured credentials are available.
+
+## Milestone 36: reviewed bootstrap-tenant transition plan
+
+Added a deterministic, content-digested transition plan covering every one of Athena's 25 model
+tables and all immutable evidence families. Bootstrap approval requires a canonical tenant ID,
+display name, approval reference, named approver, timezone-aware approval time, and exact expected
+row counts for every table. Missing, extra, negative, or stale inventory fails closed.
+
+The plan orders six gates: freeze and inventory; add bootstrap scope without ORM evidence updates;
+install tenant-aware integrity; add fail-closed PostgreSQL RLS; propagate validated context through
+all application boundaries; and enable non-null tenancy only after isolation, backup, restore, and
+security checks pass. The output remains `review_required` and cannot execute SQL.
+
+This phase adds no model column, migration, database query or mutation, token claim, RLS policy,
+runtime tenant selection, or production enablement. A concrete bootstrap approval is still required
+before implementing the first additive schema step.
+
+Validation evidence:
+
+- focused transition-plan tests: 3 passed;
+- full automated Python suite: 176 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed; and
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 35: tenant-isolation contract and threat model
+
+Documented Athena's current single-tenant state and added contract `1.0` for canonical tenant
+contexts, tenant-scoped object references, and default-deny access comparison. The frozen design
+plan forbids a global-administrator bypass and enumerates isolation invariants, every affected data
+family, and the preconditions for a future shared-database row-isolation implementation.
+
+The threat model covers forged scope selection, missing filters and unsafe joins, connection-pool
+leakage, cache/job/idempotency collisions, connector scope confusion, export and error leakage,
+cross-tenant graph edges, and backup/residency violations. Provider tenant identifiers explicitly
+remain evidence attributes and cannot authorize an Athena tenant.
+
+This phase makes no authentication, authorization, model, query, database, migration, token,
+connector, cache, graph, backup, or runtime behavior change. Existing deployments remain
+single-tenant, and no production isolation claim is made.
+
+Validation evidence:
+
+- focused tenant-isolation contract tests: 3 passed;
+- full automated Python suite: 173 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 34: portable report format readiness
+
+Added machine-readable readiness manifests for every known report format. JSON and Markdown are
+ready and must exactly match the active renderer registry. OSCAL Assessment Results, PDF, and Word
+remain blocked with explicit context, dependency, security, and verification requirements. A
+registry conformance check fails if declarations and implementations diverge or if status disagrees
+with requirement completion.
+
+OSCAL requires an Assessment Plan reference, assessed-system context, and pinned official schema
+validation. PDF requires an approved pinned generator, an active-content policy, and page rendering
+verification. Word requires an approved pinned generator, a macro/external-content-free local
+template, and page rendering verification. Installing a package alone satisfies none of these
+gates.
+
+This slice adds no dependency, renderer, endpoint, file output, template, assessment assertion,
+database operation, or evidence change.
+
+Validation evidence:
+
+- focused renderer-readiness and evidence-report tests: 7 passed;
+- full automated Python suite: 170 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 33: portable evidence renderer contract
+
+Added renderer contract `1.0` with immutable manifests and artifacts. Every renderer revalidates the
+evidence response and recomputes its authoritative digest before producing bytes. Artifacts retain
+the source evidence digest and add a SHA-256 digest of the exact rendered content.
+
+Canonical compact JSON and Markdown are registered as deterministic implementations. The existing
+Markdown report path now delegates to the renderer without changing its public content. Tampered
+facts fail closed, and AI-generated prose remains excluded from renderer inputs. OSCAL assessment,
+PDF, and Word formats are declared but not falsely registered: they require additional assessment
+context or reviewed generation and visual-verification workflows.
+
+This slice adds no endpoint, dependency, database query or write, file output, destination,
+signature, retention behavior, or authoritative evidence field.
+
+Validation evidence:
+
+- focused report renderer and evidence-report tests: 6 passed;
+- full automated Python suite including pending policy changes: 169 passed with the existing
+  Starlette deprecation warning;
+- Ruff linting and diff checks: passed; and
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 32: canonical policy interoperability contract
+
+Added versioned policy request contract `2.0` with frozen, unknown-field-rejecting models for
+principal, action, resource, and context. Context contains governance evidence, authentication
+posture, and ordered provenance. New immutable policy-evaluation snapshots store this canonical
+shape instead of the OPA-specific payload.
+
+Added `OpaAuthorizationAdapter` as the only translation boundary. It deterministically maps the
+canonical request to the existing Rego input `1.0`, leaving policy files, fixtures, policy path,
+decision shape, structured violations, and fail-closed behavior unchanged. The security gate still
+tests native OPA fixtures independently. Future engines require distinct adapters and semantic
+conformance; a shared request does not imply equivalent policy behavior.
+
+This slice adds no alternate engine, policy translation, policy change, dependency, migration,
+credential, remediation authority, or evidence-store mutation beyond the existing append-only
+policy evaluation write.
+
+Validation evidence:
+
+- focused policy contract, evaluation, monitoring, and CLI tests: 10 passed;
+- full automated Python suite: 166 passed with the existing Starlette deprecation warning; and
+- Ruff linting: passed; and
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 31: OSCAL-compatible compliance framework contract
+
+Added framework contract `1.0` to validate the existing NIST SP 800-53 Revision 5 JSON mappings as
+a deterministic pack. The pack retains control objectives, typed automated-evidence references,
+implementation status, and limitations under a content digest. Unsafe file traversal, malformed
+controls, duplicate IDs, and empty packs fail closed.
+
+The first renderer produces the core JSON hierarchy of an OSCAL Component Definition: metadata, an
+Athena software component, a catalog-linked control implementation, and implemented requirements
+for AC-2, AC-5, and AC-6. UUIDv5 identifiers derive from the pack digest. Repository evidence links,
+Athena URNs, partial status, and every limitation remain explicit; generated AI text is excluded.
+
+Assessment Results are deliberately out of scope because Athena does not yet have a portable
+Assessment Plan and assessed-system context. This slice performs no download, external schema
+validation, file write, signature, dependency change, migration, or evidence-store mutation.
+
+Validation evidence:
+
+- focused framework contract tests: 3 passed;
+- full automated Python suite: 164 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed; and
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 30: vendor-neutral IAM connector SDK contract
+
+Added connector contract `1.0` with a frozen, secret-free `ConnectorManifest`, a structural
+`IAMConnector` protocol, and mandatory capability declarations. Manifests are always read-only and
+evidence-only and must explicitly describe identity discovery, pagination, incremental cursors,
+retries, collection freshness, authorization inheritance, nested groups, deny rules, privileged
+eligibility, machine identities, and activity signals as supported, partial, or unsupported.
+
+GitHub, Microsoft Azure, and Keycloak now publish honest manifests without changing their existing
+collection signatures, snapshots, authentication, synchronization, or persistence behavior.
+Conformance tests require complete declarations, reject write authority, verify known limitations,
+and ensure serialized manifests contain no token-bearing fields. The compatibility matrix documents
+that capability claims describe Athena's current adapter, not the provider's entire product.
+
+This milestone adds no endpoint, credential handling, network call, retry behavior, dependency,
+migration, or evidence-store write. Snapshot, cursor, freshness, and retry execution contracts
+remain later reviewed slices.
+
+Validation evidence:
+
+- focused connector contract and regression tests: 13 passed;
+- full automated Python suite: 161 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 29: deterministic OTLP/HTTP JSON telemetry export
+
+Added a pure `OTLPJSONExporter` that maps revalidated canonical envelopes into byte-stable JSON
+protobuf `ExportLogsServiceRequest` payloads. It rejects duplicate IDs, sorts records by timestamp
+and ID, caps input at 1,000 events and output at 8 MiB, and returns the exact request digest.
+
+Canonical resource, scope, body, severity, timestamp, and trace fields retain their OpenTelemetry
+meanings. Athena event identity and complete original-event provenance use namespaced attributes.
+Unsupported JSON nulls are omitted with path-specific warnings, while integers outside signed
+64-bit range become decimal strings with warnings; warnings are deterministic and capped at 100.
+
+The adapter performs no network request, authentication, collector selection, persistence, queueing,
+retry, compression, signing, or acknowledgement and adds no dependency or migration.
+
+Validation evidence:
+
+- focused OTLP exporter tests: 3 passed;
+- full automated Python suite: 156 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed; and
+- deterministic security gate: four fixtures and three control mappings passed.
+
+## Milestone 28: deterministic vendor-neutral JSON telemetry export
+
+Added a pure `TelemetryJSONExporter` for versioned `athena.telemetry+json` packages. It revalidates
+every envelope, rejects duplicate IDs, sorts by timestamp and ID, preserves all original-event
+provenance, emits stable compact ASCII JSON with one trailing newline, and caps packages at 1,000
+events and 8 MiB.
+
+The content digest covers schema metadata, format, count, and ordered event facts. Offline
+verification checks the schema, count, uniqueness, envelope validity, constant-time digest match,
+and canonical bytes. Generation time is deliberately absent, so identical inputs produce identical
+packages regardless of input order or export time. Revalidation also prevents a caller from adding
+secret-bearing keys through a mutable nested structure after initial envelope construction.
+
+This slice performs no database selection, file write, network request, external delivery,
+signature, encryption, or acknowledgement and adds no dependency or migration.
+
+Validation evidence:
+
+- focused deterministic exporter tests: 5 passed;
+- full automated Python suite: 153 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 27: signed generic webhook normalization
+
+Added disabled-by-default `POST /v1/telemetry/webhooks/athena-generic` as a distinct
+machine-to-machine authentication boundary. It verifies an HMAC-SHA256 signature over the canonical
+decimal timestamp header, bounded delivery ID, and exact request bytes before parsing. Requests must
+fall within a configurable 30–900 second freshness window, with five minutes as the default.
+
+A lock-protected replay cache atomically consumes verified delivery IDs, expires entries, and caps
+cardinality at 10,000. The initial `athena.generic.v1` mapping declares its supported body,
+attribute, resource, trace, and provenance capabilities; all unknown mappings or fields fail closed.
+Responses contain exact request digests without secrets, signatures, or echoed invalid payloads.
+
+The route requires a separately provisioned secret of at least 32 characters and is hidden while
+disabled. The replay cache is process-local, so multi-worker deployment still requires a shared
+atomic store and gateway rate limit. Secret rotation overlap, provider-specific mappings, mutual
+TLS, persistence, queues, and durable acknowledgement remain out of scope. No dependency or
+migration was introduced.
+
+Validation evidence:
+
+- focused telemetry and signed-webhook tests: 55 passed;
+- full automated Python suite: 148 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 26: RFC 5424 syslog normalization
+
+Added administrator-protected `POST /v1/telemetry/events/syslog` for one UTF-8 RFC 5424 message.
+The dependency-free adapter validates PRI, version 1, restricted RFC 3339 timestamps, bounded header
+fields, structured-data elements and escapes, and message content. It accepts an unframed HTTP body
+or one exact RFC 6587 octet-counted frame and rejects delimiter framing, legacy RFC 3164 guessing,
+multiple frames, invalid priorities, and malformed structured data.
+
+Facility and severity, source header fields, structured data, and message text map into the canonical
+envelope. The response preserves exact request provenance plus the enclosed message digest for
+octet-counted input. Missing timestamps use receipt time with a warning. HOSTNAME remains untrusted
+message data and never becomes authenticated peer identity.
+
+This slice does not bind a UDP/TCP port, terminate TLS, authenticate devices, persist messages,
+acknowledge durable delivery, or add a dependency or migration. A real syslog listener requires a
+separately reviewed TLS transport and peer-identity boundary.
+
+Validation evidence:
+
+- focused telemetry and syslog tests: 44 passed;
+- full automated Python suite: 137 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 25: OTLP/HTTP JSON log normalization
+
+Added administrator-protected `POST /v1/telemetry/events/otlp-json` for the JSON protobuf form of
+OTLP `ExportLogsServiceRequest`. The dependency-free adapter walks resource, instrumentation-scope,
+and log-record groups; decodes supported `AnyValue` forms; retains nanosecond timestamps; normalizes
+hexadecimal trace context; and maps resource, event, body, severity, and scope fields into Athena's
+canonical envelope.
+
+The response records the exact request byte count and SHA-256 digest, while each event records a
+digest of its canonical serialized resource/scope/record tuple. Unknown protobuf fields are ignored
+with bounded warnings, non-scalar attributes produce loss warnings, duplicate keys reject a record,
+and missing timestamps or event names receive explicit fallback warnings. A batch accepts at most
+100 records and 1 MiB and reports accepted and rejected counts without echoing source content.
+
+Athena does not mount this adapter at standard `/v1/logs` or return an OTLP acceptance response,
+because no durable receiver exists yet. Binary protobuf, gzip, gRPC, storage, queues, retry state,
+and exporters remain out of scope. No dependency, migration, or authoritative evidence write was
+introduced.
+
+Validation evidence:
+
+- focused telemetry and OTLP/JSON tests: 32 passed;
+- full automated Python suite: 125 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 24: bounded JSON security-event receiver
+
+Added administrator-protected `POST /v1/telemetry/events/json` as Athena's first receiver adapter.
+The endpoint accepts only JSON, stream-reads no more than 1 MiB, applies the canonical envelope's
+independent normalized-content limits, derives its transport locator and format, preserves the
+SHA-256 digest and byte count of the exact request body, and returns generic errors without echoing
+untrusted content.
+
+A bounded process-local limiter permits 60 requests per authenticated subject per 60-second window,
+caps tracked subjects at 10,000, and returns `429` with `Retry-After`. Successful responses disable
+caching and use `200` to mean validation and normalization only. This slice creates no database
+record, queue item, audit fact, exporter call, dependency, or migration; distributed deployments
+still require a reviewed shared limiter before exposing the endpoint.
+
+Validation evidence:
+
+- focused telemetry contract and JSON receiver tests: 23 passed;
+- full automated Python suite: 116 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 23: vendor-neutral security-event envelope
+
+Defined a frozen, versioned `SecurityEventEnvelope` aligned with OpenTelemetry log concepts for
+timestamps, severity, body, attributes, resource identity, instrumentation scope, and paired trace
+context. The envelope remains independent of receivers, exporters, storage engines, and vendor
+SDKs.
+
+Every normalized event carries original source type, source name, locator, optional source event
+identifier, format, receive time, exact byte count, and SHA-256 digest. Source bytes and normalized
+content have independent limits; distinct source bytes retain distinct provenance even when their
+normalized semantics match. Normalized fields reject secret-bearing keys, unknown contract fields,
+invalid semantic event names, naive timestamps, invalid severity values, and malformed trace
+context. This milestone adds no listener, database write, migration, dependency, or exporter.
+
+Validation evidence:
+
+- focused telemetry contract and security tests: 13 passed;
+- full automated Python suite: 106 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 22: AI boundary verification
+
+Extended the provider suite to execute Ollama and Azure AI through the same Athena explanation
+service and assert identical response fields, canonical evidence digests, and contract versions.
+The suite also proves that Azure credential failure does not make an HTTP request or fall back to
+Ollama, safety-filter responses without valid structured content fail closed, bearer credentials
+never enter prompt bodies, hosted direct identifiers remain redacted, and successful or malformed
+provider output creates no database record or authoritative state transition.
+
+Validation evidence:
+
+- focused AI boundary tests: 11 passed;
+- full automated Python suite: 93 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 21: vendor-neutral AI provider architecture
+
+Introduced an Athena-owned `AIProvider` contract and moved evidence collection, canonical digests,
+prompt construction, schema validation, and API response construction into a shared explanation
+service. The existing loopback-only Ollama behavior now runs through an Ollama adapter. A guarded
+Azure AI adapter uses `DefaultAzureCredential`, accepts only credential-free HTTPS Azure AI
+endpoints, redacts direct identity and business-reason fields before hosted inference, requests
+strict structured output, applies bounded timeouts, and returns only safe request/finish metadata.
+
+Both adapters produce the same Athena response schema. Generated content remains ephemeral and has
+no write path into evidence facts, OPA decisions, analytics, reviews, grants, or remediation state.
+Provider failures and malformed output fail closed; provider switching is explicit and Athena does
+not silently fall back to another provider.
+
+Validation evidence:
+
+- focused provider, configuration, redaction, injection, and malformed-output tests: 8 passed;
+- full automated Python suite: 90 passed with the existing Starlette deprecation warning;
+- Ruff linting and diff checks: passed;
+- frontend TypeScript check and production build: passed;
+- Rego policy tests: 5/5 passed;
+- deterministic security gate: four fixtures and three control mappings passed; and
+- `alembic check`: no new upgrade operations detected.
+
+## Milestone 20: Microsoft Azure replacement
+
+Replaced Athena's AWS runtime integration with Microsoft Entra ID and Azure RBAC:
+
+- stable `azure-identity` authentication through `DefaultAzureCredential`;
+- separately scoped Microsoft Graph and Azure Resource Manager tokens;
+- users, groups, memberships, applications, service principals, and managed identities;
+- role assignments, definitions, actions, scopes, and assignment conditions;
+- owner and credential-expiration evidence without key identifiers or secret material;
+- trusted-origin pagination, deterministic fingerprints, removed-assignment detection, and audit
+  evidence; and
+- `sync-azure` plus optional continuous-monitoring integration.
+
+The former AWS collector, synchronization service, tests, dependency, configuration, CLI command,
+and operating guide were removed. Historical AWS milestones below remain only as a record of earlier
+development and are not current Athena capabilities.
 
 ## Milestone 17: Machine identity dashboard presentation
 
-Added an authenticated, AWS-console-inspired machine identity workspace to the React dashboard:
+Added an authenticated, cloud-console-inspired machine identity workspace to the React dashboard:
 
 - summary cards expose identity totals, high-severity findings, missing owners, and privileged access;
 - search and deterministic type/finding filters make the inventory easier to navigate;
@@ -166,14 +818,12 @@ Validation evidence:
 - deterministic security gate: four fixtures and three control mappings passed; and
 - development and demo Compose configuration plus diff checks: passed.
 
-## Milestone 18: AWS role lifecycle evidence
+## Milestone 18: Azure workload lifecycle evidence
 
-Extended the read-only AWS IAM collector with `GetRole` evidence for machine identities. Athena now
-normalizes recognized owner tags and AWS-reported role last-used time and region into the existing
-bounded identity metadata, allowing the posture service to use connector evidence when canonical
-access observations are absent. Raw tags, role responses, access-key identifiers, and credentials
-remain excluded from the posture API. This extension required no dependency or schema migration and
-does not perform an AWS or Athena access change.
+The Azure replacement supersedes the former AWS role-lifecycle slice. Athena now normalizes Entra
+service-principal owners and credential expiration timestamps into bounded machine-identity metadata.
+Raw credentials, key identifiers, certificates, and tokens remain excluded from the posture API.
+This evidence does not perform an Azure or Athena access change.
 
 ## Work completed
 
@@ -964,7 +1614,7 @@ No application behavior changed.
 - README redesign commit: `5f1d0f4`
 - Hosted GitHub Actions run `31996341828`: success
 
-## Milestone 10: AWS IAM authorization connector
+## Retired milestone 10: former AWS IAM authorization connector
 
 Delivered Athena's first cloud authorization connector:
 
@@ -1154,7 +1804,7 @@ then correctly failed on the two new tables and was updated to include them.
 
 ### Known limitations
 
-- Production GitHub and AWS write adapters are intentionally not implemented or enabled.
+- Production GitHub and Azure write adapters are intentionally not implemented or enabled.
 - A separate worker process, credential delivery mechanism, leasing, and crash recovery are still
   required before production execution.
 - Live PostgreSQL trigger and migration validation depend on hosted CI while Docker Desktop is
@@ -1416,7 +2066,7 @@ reported no schema operations, and all five Rego tests passed. Running the secur
 the production API image initially reported missing test-evidence paths because that minimal image
 does not package the repository's `tests/` directory. The CI-equivalent retry mounted only that
 directory read-only into an ephemeral API container and passed all four fixtures and all three
-control mappings. No GitHub/AWS collection, access execution, deletion, downgrade, backup, restore,
+control mappings. No GitHub/cloud collection, access execution, deletion, downgrade, backup, restore,
 or remediation action was performed.
 
 ## Repository guardrails for coding agents
@@ -1451,3 +2101,64 @@ At the end of each meaningful change:
 - add exact validation evidence;
 - list known warnings or incomplete checks; and
 - define the next smallest end-to-end outcome.
+
+## Vendor-neutral platform roadmap
+
+### Objective
+
+Evolve Athena into a portable identity-governance platform whose evidence, policy, review, and
+remediation boundaries do not depend on a single AI provider, IAM vendor, log platform, or
+compliance framework. Azure AI will be the first hosted demonstration adapter, while Ollama remains
+the local/private adapter. Neither provider may influence deterministic policy decisions or approve
+access changes.
+
+### Architectural direction
+
+- Define versioned contracts for AI providers, IAM connectors, log receivers/exporters, policy
+  engines, compliance-framework packs, and documentation renderers.
+- Preserve one canonical Athena identity and authorization graph with source provenance, collection
+  freshness, capability metadata, and explicit incomplete-data warnings.
+- Use open standards at integration boundaries: OIDC and SAML for federation, SCIM for identity
+  provisioning, SPIFFE for workload identity, OpenTelemetry/OTLP for telemetry, and OSCAL for
+  machine-readable control and assessment information.
+- Keep OPA/Rego as the initial authoritative policy engine. Additional engines, such as Cedar, must
+  be isolated behind adapters and conformance tests because policy semantics cannot be assumed to
+  be interchangeable.
+- Treat all ingested IAM records, logs, policy text, and model responses as untrusted data. Provider
+  output remains advisory presentation and is excluded from authoritative evidence facts.
+
+### Phased delivery plan
+
+1. **Architecture and contracts** — document schemas, capability manifests, trust boundaries,
+   compatibility rules, conformance tests, and threat models.
+2. **AI portability** — introduce a provider-neutral `AIProvider` contract, move the existing
+   Ollama explanation path behind it, and add Azure AI with bounded redacted requests, structured
+   response validation, safe authentication, timeouts, safety handling, and audit metadata.
+3. **AI boundary verification** — test provider switching, fallback, prompt injection, malformed
+   output, secret exclusion, and the invariant that model output cannot alter OPA decisions,
+   evidence facts, or remediation state.
+4. **Universal telemetry** — define an OpenTelemetry-aligned security-event envelope, then add OTLP,
+   syslog, JSON, and webhook receivers plus vendor-neutral exporters without losing original-event
+   provenance.
+5. **IAM connector SDK** — standardize discovery, pagination, cursors, retries, freshness, read-only
+   behavior, and capability reporting; require every connector to declare support for inheritance,
+   nested groups, deny rules, privileged eligibility, machine identities, and activity signals.
+6. **Framework engine** — adopt OSCAL-compatible catalogs, mappings, implementation statements,
+   evidence links, assessment results, and versioning; expand from NIST to ISO 27001, SOC 2, CIS,
+   PCI DSS, HIPAA, SOX, and organization-defined controls where licensing permits.
+7. **Policy interoperability** — formalize a canonical principal-action-resource-context request,
+   retain OPA as the default authority, and evaluate additional engines through explicit adapters
+   and semantic conformance suites rather than lossy policy translation.
+8. **Portable reporting** — render the same verified evidence package as Markdown, JSON, OSCAL,
+   PDF, and Word while keeping generated AI prose separate from authoritative facts.
+9. **Enterprise hardening** — add tenant isolation, SSO and delegated RBAC, data-residency controls,
+   high availability, disaster recovery, signed extensions, observability, scale tests, and a
+   published compatibility matrix.
+
+### First implementation milestone
+
+The next smallest end-to-end outcome is the AI portability slice: document the provider contract,
+migrate Ollama without changing behavior, add the guarded Azure AI adapter, and prove through tests
+that both providers return the same Athena-owned response schema while policy and evidence results
+remain unchanged. This roadmap records intent only; implementation and dependency choices require
+their own reviewed change.

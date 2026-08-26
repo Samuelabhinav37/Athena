@@ -1,4 +1,6 @@
+import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from athena.database import get_db_session
@@ -69,6 +71,104 @@ def test_failed_slot_retains_evidence_and_retries_same_run(monitoring_session: S
     ]
 
 
+def test_failed_database_operation_rolls_back_before_recording_evidence(
+    monitoring_session: Session,
+) -> None:
+    service = MonitoringService(monitoring_session)
+
+    def violate_schedule_key() -> dict:
+        monitoring_session.add(
+            MonitoringRun(
+                schedule_key="daily:duplicate",
+                status=MonitoringStatus.PENDING,
+                requested_by="scheduler",
+                summary={},
+            )
+        )
+        monitoring_session.flush()
+        return {}
+
+    monitoring_session.add(
+        MonitoringRun(
+            schedule_key="daily:duplicate",
+            status=MonitoringStatus.PENDING,
+            requested_by="scheduler",
+            summary={},
+        )
+    )
+    monitoring_session.commit()
+
+    with pytest.raises(MonitoringError, match="IntegrityError"):
+        service.run("daily:database-failure", "scheduler", [("sync", violate_schedule_key)])
+
+    failed = monitoring_session.scalar(
+        select(MonitoringRun).where(MonitoringRun.schedule_key == "daily:database-failure")
+    )
+    assert failed is not None
+    assert failed.status == MonitoringStatus.FAILED
+    assert len(failed.steps) == 1
+    assert failed.steps[0].status == MonitoringStatus.FAILED
+    assert failed.steps[0].error is not None
+    assert "IntegrityError" in failed.steps[0].error
+
+
+def test_live_monitoring_lease_rejects_concurrent_owner(monitoring_session: Session) -> None:
+    now = datetime(2026, 8, 24, 20, 30, tzinfo=UTC)
+    monitoring_session.add(
+        MonitoringRun(
+            schedule_key="interval:live",
+            status=MonitoringStatus.RUNNING,
+            attempt_count=1,
+            requested_by="scheduler",
+            summary={},
+            lease_token=uuid.uuid4(),
+            heartbeat_at=now,
+            lease_expires_at=now + timedelta(minutes=15),
+        )
+    )
+    monitoring_session.commit()
+
+    service = MonitoringService(monitoring_session, clock=lambda: now)
+    with pytest.raises(MonitoringError, match="already running"):
+        service.run("interval:live", "scheduler", [("sync", lambda: {})])
+
+
+def test_expired_monitoring_lease_appends_recovery_evidence_and_retries(
+    monitoring_session: Session,
+) -> None:
+    now = datetime(2026, 8, 24, 20, 30, tzinfo=UTC)
+    monitoring_session.add(
+        MonitoringRun(
+            schedule_key="interval:expired",
+            status=MonitoringStatus.RUNNING,
+            attempt_count=1,
+            requested_by="scheduler",
+            summary={},
+            lease_token=uuid.uuid4(),
+            heartbeat_at=now - timedelta(minutes=20),
+            lease_expires_at=now - timedelta(minutes=5),
+        )
+    )
+    monitoring_session.commit()
+
+    result = MonitoringService(monitoring_session, clock=lambda: now).run(
+        "interval:expired", "scheduler", [("sync", lambda: {"records": 1})]
+    )
+
+    run = monitoring_session.get(MonitoringRun, result.run_id)
+    assert run is not None
+    assert result.status == MonitoringStatus.COMPLETED
+    assert result.attempt == 2
+    assert [step.name for step in run.steps] == ["lease_recovery", "sync"]
+    assert [step.status for step in run.steps] == [
+        MonitoringStatus.FAILED,
+        MonitoringStatus.COMPLETED,
+    ]
+    assert run.heartbeat_at == now
+    assert run.lease_token is None
+    assert run.lease_expires_at is None
+
+
 def test_monitoring_steps_are_immutable(monitoring_session: Session) -> None:
     result = MonitoringService(monitoring_session).run(
         "daily:20260816", "scheduler", [("sync", lambda: {"records": 6})]
@@ -103,3 +203,18 @@ def test_monitoring_api_returns_ordered_step_evidence(monitoring_session: Sessio
     assert payload["id"] == str(result.run_id)
     assert payload["status"] == "completed"
     assert [step["name"] for step in payload["steps"]] == ["sync", "policy"]
+
+
+def test_monitoring_api_excludes_another_tenant_runs(monitoring_session: Session) -> None:
+    MonitoringService(monitoring_session).run(
+        "daily:tenant-a", "scheduler", [("sync", lambda: {"records": 1})]
+    )
+    monitoring_session.info["tenant_id"] = "tenant-with-no-monitoring-evidence"
+    app.dependency_overrides[get_db_session] = lambda: monitoring_session
+    try:
+        response = TestClient(app).get("/v1/monitoring/runs")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []

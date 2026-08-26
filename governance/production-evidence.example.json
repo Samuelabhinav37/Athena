@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "status": "template_not_evidence",
+  "release_commit": "sha256-or-git-commit-required",
+  "deployment": {
+    "subscription_reference": "approval-record-required",
+    "primary_region": "decision-required",
+    "recovery_region": "decision-required-or-not-approved",
+    "topology_evidence": "artifact-reference-required",
+    "owner_approval": "approval-record-required"
+  },
+  "security": {
+    "tls_evidence": "artifact-reference-required",
+    "secret_management_evidence": "artifact-reference-required",
+    "oidc_evidence": "artifact-reference-required",
+    "break_glass_evidence": "artifact-reference-required"
+  },
+  "recovery": {
+    "rpo_minutes": null,
+    "rto_minutes": null,
+    "restore_rehearsal_evidence": "artifact-reference-required",
+    "integrity_report_sha256": "digest-required",
+    "security_gate_report_sha256": "digest-required"
+  },
+  "operations": {
+    "telemetry_evidence": "artifact-reference-required",
+    "alert_delivery_evidence": "artifact-reference-required",
+    "availability_objective": "decision-required",
+    "incident_owner_approval": "approval-record-required"
+  },
+  "supply_chain": {
+    "security_gate_url": "run-url-required",
+    "supply_chain_url": "run-url-required",
+    "sbom_sha256": "digest-required",
+    "api_image_digest": "sha256-required",
+    "web_image_digest": "sha256-required",
+    "registry_lock_evidence": "artifact-reference-required"
+  }
+}

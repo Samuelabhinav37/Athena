@@ -1,0 +1,20 @@
+{
+  "approval_reference": "PENDING-HUMAN-APPROVAL",
+  "database_mutation": true,
+  "migration": "20260824_21",
+  "operation": "create_shared_request_controls",
+  "schema_version": "1.0",
+  "tables": {
+    "rate_limit_buckets": {
+      "mutable_columns": ["request_count"],
+      "privileges": ["SELECT", "INSERT", "UPDATE(request_count)"],
+      "rls": true
+    },
+    "request_replays": {
+      "append_only": true,
+      "privileges": ["SELECT", "INSERT"],
+      "rls": true
+    }
+  },
+  "plan_sha256": "7318af1a5f9cd86363a2f3bda1fe2ae78ec34105264b93610fffff69c5ed415e"
+}

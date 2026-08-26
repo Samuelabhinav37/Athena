@@ -1,4 +1,4 @@
-# Local Ollama explanations
+# Provider-neutral AI explanations
 
 Athena can translate existing identity-governance evidence into a bounded, human-readable summary.
 The model is an explanation layer only: OPA remains the deterministic decision authority, analytics
@@ -8,7 +8,8 @@ remain advisory, and a human remains responsible for destructive access decision
 
 `POST /v1/identities/{identity_id}/explanation` requires the viewer role and performs no database
 write. Athena builds a bounded snapshot from existing identity, entitlement, provenance, policy,
-risk, and anomaly evidence, then sends it only to a loopback Ollama HTTP endpoint.
+risk, and anomaly evidence, then invokes the configured `AIProvider`. Ollama remains the default
+local/private adapter; Azure AI is an explicit hosted adapter.
 
 The service enforces these controls:
 
@@ -24,6 +25,8 @@ The service enforces these controls:
   canonical snapshot.
 - Generated text is not persisted as authoritative evidence and cannot mutate policy, reviews,
   grants, entitlements, or remediation requests.
+- Both adapters return the same Athena-owned response schema. Provider-specific data is limited to
+  `provider`, `model`, and bounded `provider_metadata` such as request and finish identifiers.
 
 ## Configuration
 
@@ -38,6 +41,23 @@ ATHENA_OLLAMA_TIMEOUT_SECONDS=60
 Athena does not pull models automatically. Model selection, installation, licensing, and local
 resource requirements remain operator-controlled.
 
+To select Azure AI, configure an Azure OpenAI resource endpoint and deployment:
+
+```dotenv
+ATHENA_AI_PROVIDER=azure_ai
+ATHENA_AZURE_AI_ENDPOINT=https://your-resource.openai.azure.com
+ATHENA_AZURE_AI_DEPLOYMENT=your-deployment
+ATHENA_AZURE_AI_API_VERSION=2024-10-21
+ATHENA_AZURE_AI_TIMEOUT_SECONDS=60
+```
+
+Azure AI uses `DefaultAzureCredential` and never accepts an API key in Athena configuration. The
+endpoint must use HTTPS on an Azure AI hostname and must not contain credentials. Before hosted
+inference, Athena redacts usernames, display names, business reasons, and human-readable provenance
+endpoints. Stable evidence identifiers remain available for traceability. Authentication failures,
+safety refusals that omit valid structured content, transport failures, and malformed output all
+fail closed.
+
 ## Request
 
 ```http
@@ -45,7 +65,7 @@ POST /v1/identities/{identity_id}/explanation
 Authorization: Bearer <viewer-or-higher-token>
 ```
 
-The response contains `summary`, `findings`, `limitations`, `model`, `generated_at`,
+The response contains `summary`, `findings`, `limitations`, `provider`, `provider_metadata`, `model`, `generated_at`,
 `evidence_digest`, `evidence_references`, and a mandatory decision-boundary disclaimer. If Ollama is
-unavailable or returns invalid output, Athena returns `503 Service Unavailable` and does not invent
-a fallback explanation.
+or Azure AI is unavailable or returns invalid output, Athena returns `503 Service Unavailable` and
+does not invent a fallback explanation. Athena does not silently fall back between providers.

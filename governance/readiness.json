@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.1",
+  "production_status": "blocked",
+  "production_blockers": [
+    "approved deployment platform, regions, topology, and operational ownership",
+    "production TLS, secret management, OIDC administration, and break-glass custody",
+    "high-availability PostgreSQL backup, point-in-time recovery, and restore-rehearsal evidence",
+    "centralized telemetry, alert routing, availability objectives, and incident-response evidence",
+    "immutable image promotion and production-scale reconciliation evidence"
+  ],
+  "workstreams": [
+    {"id": "connector-administration", "status": "implemented", "evidence": ["apps/api/src/athena/services/connector_admin.py", "migrations/versions/20260824_20_tenant_connector_scope_uniqueness.py"]},
+    {"id": "shared-request-controls", "status": "implemented", "evidence": ["apps/api/src/athena/services/request_controls.py", "migrations/versions/20260824_21_shared_request_controls.py"]},
+    {"id": "data-lifecycle", "status": "implemented", "evidence": ["governance/data-lifecycle.json", "docs/data-lifecycle.md"]},
+    {"id": "production-authentication", "status": "implemented", "evidence": ["apps/api/src/athena/auth.py", "docs/authentication.md"]},
+    {"id": "disposable-postgresql", "status": "implemented", "evidence": ["compose.test.yaml", "scripts/test-postgres.ps1"]},
+    {"id": "supply-chain", "status": "implemented", "evidence": [".github/workflows/supply-chain.yml", "docs/supply-chain.md"]},
+    {"id": "operational-observability", "status": "implemented", "evidence": ["apps/api/src/athena/observability.py", "docs/observability.md"]},
+    {"id": "readiness-reconciliation", "status": "implemented", "evidence": ["governance/readiness.json", "docs/readiness.md"]}
+  ]
+}

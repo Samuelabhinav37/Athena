@@ -1,0 +1,12 @@
+{
+  "approval_reference": "PENDING-HUMAN-APPROVAL",
+  "database_mutation": true,
+  "migration": "20260824_20",
+  "operation": "scope_connector_binding_uniqueness_per_tenant",
+  "replace_unique": {
+    "from": ["connector", "scope"],
+    "to": ["tenant_id", "connector", "scope"]
+  },
+  "schema_version": "1.0",
+  "plan_sha256": "3dc2c259228afeb205c31deb104bc29efb9ed3bd1d2e5d186ead3b10b1f9719d"
+}

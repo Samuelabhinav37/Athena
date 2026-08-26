@@ -12,11 +12,24 @@ Every protected request must present `Authorization: Bearer <access-token>`. Ath
 - issuer equality with `ATHENA_OIDC_ISSUER`;
 - the `ATHENA_OIDC_AUDIENCE` audience (`athena-api` by default);
 - required `exp`, `iat`, `sub`, `iss`, and `aud` claims; and
+- a canonical `athena_tenant_id` authority claim before database access; and
 - Athena roles from Keycloak realm roles or `athena-api` client roles.
 
 Signing keys are cached and refreshed through PyJWT's JWKS client. Invalid, expired, incorrectly
 issued, or incorrectly targeted tokens receive `401 Unauthorized`. Authenticated callers without the
-required role receive `403 Forbidden`.
+required role or a valid tenant claim receive `403 Forbidden`.
+
+Athena accepts only `RS256`, requires a JWT `kid` so issuer key rotation remains explicit, bounds
+clock skew, and rejects access tokens older than the configured maximum even when their expiry is
+later. Emergency access is disabled by default. When explicitly enabled, the `athena-break-glass`
+role requires a unique token ID, a bounded reason, hardware-backed `amr` (`hwk` or `webauthn`), and
+a lifetime no longer than 15 minutes. Tenant database access appends an immutable audit event before
+the request proceeds.
+
+The local Keycloak lab emits `athena_tenant_id=athena-local`. Athena validates that claim against its
+canonical tenant-ID contract and installs it with transaction-local PostgreSQL `set_config`. It is
+never accepted from request bodies, query parameters, provider metadata, or session-level database
+settings. A pooled connection therefore returns to fail-closed state after commit or rollback.
 
 ## Role hierarchy
 
@@ -42,9 +55,9 @@ Acme Corp assignments are:
 - An audience mapper adds `athena-api` only to access tokens.
 - Password grants remain disabled for every client.
 
-The future React dashboard will obtain an access token through the authorization-code-with-PKCE
-flow and send it to the API. Current callers can paste a valid access token into the OpenAPI
-Authorize dialog or use an HTTP `Authorization` header.
+The React dashboard obtains an access token through the authorization-code-with-PKCE flow and sends
+it to the API. API-only callers can use the OpenAPI Authorize dialog or an HTTP `Authorization`
+header with a valid access token.
 
 ## Authenticated review evidence
 
@@ -58,11 +71,24 @@ to that authenticated username, preserving both RBAC and case ownership.
 
 ```dotenv
 ATHENA_AUTH_REQUIRED=true
+ATHENA_SYSTEM_TENANT_ID=athena-local
 ATHENA_OIDC_ISSUER=http://localhost:8080/realms/athena
 ATHENA_OIDC_AUDIENCE=athena-api
 ATHENA_OIDC_JWKS_URL=
+ATHENA_OIDC_IDENTITY_SOURCE=keycloak
+ATHENA_OIDC_CLOCK_SKEW_SECONDS=30
+ATHENA_OIDC_MAX_TOKEN_AGE_SECONDS=3600
+ATHENA_OIDC_REQUIRE_KEY_ID=true
+ATHENA_BREAK_GLASS_ENABLED=false
+ATHENA_BREAK_GLASS_MAX_TOKEN_SECONDS=900
 ```
 
 When `ATHENA_OIDC_JWKS_URL` is empty, Athena derives the standard Keycloak certificate endpoint from
 the issuer. `ATHENA_AUTH_REQUIRED=false` exists only for isolated development and automated tests;
 production deployments must leave authentication enabled.
+`ATHENA_OIDC_IDENTITY_SOURCE` identifies the normalized connector source trusted for subject-to-
+tenant membership. It defaults to `keycloak`; deployments using another OIDC authority must set it
+to the matching normalized identity source, such as `azure_entra`. A matching subject from any other
+source does not establish membership.
+`ATHENA_SYSTEM_TENANT_ID` is used only by the explicit authentication-disabled development path.
+Tenant-scoped CLI commands and background jobs require their own `--tenant-id` argument.

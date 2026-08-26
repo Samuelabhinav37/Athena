@@ -29,7 +29,10 @@ def list_attack_paths(
     try:
         with Neo4jAttackPathAdapter(settings) as adapter:
             paths = adapter.find_privileged_paths(
-                identity_id, max_depth=max_depth, limit=limit
+                identity_id,
+                tenant_id=str(session.info["tenant_id"]),
+                max_depth=max_depth,
+                limit=limit,
             )
             return [AttackPathResponse.model_validate(path) for path in paths]
     except AttackPathError as error:

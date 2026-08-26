@@ -1,0 +1,378 @@
+import json
+import math
+import threading
+import time
+from collections import OrderedDict, deque
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import ValidationError
+
+from athena.auth import AdministratorPrincipal, require_administrator
+from athena.config import Settings, get_settings
+from athena.database import get_session_factory
+from athena.services.otlp import OTLPJSONLogAdapter, OTLPMappingError
+from athena.services.otlp_export import OTLPExportError, OTLPJSONExporter
+from athena.services.request_controls import RequestControls
+from athena.services.syslog import SyslogAdapter, SyslogMappingError
+from athena.services.telemetry_export import TelemetryExportError, TelemetryJSONExporter
+from athena.services.webhook import (
+    SignedWebhookAdapter,
+    WebhookAuthenticationError,
+    WebhookReplayCache,
+    WebhookReplayError,
+)
+from athena.telemetry import (
+    MAX_ORIGINAL_EVENT_BYTES,
+    JSONSecurityEventInput,
+    OTLPNormalizationResponse,
+    SecurityEventEnvelope,
+    SyslogNormalizationResponse,
+    WebhookNormalizationResponse,
+    build_security_event,
+)
+
+JSON_RATE_LIMIT = 60
+JSON_RATE_WINDOW_SECONDS = 60.0
+MAX_RATE_LIMIT_SUBJECTS = 10_000
+
+
+class SubjectRateLimiter:
+    def __init__(
+        self,
+        limit: int = JSON_RATE_LIMIT,
+        window_seconds: float = JSON_RATE_WINDOW_SECONDS,
+        max_subjects: int = MAX_RATE_LIMIT_SUBJECTS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self.max_subjects = max_subjects
+        self.clock = clock
+        self._requests: OrderedDict[str, deque[float]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def check(self, subject: str) -> int | None:
+        now = self.clock()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            requests = self._requests.get(subject)
+            if requests is None:
+                if len(self._requests) >= self.max_subjects:
+                    self._requests.popitem(last=False)
+                requests = deque()
+                self._requests[subject] = requests
+            else:
+                self._requests.move_to_end(subject)
+            while requests and requests[0] <= cutoff:
+                requests.popleft()
+            if len(requests) >= self.limit:
+                return max(1, math.ceil(self.window_seconds - (now - requests[0])))
+            requests.append(now)
+        return None
+
+
+@lru_cache
+def get_json_rate_limiter() -> SubjectRateLimiter:
+    return SubjectRateLimiter()
+
+
+class PersistentSubjectRateLimiter:
+    def __init__(self, controls: RequestControls) -> None:
+        self.controls = controls
+
+    def check(self, subject: str) -> int | None:
+        admission = self.controls.admit(
+            namespace="telemetry",
+            subject=subject,
+            limit=JSON_RATE_LIMIT,
+            window=timedelta(seconds=JSON_RATE_WINDOW_SECONDS),
+        )
+        self.controls.session.commit()
+        return admission.retry_after_seconds
+
+
+def get_rate_limiter(
+    settings: Annotated[Settings, Depends(get_settings)],
+    fallback: Annotated[SubjectRateLimiter, Depends(get_json_rate_limiter)],
+):
+    if not settings.shared_request_controls_enabled:
+        yield fallback
+        return
+    with get_session_factory(settings.system_tenant_id)() as session:
+        yield PersistentSubjectRateLimiter(RequestControls(session))
+
+
+router = APIRouter(
+    prefix="/v1/telemetry/events",
+    tags=["telemetry"],
+    dependencies=[Depends(require_administrator)],
+)
+webhook_router = APIRouter(prefix="/v1/telemetry/webhooks", tags=["telemetry"])
+
+
+@lru_cache
+def get_webhook_replay_cache() -> WebhookReplayCache:
+    return WebhookReplayCache()
+
+
+class PersistentWebhookReplayCache:
+    def __init__(self, controls: RequestControls, clock: Callable[[], float] = time.time) -> None:
+        self.controls = controls
+        self.clock = clock
+
+    def check_and_mark(
+        self, delivery_id: str, expires_at: float, request_bytes: bytes = b""
+    ) -> None:
+        admission = self.controls.reserve(
+            namespace="webhook",
+            idempotency_key=delivery_id,
+            request_bytes=request_bytes,
+            ttl=timedelta(seconds=max(1, expires_at - self.clock())),
+        )
+        if admission.replayed:
+            raise WebhookReplayError("Webhook delivery was already processed")
+        self.controls.session.commit()
+
+
+def get_webhook_replay_protection(
+    settings: Annotated[Settings, Depends(get_settings)],
+    fallback: Annotated[WebhookReplayCache, Depends(get_webhook_replay_cache)],
+):
+    if not settings.shared_request_controls_enabled:
+        yield fallback
+        return
+    with get_session_factory(settings.system_tenant_id)() as session:
+        yield PersistentWebhookReplayCache(RequestControls(session))
+
+
+@router.post("/export/json", response_class=Response)
+def export_canonical_events(events: list[SecurityEventEnvelope]) -> Response:
+    try:
+        payload = TelemetryJSONExporter().export(events)
+    except TelemetryExportError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return Response(
+        content=payload,
+        media_type="application/vnd.athena.telemetry+json",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/export/otlp-json", response_class=Response)
+def export_otlp_events(events: list[SecurityEventEnvelope]) -> Response:
+    try:
+        exported = OTLPJSONExporter().export(events)
+    except OTLPExportError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return Response(
+        content=exported.request_bytes,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Athena-Event-Count": str(exported.event_count),
+            "X-Athena-Content-SHA256": exported.content_sha256,
+            "X-Athena-Mapping-Warnings": str(len(exported.warnings)),
+        },
+    )
+
+
+async def _bounded_body(request: Request) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            declared_length = int(declared)
+            if declared_length < 0:
+                raise ValueError
+            if declared_length > MAX_ORIGINAL_EVENT_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail="JSON security event exceeds the size limit",
+                )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Content-Length header",
+            ) from error
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_ORIGINAL_EVENT_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="JSON security event exceeds the size limit",
+            )
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="JSON security event body is required",
+        )
+    return bytes(body)
+
+
+@router.post("/json", response_model=SecurityEventEnvelope, status_code=status.HTTP_200_OK)
+async def receive_json_security_event(
+    request: Request,
+    response: Response,
+    principal: AdministratorPrincipal,
+    limiter: Annotated[SubjectRateLimiter, Depends(get_rate_limiter)],
+) -> SecurityEventEnvelope:
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Content-Type must be application/json",
+        )
+    retry_after = limiter.check(principal.subject)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="JSON security-event rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+    original_bytes = await _bounded_body(request)
+    try:
+        payload = JSONSecurityEventInput.model_validate(json.loads(original_bytes))
+        envelope = build_security_event(
+            original_bytes=original_bytes,
+            source_type="json",
+            source_name=payload.source_name,
+            source_locator="athena://receiver/json",
+            source_format="application/json",
+            source_event_id=payload.source_event_id,
+            event_name=payload.event_name,
+            occurred_at=payload.occurred_at,
+            received_at=datetime.now(UTC),
+            severity_number=payload.severity_number,
+            severity_text=payload.severity_text,
+            body=payload.body,
+            attributes=payload.attributes,
+            resource=payload.resource,
+            trace_id=payload.trace_id,
+            span_id=payload.span_id,
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid JSON security event",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return envelope
+
+
+@router.post("/otlp-json", response_model=OTLPNormalizationResponse, status_code=status.HTTP_200_OK)
+async def receive_otlp_json_logs(
+    request: Request,
+    response: Response,
+    principal: AdministratorPrincipal,
+    limiter: Annotated[SubjectRateLimiter, Depends(get_rate_limiter)],
+) -> OTLPNormalizationResponse:
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="OTLP/JSON Content-Type must be application/json",
+        )
+    retry_after = limiter.check(principal.subject)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Telemetry receiver rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+    original_bytes = await _bounded_body(request)
+    try:
+        result = OTLPJSONLogAdapter().normalize(original_bytes)
+    except OTLPMappingError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid OTLP/JSON logs request",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@webhook_router.post(
+    "/athena-generic", response_model=WebhookNormalizationResponse, status_code=status.HTTP_200_OK
+)
+async def receive_signed_webhook(
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+    replay_cache: Annotated[WebhookReplayCache, Depends(get_webhook_replay_protection)],
+) -> WebhookNormalizationResponse:
+    if not settings.webhook_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Webhook Content-Type must be application/json",
+        )
+    original_bytes = await _bounded_body(request)
+    timestamp_header = request.headers.get("x-athena-webhook-timestamp", "")
+    delivery_id = request.headers.get("x-athena-webhook-id", "")
+    signature_header = request.headers.get("x-athena-webhook-signature", "")
+    try:
+        result = SignedWebhookAdapter(settings, replay_cache).normalize(
+            original_bytes=original_bytes,
+            timestamp_header=timestamp_header,
+            delivery_id=delivery_id,
+            signature_header=signature_header,
+        )
+    except WebhookAuthenticationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook authentication",
+        ) from error
+    except WebhookReplayError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Webhook delivery already received",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid signed webhook event",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post("/syslog", response_model=SyslogNormalizationResponse, status_code=status.HTTP_200_OK)
+async def receive_syslog_message(
+    request: Request,
+    response: Response,
+    principal: AdministratorPrincipal,
+    limiter: Annotated[SubjectRateLimiter, Depends(get_rate_limiter)],
+) -> SyslogNormalizationResponse:
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type not in {"application/syslog", "text/plain"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Syslog Content-Type must be application/syslog or text/plain",
+        )
+    retry_after = limiter.check(principal.subject)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Telemetry receiver rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+    request_bytes = await _bounded_body(request)
+    try:
+        result = SyslogAdapter().normalize(request_bytes)
+    except (SyslogMappingError, ValidationError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid RFC 5424 syslog message",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return result

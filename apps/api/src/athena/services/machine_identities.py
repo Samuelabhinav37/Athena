@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import AccessObservation, EffectiveEntitlement, Identity, IdentityType
 from athena.services.provenance import governance_gaps
+from athena.tenant_queries import tenant_select
 
 MACHINE_IDENTITY_TYPES = (
     IdentityType.SERVICE_ACCOUNT,
@@ -18,6 +18,7 @@ MACHINE_IDENTITY_TYPES = (
 )
 STALE_USAGE_DAYS = 90
 STALE_CREDENTIAL_DAYS = 90
+CREDENTIAL_EXPIRY_WARNING_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -43,32 +44,35 @@ class MachineIdentityPosture:
 
 
 def load_machine_identity_posture(session: Session) -> list[MachineIdentityPosture]:
-    identities = session.scalars(
-        select(Identity)
-        .where(Identity.identity_type.in_(MACHINE_IDENTITY_TYPES))
+    statement = (
+        tenant_select(session, Identity, Identity.identity_type.in_(MACHINE_IDENTITY_TYPES))
         .order_by(Identity.source, Identity.username, Identity.id)
-    ).all()
+    )
+    identities = session.scalars(statement).all()
     return [_posture(session, identity) for identity in identities]
 
 
 def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
-    entitlements = session.scalars(
-        select(EffectiveEntitlement)
+    entitlement_statement = (
+        tenant_select(
+            session,
+            EffectiveEntitlement,
+            EffectiveEntitlement.identity_id == identity.id,
+            EffectiveEntitlement.active.is_(True),
+        )
         .options(
             selectinload(EffectiveEntitlement.provenance_edges),
             selectinload(EffectiveEntitlement.grant),
         )
-        .where(
-            EffectiveEntitlement.identity_id == identity.id,
-            EffectiveEntitlement.active.is_(True),
-        )
-    ).unique().all()
-    observations = session.scalars(
-        select(AccessObservation)
+    )
+    observation_statement = (
+        tenant_select(session, AccessObservation)
         .join(EffectiveEntitlement)
         .where(EffectiveEntitlement.identity_id == identity.id)
         .order_by(AccessObservation.last_used_at.desc())
-    ).all()
+    )
+    entitlements = session.scalars(entitlement_statement).unique().all()
+    observations = session.scalars(observation_statement).all()
     last_used_at = next(
         (observation.last_used_at for observation in observations if observation.last_used_at), None
     )
@@ -97,6 +101,19 @@ def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
                 "stale_credential",
                 "high",
                 f"Active credential exceeds {STALE_CREDENTIAL_DAYS} days",
+            )
+        )
+    expiry_days = _credential_expiry_days(metadata)
+    if expiry_days is not None and expiry_days < 0:
+        findings.append(
+            MachineIdentityFinding("expired_credential", "high", "A credential has expired")
+        )
+    elif expiry_days is not None and expiry_days <= CREDENTIAL_EXPIRY_WARNING_DAYS:
+        findings.append(
+            MachineIdentityFinding(
+                "credential_expiring",
+                "medium",
+                f"A credential expires within {CREDENTIAL_EXPIRY_WARNING_DAYS} days",
             )
         )
     ungoverned = sum(bool(governance_gaps(item.grant)) for item in entitlements)
@@ -149,3 +166,19 @@ def _metadata_datetime(value: object) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _credential_expiry_days(metadata: dict) -> int | None:
+    expirations = metadata.get("credential_expirations", [])
+    if not isinstance(expirations, list):
+        return None
+    parsed = [_metadata_datetime(value) for value in expirations]
+    dates = [value for value in parsed if value is not None]
+    if not dates:
+        return None
+    return min(_age_from_now(value) for value in dates)
+
+
+def _age_from_now(value: datetime) -> int:
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return (aware - datetime.now(UTC)).days

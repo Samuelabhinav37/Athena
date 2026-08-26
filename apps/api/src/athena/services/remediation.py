@@ -2,7 +2,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import (
@@ -14,6 +13,7 @@ from athena.models import (
     ReviewStatus,
     RiskAssessment,
 )
+from athena.tenant_queries import tenant_select
 
 
 @dataclass(frozen=True)
@@ -33,19 +33,21 @@ class RemediationService:
         if due_days < 1 or due_days > 90:
             raise ValueError("due_days must be between 1 and 90")
         risk = self.session.scalar(
-            select(RiskAssessment)
-            .where(RiskAssessment.identity_id == identity.id)
+            tenant_select(
+                self.session, RiskAssessment, RiskAssessment.identity_id == identity.id
+            )
             .order_by(RiskAssessment.evaluated_at.desc())
         )
         anomaly = self.session.scalar(
-            select(AnomalyResult)
-            .where(AnomalyResult.identity_id == identity.id)
+            tenant_select(self.session, AnomalyResult, AnomalyResult.identity_id == identity.id)
             .order_by(AnomalyResult.id.desc())
         )
         if risk is None and anomaly is None:
             raise ValueError("Risk or anomaly evidence is required to open a review")
         existing = self.session.scalar(
-            select(ReviewCase).where(
+            tenant_select(
+                self.session,
+                ReviewCase,
                 ReviewCase.identity_id == identity.id,
                 ReviewCase.status.in_([ReviewStatus.OPEN, ReviewStatus.IN_REVIEW]),
             )
@@ -154,16 +156,18 @@ class RemediationService:
 
 
 def load_case(session: Session, case_id: uuid.UUID) -> ReviewCase | None:
-    return session.scalar(
-        select(ReviewCase).options(selectinload(ReviewCase.events)).where(ReviewCase.id == case_id)
+    statement = (
+        tenant_select(session, ReviewCase, ReviewCase.id == case_id).options(
+            selectinload(ReviewCase.events)
+        )
     )
+    return session.scalar(statement)
 
 
 def load_cases(session: Session) -> list[ReviewCase]:
-    return list(
-        session.scalars(
-            select(ReviewCase)
-            .options(selectinload(ReviewCase.events))
-            .order_by(ReviewCase.created_at.desc())
-        )
+    statement = (
+        tenant_select(session, ReviewCase)
+        .options(selectinload(ReviewCase.events))
+        .order_by(ReviewCase.created_at.desc())
     )
+    return list(session.scalars(statement))

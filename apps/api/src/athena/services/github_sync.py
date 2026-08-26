@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from athena.collectors.contracts import NormalizedGroup, NormalizedIdentity
@@ -20,6 +19,7 @@ from athena.models import (
 )
 from athena.services.identity_sync import IdentitySyncService
 from athena.services.provenance import ProvenanceService
+from athena.tenant_queries import tenant_select
 
 
 @dataclass(frozen=True)
@@ -39,12 +39,13 @@ class GitHubSyncService:
         self.session = session
 
     def checkpoint(self, organization: str) -> ConnectorCheckpoint | None:
-        return self.session.scalar(
-            select(ConnectorCheckpoint).where(
-                ConnectorCheckpoint.connector == "github",
-                ConnectorCheckpoint.scope == organization,
-            )
+        statement = tenant_select(
+            self.session,
+            ConnectorCheckpoint,
+            ConnectorCheckpoint.connector == "github",
+            ConnectorCheckpoint.scope == organization,
         )
+        return self.session.scalar(statement)
 
     def sync(self, snapshot: GitHubSnapshot) -> GitHubSyncResult:
         checkpoint = self.checkpoint(snapshot.organization)
@@ -98,14 +99,16 @@ class GitHubSyncService:
         identities = {
             identity.username: identity
             for identity in self.session.scalars(
-                select(Identity).where(Identity.source == "github")
+                tenant_select(self.session, Identity, Identity.source == "github")
             )
         }
         repositories = {}
         for payload in snapshot.repositories:
             external_id = str(payload["id"])
             resource = self.session.scalar(
-                select(Resource).where(
+                tenant_select(
+                    self.session,
+                    Resource,
                     Resource.source == "github",
                     Resource.external_id == external_id,
                 )
@@ -134,7 +137,9 @@ class GitHubSyncService:
             resource = repositories[observed["repository"]]
             level = observed["permission"]
             permission = self.session.scalar(
-                select(Permission).where(
+                tenant_select(
+                    self.session,
+                    Permission,
                     Permission.resource_id == resource.id,
                     Permission.action == level,
                 )
@@ -151,7 +156,9 @@ class GitHubSyncService:
             external_id = f"{snapshot.organization}:{resource.external_id}:{identity.external_id}"
             active_external_ids.add(external_id)
             grant = self.session.scalar(
-                select(AccessGrant).where(
+                tenant_select(
+                    self.session,
+                    AccessGrant,
                     AccessGrant.source == "github",
                     AccessGrant.external_id == external_id,
                 )
@@ -180,7 +187,9 @@ class GitHubSyncService:
             }
         revoked = 0
         for grant in self.session.scalars(
-            select(AccessGrant).where(
+            tenant_select(
+                self.session,
+                AccessGrant,
                 AccessGrant.source == "github",
                 AccessGrant.revoked_at.is_(None),
             )

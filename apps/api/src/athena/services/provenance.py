@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import (
@@ -55,44 +55,77 @@ class ProvenanceService:
             ).unique()
         )
 
-        existing = {
-            entitlement.grant_id: entitlement
-            for entitlement in self.session.scalars(
-                select(EffectiveEntitlement).where(
-                    EffectiveEntitlement.identity_id == identity.id
-                )
+        history: dict[uuid.UUID, list[EffectiveEntitlement]] = {}
+        for entitlement in self.session.scalars(
+            select(EffectiveEntitlement)
+            .options(selectinload(EffectiveEntitlement.provenance_edges))
+            .where(EffectiveEntitlement.identity_id == identity.id)
+            .order_by(EffectiveEntitlement.grant_id, EffectiveEntitlement.lineage_version)
+        ).unique():
+            history.setdefault(entitlement.grant_id, []).append(entitlement)
+
+        current = {
+            grant_id: next(
+                (entitlement for entitlement in reversed(versions) if entitlement.active),
+                versions[-1],
             )
+            for grant_id, versions in history.items()
         }
-        for entitlement in existing.values():
+        for entitlement in current.values():
             entitlement.active = False
             entitlement.deactivated_at = now
 
         entitlements = []
         for grant in grants:
-            entitlement = existing.get(grant.id)
+            entitlement = current.get(grant.id)
+            edges = self._edges(identity, grant)
             if entitlement is None:
                 entitlement = EffectiveEntitlement(
                     identity_id=identity.id,
                     permission_id=grant.permission_id,
                     grant_id=grant.id,
+                    lineage_version=1,
                 )
                 self.session.add(entitlement)
                 self.session.flush()
-            else:
-                self.session.execute(
-                    delete(ProvenanceEdge).where(
-                        ProvenanceEdge.entitlement_id == entitlement.id
+                entitlement.provenance_edges = edges
+            elif self._edge_signature(entitlement.provenance_edges) != self._edge_signature(edges):
+                entitlement = EffectiveEntitlement(
+                    identity_id=identity.id,
+                    permission_id=grant.permission_id,
+                    grant_id=grant.id,
+                    lineage_version=max(
+                        version.lineage_version for version in history[grant.id]
                     )
+                    + 1,
                 )
+                self.session.add(entitlement)
+                self.session.flush()
+                entitlement.provenance_edges = edges
             entitlement.permission_id = grant.permission_id
             entitlement.computed_at = now
             entitlement.active = True
             entitlement.deactivated_at = None
-            entitlement.provenance_edges = self._edges(identity, grant)
             entitlements.append(entitlement)
 
         self.session.flush()
         return entitlements
+
+    @staticmethod
+    def _edge_signature(edges: list[ProvenanceEdge]) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            (
+                edge.sequence,
+                edge.from_type,
+                edge.from_id,
+                edge.from_label,
+                edge.relationship_type,
+                edge.to_type,
+                edge.to_id,
+                edge.to_label,
+            )
+            for edge in edges
+        )
 
     @staticmethod
     def _edges(identity: Identity, grant: AccessGrant) -> list[ProvenanceEdge]:

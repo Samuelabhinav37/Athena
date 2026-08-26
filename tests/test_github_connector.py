@@ -1,11 +1,21 @@
 from collections.abc import Generator
+from dataclasses import replace
 
 import httpx
 from athena.collectors.github import GitHubCollector, GitHubSnapshot
 from athena.config import Settings
 from athena.database import get_db_session
 from athena.main import app
-from athena.models import AccessGrant, Base, ConnectorCheckpoint, EffectiveEntitlement, Identity
+from athena.models import (
+    AccessGrant,
+    Base,
+    ConnectorCheckpoint,
+    EffectiveEntitlement,
+    Identity,
+    Resource,
+    ResourceType,
+    Sensitivity,
+)
 from athena.services.github_sync import GitHubSyncService
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -165,13 +175,19 @@ def test_sync_materializes_effective_permission_and_revokes_missing_access() -> 
         assert entitlement.provenance_edges[0].relationship_type == "reported_effective_permission"
         assert sorted(group.name for group in identity.groups) == ["Security", "acme"]
 
+        edge_ids = [edge.id for edge in entitlement.provenance_edges]
+        refreshed = service.sync(replace(initial, fingerprint="b" * 64))
+        session.refresh(entitlement, attribute_names=["provenance_edges"])
+        assert refreshed.unchanged is False
+        assert [edge.id for edge in entitlement.provenance_edges] == edge_ids
+
         removed = GitHubSnapshot(
             organization="acme",
             members=initial.members,
             repositories=initial.repositories,
             permissions=[],
             endpoint_cache={},
-            fingerprint="b" * 64,
+            fingerprint="c" * 64,
         )
         result = service.sync(removed)
         assert result.grants_revoked == 1
@@ -215,4 +231,111 @@ def test_connector_api_exposes_checkpoint_without_cached_payload() -> None:
         assert payload["fingerprint"] == "c" * 64
         assert payload["cached_endpoints"] == 1
         assert "private-user" not in response.text
+    engine.dispose()
+
+
+def test_checkpoint_cache_is_not_reused_across_tenants() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-b"},
+    )
+    with factory() as session:
+        session.add(
+            ConnectorCheckpoint(
+                tenant_id="tenant-a",
+                connector="github",
+                scope="acme",
+                fingerprint="d" * 64,
+                endpoint_cache={"members": {"etag": '"tenant-a"'}},
+            )
+        )
+        session.commit()
+
+        assert GitHubSyncService(session).checkpoint("acme") is None
+
+    engine.dispose()
+
+
+def test_sync_does_not_reuse_another_tenants_repository() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "test-tenant"},
+    )
+    with factory() as session:
+        tenant_a_resource = Resource(
+            tenant_id="tenant-a",
+            source="github",
+            external_id="201",
+            name="tenant-a/athena",
+            resource_type=ResourceType.REPOSITORY,
+            sensitivity=Sensitivity.HIGH,
+        )
+        session.add(tenant_a_resource)
+        session.commit()
+        snapshot = GitHubSnapshot(
+            organization="acme",
+            members=[],
+            repositories=[{"id": 201, "name": "athena", "private": False}],
+            permissions=[],
+            endpoint_cache={},
+            fingerprint="e" * 64,
+        )
+
+        GitHubSyncService(session).sync(snapshot)
+
+        tenant_b_resource = session.scalar(
+            select(Resource).where(
+                Resource.tenant_id == "test-tenant",
+                Resource.source == "github",
+                Resource.external_id == "201",
+            )
+        )
+        assert tenant_b_resource is not None
+        assert tenant_b_resource.name == "athena"
+        assert tenant_a_resource.name == "tenant-a/athena"
+        assert tenant_a_resource.sensitivity == Sensitivity.HIGH
+
+    engine.dispose()
+
+
+def test_connector_api_excludes_other_tenant_checkpoints() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-b"},
+    )
+    with factory() as session:
+        session.add(
+            ConnectorCheckpoint(
+                tenant_id="tenant-a",
+                connector="github",
+                scope="acme",
+                fingerprint="f" * 64,
+                endpoint_cache={},
+            )
+        )
+        session.commit()
+        app.dependency_overrides[get_db_session] = lambda: session
+        try:
+            response = TestClient(app).get("/v1/connectors")
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []
     engine.dispose()

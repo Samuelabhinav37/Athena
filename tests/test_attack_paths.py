@@ -10,6 +10,7 @@ from athena.services.attack_paths import (
     AttackPath,
     AttackPathError,
     GraphNode,
+    GraphProjection,
     Neo4jAttackPathAdapter,
     build_projection,
 )
@@ -69,6 +70,43 @@ def test_projection_reuses_nodes_and_preserves_privileged_lineage(
     assert {node.kind for node in projection.nodes} >= {"identity", "permission", "resource"}
 
 
+def test_projection_excludes_entitlements_from_another_tenant(graph_session: Session) -> None:
+    graph_session.info["tenant_id"] = "tenant-with-no-graph-evidence"
+
+    projection = build_projection(graph_session)
+
+    assert projection.nodes == ()
+    assert projection.edges == ()
+
+
+def test_projection_carries_the_authoritative_tenant(graph_session: Session) -> None:
+    projection = build_projection(graph_session)
+
+    assert projection.tenant_id == "test-tenant"
+
+
+def test_graph_projection_reconciles_only_its_tenant() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Result:
+        def consume(self) -> None:
+            pass
+
+    class Transaction:
+        def run(self, query: str, **parameters: object) -> Result:
+            calls.append((query, parameters))
+            return Result()
+
+    projection = GraphProjection("tenant-a", (), ())
+
+    Neo4jAttackPathAdapter._write_projection(Transaction(), projection)
+
+    assert calls
+    assert all(call[1].get("tenant_id") == "tenant-a" for call in calls)
+    assert any("DETACH DELETE" in call[0] for call in calls)
+    assert all("tenant_id" in call[0] for call in calls)
+
+
 def test_adapter_requires_explicit_graph_configuration() -> None:
     with pytest.raises(AttackPathError, match="not configured"):
         Neo4jAttackPathAdapter(Settings(database_url="sqlite://"))
@@ -92,9 +130,15 @@ def test_attack_path_api_returns_bounded_advisory_paths(
             pass
 
         def find_privileged_paths(
-            self, requested_identity: uuid.UUID, *, max_depth: int, limit: int
+            self,
+            requested_identity: uuid.UUID,
+            *,
+            tenant_id: str,
+            max_depth: int,
+            limit: int,
         ) -> list[AttackPath]:
             assert requested_identity == identity_id
+            assert tenant_id == "test-tenant"
             assert (max_depth, limit) == (4, 10)
             return [
                 AttackPath(
@@ -128,3 +172,19 @@ def test_attack_path_api_rejects_unbounded_depth(graph_session: Session) -> None
     app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_attack_path_api_returns_not_found_for_another_tenant_identity(
+    graph_session: Session,
+) -> None:
+    identity_id = graph_session.query(Identity.id).filter_by(username="alice").scalar()
+    assert identity_id is not None
+    graph_session.info["tenant_id"] = "tenant-with-no-graph-identities"
+    app.dependency_overrides[get_db_session] = lambda: graph_session
+    try:
+        response = TestClient(app).get(f"/v1/attack-paths/identities/{identity_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Identity not found"}

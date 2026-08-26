@@ -71,6 +71,35 @@ def test_evidence_report_is_deterministic_and_excludes_llm_output(
     assert "not authoritative report evidence" in markdown
 
 
+def test_evidence_report_excludes_other_tenant_records(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory.begin() as session:
+        for tenant_id, username in (("tenant-a", "alice"), ("tenant-b", "bob")):
+            session.add(
+                Identity(
+                    tenant_id=tenant_id,
+                    source="keycloak",
+                    external_id=username,
+                    username=username,
+                    identity_type=IdentityType.HUMAN,
+                    display_name=username.title(),
+                    active=True,
+                )
+            )
+
+    tenant_factory = sessionmaker(
+        bind=session_factory.kw["bind"],
+        expire_on_commit=False,
+        info={"tenant_id": "tenant-a"},
+    )
+    with tenant_factory() as session:
+        report = EvidenceReportService(session, Path("controls")).build()
+
+    assert report.inventory["identities"] == 1
+    assert report.inventory["active_identities"] == 1
+
+
 def test_administrator_can_download_json_and_markdown_reports(client: TestClient) -> None:
     json_response = client.get("/v1/reports/evidence")
     markdown_response = client.get("/v1/reports/evidence.md")
@@ -80,6 +109,18 @@ def test_administrator_can_download_json_and_markdown_reports(client: TestClient
     assert markdown_response.status_code == 200
     assert markdown_response.headers["content-type"].startswith("text/plain")
     assert "# Athena Authorization Evidence Report" in markdown_response.text
+
+
+def test_administrator_can_download_oscal_component_definition(client: TestClient) -> None:
+    response = client.get("/v1/reports/oscal-component-definition.json")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    definition = response.json()["component-definition"]
+    assert definition["metadata"]["oscal-version"] == "1.1.3"
+    assert definition["components"][0]["control-implementations"][0][
+        "implemented-requirements"
+    ]
 
 
 def test_viewer_cannot_download_full_evidence_report(

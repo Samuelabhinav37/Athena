@@ -2,7 +2,7 @@ import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -14,6 +14,16 @@ from athena.models import (
     PolicyDecision,
     PolicyEvaluation,
 )
+from athena.policy.contracts import (
+    CanonicalPolicyRequest,
+    PolicyAction,
+    PolicyAuthenticationContext,
+    PolicyGovernanceContext,
+    PolicyPrincipal,
+    PolicyProvenanceEdge,
+    PolicyRequestContext,
+    PolicyResource,
+)
 from athena.policy.opa import OpaDecision, OpaEvaluationError
 from athena.services.provenance import governance_gaps
 
@@ -21,7 +31,7 @@ from athena.services.provenance import governance_gaps
 class PolicyEngine(Protocol):
     policy_path: str
 
-    def evaluate(self, policy_input: dict[str, Any]) -> OpaDecision: ...
+    def evaluate(self, policy_input: CanonicalPolicyRequest) -> OpaDecision: ...
 
 
 @dataclass(frozen=True)
@@ -81,7 +91,7 @@ class PolicyEvaluationService:
         )
         counts = {PolicyDecision.PASS: 0, PolicyDecision.FAIL: 0, PolicyDecision.ERROR: 0}
         for entitlement in entitlements:
-            policy_input = self._input(identity, entitlement)
+            policy_input = self._request(identity, entitlement)
             try:
                 result = self.engine.evaluate(policy_input)
                 decision = PolicyDecision.PASS if result.allow else PolicyDecision.FAIL
@@ -104,7 +114,7 @@ class PolicyEvaluationService:
                     policy_path=self.engine.policy_path,
                     policy_version=self.policy_version,
                     decision=decision,
-                    input_snapshot=policy_input,
+                    input_snapshot=policy_input.model_dump(mode="json"),
                     violations=violations,
                 )
             )
@@ -118,58 +128,64 @@ class PolicyEvaluationService:
         )
 
     @staticmethod
-    def _input(identity: Identity, entitlement: EffectiveEntitlement) -> dict[str, Any]:
+    def _request(
+        identity: Identity, entitlement: EffectiveEntitlement
+    ) -> CanonicalPolicyRequest:
         grant = entitlement.grant
         permission = entitlement.permission
         resource = permission.resource
         authentication = identity.source_metadata.get("authentication", {})
         if not isinstance(authentication, dict):
             authentication = {}
-        return {
-            "schema_version": "1.0",
-            "identity": {
-                "id": str(identity.id),
-                "username": identity.username,
-                "department": identity.department,
-                "roles": sorted(role.name for role in identity.roles),
-                "groups": sorted(group.path for group in identity.groups),
-            },
-            "resource": {
-                "id": str(resource.id),
-                "external_id": resource.external_id,
-                "name": resource.name,
-                "type": resource.resource_type.value,
-                "sensitivity": resource.sensitivity.value,
-            },
-            "permission": {
-                "id": str(permission.id),
-                "action": permission.action,
-                "name": permission.name,
-                "privileged": permission.privileged,
-            },
-            "governance": {
-                "gaps": governance_gaps(grant),
-                "requested_by": grant.requested_by.username if grant.requested_by else None,
-                "approved_by": grant.approved_by.username if grant.approved_by else None,
-                "business_reason": grant.business_reason,
-                "policy_reference": grant.policy_reference,
-                "granted_at": grant.granted_at.isoformat(),
-                "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
-            },
-            "authentication": {
-                "method": authentication.get("method", "unknown"),
-                "phishing_resistant": bool(authentication.get("phishing_resistant", False)),
-            },
-            "provenance": [
-                {
-                    "sequence": edge.sequence,
-                    "from_type": edge.from_type,
-                    "relationship": edge.relationship_type,
-                    "to_type": edge.to_type,
-                }
-                for edge in entitlement.provenance_edges
-            ],
-        }
+        return CanonicalPolicyRequest(
+            principal=PolicyPrincipal(
+                id=str(identity.id),
+                type=identity.identity_type.value,
+                username=identity.username,
+                department=identity.department,
+                roles=tuple(sorted(role.name for role in identity.roles)),
+                groups=tuple(sorted(group.path for group in identity.groups)),
+            ),
+            action=PolicyAction(
+                id=str(permission.id),
+                verb=permission.action,
+                name=permission.name,
+                privileged=permission.privileged,
+            ),
+            resource=PolicyResource(
+                id=str(resource.id),
+                external_id=resource.external_id,
+                name=resource.name,
+                type=resource.resource_type.value,
+                sensitivity=resource.sensitivity.value,
+            ),
+            context=PolicyRequestContext(
+                governance=PolicyGovernanceContext(
+                    gaps=tuple(governance_gaps(grant)),
+                    requested_by=grant.requested_by.username if grant.requested_by else None,
+                    approved_by=grant.approved_by.username if grant.approved_by else None,
+                    business_reason=grant.business_reason,
+                    policy_reference=grant.policy_reference,
+                    granted_at=grant.granted_at.isoformat(),
+                    expires_at=grant.expires_at.isoformat() if grant.expires_at else None,
+                ),
+                authentication=PolicyAuthenticationContext(
+                    method=str(authentication.get("method", "unknown")),
+                    phishing_resistant=bool(
+                        authentication.get("phishing_resistant", False)
+                    ),
+                ),
+                provenance=tuple(
+                    PolicyProvenanceEdge(
+                        sequence=edge.sequence,
+                        from_type=edge.from_type,
+                        relationship=edge.relationship_type,
+                        to_type=edge.to_type,
+                    )
+                    for edge in entitlement.provenance_edges
+                ),
+            ),
+        )
 
 
 def load_policy_evaluations(

@@ -10,14 +10,15 @@ RUN python -m venv /opt/athena-venv \
     && addgroup --system --gid 10001 athena \
     && adduser --system --uid 10001 --ingroup athena --home /nonexistent athena
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml requirements.lock README.md ./
 COPY apps/api ./apps/api
 COPY policies ./policies
 COPY controls ./controls
 COPY migrations ./migrations
 COPY alembic.ini ./
 
-RUN python -m pip install --no-cache-dir .
+RUN python -m pip install --no-cache-dir --require-hashes -r requirements.lock \
+    && python -m pip install --no-cache-dir --no-deps .
 
 USER 10001:10001
 EXPOSE 8000
