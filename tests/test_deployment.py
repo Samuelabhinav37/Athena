@@ -198,9 +198,11 @@ def test_ci_supplies_graph_placeholders_for_compose_validation() -> None:
 def test_supply_chain_verifies_and_audits_python_dependency_lock() -> None:
     workflow = Path(".github/workflows/supply-chain.yml").read_text(encoding="utf-8")
 
-    assert "pip-tools==7.6.1" in workflow
+    assert "uv==0.12.6" in workflow
     assert "name: Verify Python dependency lock" in workflow
-    assert "pip-compile pyproject.toml" in workflow
+    assert "uv lock --check" in workflow
+    assert "uv export" in workflow
+    assert "--no-emit-project" in workflow
     assert "git diff --exit-code -- requirements.lock" in workflow
     assert "python -m pip_audit --strict --requirement requirements.lock" in workflow
 

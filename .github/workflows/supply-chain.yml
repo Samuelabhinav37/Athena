@@ -28,16 +28,17 @@ jobs:
         run: |
           python -m pip install --require-hashes -r requirements.lock
           python -m pip install --no-deps -e .
-          python -m pip install pip-tools==7.6.1 pip-audit==2.10.1 cyclonedx-bom==7.3.1
+          python -m pip install uv==0.12.6 pip-audit==2.10.1 cyclonedx-bom==7.3.1
 
       - name: Verify Python dependency lock
         run: |
-          pip-compile pyproject.toml \
-            --output-file requirements.lock \
-            --generate-hashes \
-            --strip-extras \
-            --resolver backtracking \
-            --quiet
+          uv lock --check
+          uv export \
+            --locked \
+            --no-dev \
+            --no-emit-project \
+            --format requirements.txt \
+            --output-file requirements.lock
           git diff --exit-code -- requirements.lock
 
       - name: Audit Python dependencies
