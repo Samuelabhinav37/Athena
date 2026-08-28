@@ -206,6 +206,14 @@ class Identity(TenantScopedMixin, TimestampMixin, Base):
         UniqueConstraint(
             "tenant_id", "source", "external_id", name="uq_identities_tenant_source_external_id"
         ),
+        Index(
+            "ix_identities_tenant_machine_page",
+            "tenant_id",
+            "identity_type",
+            "source",
+            "username",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -446,6 +454,13 @@ class EffectiveEntitlement(TenantScopedMixin, Base):
             postgresql_where=text("active"),
             sqlite_where=text("active = 1"),
         ),
+        Index(
+            "ix_effective_entitlements_tenant_identity_active_computed",
+            "tenant_id",
+            "identity_id",
+            "active",
+            "computed_at",
+        ),
         tenant_foreign_key(
             "identity_id",
             "identities",
@@ -543,6 +558,12 @@ class PolicyEvaluation(TenantScopedMixin, Base):
     __tablename__ = "policy_evaluations"
 
     __table_args__ = (
+        Index(
+            "ix_policy_evaluations_tenant_entitlement_evaluated",
+            "tenant_id",
+            "entitlement_id",
+            "evaluated_at",
+        ),
         tenant_foreign_key(
             "entitlement_id",
             "effective_entitlements",
@@ -643,6 +664,12 @@ class RiskAssessment(TenantScopedMixin, Base):
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_assessment_score_range"),
         UniqueConstraint("tenant_id", "id", name="uq_risk_assessments_tenant_id"),
+        Index(
+            "ix_risk_assessments_tenant_identity_evaluated",
+            "tenant_id",
+            "identity_id",
+            "evaluated_at",
+        ),
         tenant_foreign_key(
             "identity_id",
             "identities",
@@ -754,6 +781,12 @@ class AnomalyResult(TenantScopedMixin, Base):
             "subject_key",
             name="uq_anomaly_results_tenant_run_id_subject_key",
         ),
+        Index(
+            "ix_anomaly_results_tenant_identity_id",
+            "tenant_id",
+            "identity_id",
+            "id",
+        ),
         tenant_foreign_key(
             "run_id",
             "anomaly_model_runs",
@@ -791,6 +824,7 @@ class ReviewCase(TenantScopedMixin, TimestampMixin, Base):
             name="ck_review_case_has_evidence",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_review_cases_tenant_id"),
+        Index("ix_review_cases_tenant_created", "tenant_id", "created_at"),
         tenant_foreign_key(
             "identity_id",
             "identities",
@@ -915,6 +949,11 @@ class RemediationExecution(TenantScopedMixin, TimestampMixin, Base):
             "idempotency_key",
             name="uq_remediation_executions_tenant_idempotency_key",
         ),
+        Index(
+            "ix_remediation_executions_tenant_created",
+            "tenant_id",
+            "created_at",
+        ),
         tenant_foreign_key(
             "case_id",
             "review_cases",
@@ -1016,6 +1055,7 @@ class MonitoringRun(TenantScopedMixin, Base):
         UniqueConstraint(
             "tenant_id", "schedule_key", name="uq_monitoring_runs_tenant_schedule_key"
         ),
+        Index("ix_monitoring_runs_tenant_started", "tenant_id", "started_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
