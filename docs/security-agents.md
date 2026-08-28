@@ -53,3 +53,17 @@ override, deletion, or access change.
 The dashboard's **Email & web security** page shows enrolled agents, local blocks, critical events,
 overrides, rule identifiers, minimized indicators, and event time. It does not expose enrollment
 credentials, raw browsing history, or email content.
+
+## Publishing the optional add-ons
+
+The web and desktop dashboard read `VITE_MOAT_STORE_URL` and `VITE_CLUTTER_STORE_URL`. Leave either
+value empty before its extension is published; Athena displays **Store listing coming soon**. After
+publication, set the matching Chrome Web Store URL and rebuild Athena. The card becomes an external
+install button automatically, with no code change or hard-coded extension identifier.
+
+Installing an extension and connecting it are separate trust steps. A personal installation gains
+the extension's local protection but cannot silently receive Athena credentials. An organization
+enrolls the extension as a security agent, places the returned agent id and enrollment secret in
+Chrome managed policy, and grants the extension access to its Athena HTTPS origin. Athena displays
+**Enrolled** only after the tenant contains a matching agent; a clicked install button is never
+treated as connection or heartbeat evidence.

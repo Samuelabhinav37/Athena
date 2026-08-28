@@ -198,6 +198,18 @@ function Overview({ identities, openReviews, staleConnectors, latestRun, executi
   </div>;
 }
 
+function chromeStoreUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "chromewebstore.google.com"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function WorkspaceUnavailable({ error }: { error: string }) {
   return <div className="recovery-page"><section className="recovery-card"><div className="recovery-icon">!</div><p className="kicker">Connection check</p><h1>Workspace needs attention</h1><p className="recovery-lede">The dashboard loaded, but it cannot reach Athena’s evidence API. Your account is not the problem.</p><div className="recovery-steps"><article><span>1</span><div><strong>Start required services</strong><small>Run PostgreSQL, Keycloak, and OPA through Docker Compose.</small><code>docker compose up -d postgres keycloak opa</code></div></article><article><span>2</span><div><strong>Start the Athena API</strong><small>Keep this command running in a separate PowerShell window.</small><code>.\.venv\Scripts\uvicorn.exe athena.main:app --app-dir apps/api/src</code></div></article><article><span>3</span><div><strong>Refresh this page</strong><small>Athena will automatically load your tenant-scoped evidence after the API responds.</small></div></article></div><details><summary>Technical detail</summary><p>{error}</p></details><button className="button button--primary" onClick={() => window.location.reload()}>Check connection again <span>↻</span></button></section></div>;
 }
@@ -376,7 +388,12 @@ function EmailWebSecurity({ agents, events }: { agents: SecurityAgent[]; events:
   const blocked = events.filter((event) => event.action === "blocked").length;
   const overrides = events.filter((event) => event.action === "allowed_override").length;
   const agentName = (id: string) => agents.find((agent) => agent.id === id)?.display_name ?? id.slice(0, 8);
+  const addOns = [
+    { type: "moat" as const, name: "Moat", title: "Web protection", description: "Blocks phishing, malware, scams, and dangerous sites locally before they load.", storeUrl: chromeStoreUrl(import.meta.env.VITE_MOAT_STORE_URL) },
+    { type: "clutter" as const, name: "Clutter", title: "Email protection", description: "Adds mailbox protection and reporting without automatically deleting suspicious email.", storeUrl: chromeStoreUrl(import.meta.env.VITE_CLUTTER_STORE_URL) }
+  ];
   return <div className="page security-page"><section className="page-heading"><div><p className="kicker">Local protection evidence</p><h1>Email & web security</h1></div><p className="heading-note">Moat and Clutter act locally first, then report minimized evidence. Athena being unavailable never weakens browser protection.</p></section>
+    <section className="add-on-grid">{addOns.map((addOn) => { const enrolled = agents.some((agent) => agent.agent_type === addOn.type); return <article className="panel add-on-card" key={addOn.type}><header><span className="add-on-icon">{addOn.type === "moat" ? "M" : "C"}</span><div><small>{addOn.title}</small><h2>{addOn.name}</h2></div><Badge value={enrolled ? "enrolled" : addOn.storeUrl ? "available" : "coming_soon"} /></header><p>{addOn.description}</p><ul><li>Optional installation</li><li>Local protection continues offline</li><li>Only minimized security evidence reaches Athena</li></ul>{enrolled ? <button className="button button--secondary" disabled>Agent enrolled in Athena</button> : addOn.storeUrl ? <a className="button button--primary add-on-install" href={addOn.storeUrl} target="_blank" rel="noreferrer">Add {addOn.name} protection →</a> : <button className="button button--secondary" disabled>Store listing coming soon</button>}</article>; })}</section>
     <section className="metric-grid"><Metric label="Enrolled agents" value={String(agents.length)} detail={`${agents.filter((agent) => agent.agent_type === "moat").length} Moat · ${agents.filter((agent) => agent.agent_type === "clutter").length} Clutter`} accent="blue" /><Metric label="Blocked locally" value={String(blocked)} detail="Protection did not wait for Athena" accent="mint" /><Metric label="Critical events" value={String(critical)} detail="Highest analyst priority" accent="coral" /><Metric label="User overrides" value={String(overrides)} detail="Human justification required" accent="amber" /></section>
     <section className="split-grid security-layout"><article className="panel"><header className="command-panel-head"><div><h2>Protection activity</h2><p>Privacy-minimized, append-only agent evidence</p></div></header>{events.length ? <div className="security-table"><div className="security-row security-row--head"><span>Event</span><span>Agent</span><span>Indicator</span><span>Time</span></div>{events.map((event) => <div className="security-row" key={event.id}><span><Badge value={event.severity} /><strong>{event.action.replaceAll("_", " ")}</strong><small>{event.rule_id}</small></span><span>{agentName(event.agent_id)}</span><span>{event.target_indicator ?? "Minimized"}</span><time>{formatDate(event.occurred_at)}</time></div>)}</div> : <Empty>No browser or mailbox security evidence recorded.</Empty>}</article>
       <aside className="panel"><header className="command-panel-head"><div><h2>Enrolled protection agents</h2><p>Machine credentials are separate from human OIDC</p></div></header>{agents.length ? <div className="stack-list">{agents.map((agent) => <div className="stack-row" key={agent.id}><div><strong>{agent.display_name}</strong><small>{agent.agent_type} · {agent.external_id}</small></div><Badge value="active" /></div>)}</div> : <Empty>No agents enrolled. An administrator must provision Moat or Clutter.</Empty>}</aside>
