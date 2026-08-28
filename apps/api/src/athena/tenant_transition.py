@@ -65,6 +65,9 @@ TENANT_TABLES = (
     "risk_findings",
     "role_transitions",
     "roles",
+    "security_agents",
+    "security_events",
+    "security_policy_versions",
 )
 IMMUTABLE_EVIDENCE_TABLES = (
     "access_observations",
@@ -82,6 +85,9 @@ IMMUTABLE_EVIDENCE_TABLES = (
     "risk_assessments",
     "risk_findings",
     "role_transitions",
+    "security_agents",
+    "security_events",
+    "security_policy_versions",
 )
 
 

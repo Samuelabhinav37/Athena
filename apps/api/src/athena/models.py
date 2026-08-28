@@ -1226,10 +1226,122 @@ class ConnectorCheckpoint(TenantScopedMixin, Base):
     endpoint_cache: Mapped[dict] = mapped_column(json_type, nullable=False)
 
 
+class SecurityAgent(TenantScopedMixin, Base):
+    """Immutable enrollment evidence for a browser or mailbox protection agent."""
+
+    __tablename__ = "security_agents"
+    __table_args__ = (
+        CheckConstraint("agent_type IN ('moat', 'clutter')", name="ck_security_agents_type"),
+        UniqueConstraint("tenant_id", "id", name="uq_security_agents_tenant_id"),
+        UniqueConstraint("tenant_id", "external_id", name="uq_security_agents_tenant_external"),
+        Index("ix_security_agents_tenant_enrolled", "tenant_id", "enrolled_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    agent_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    credential_salt: Mapped[str] = mapped_column(String(64), nullable=False)
+    credential_digest: Mapped[str] = mapped_column(String(128), nullable=False)
+    enrolled_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class SecurityEvent(TenantScopedMixin, Base):
+    """Append-only, privacy-minimized evidence reported after a local agent acts."""
+
+    __tablename__ = "security_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('blocked', 'warned', 'quarantined', 'allowed_override')",
+            name="ck_security_events_action",
+        ),
+        CheckConstraint(
+            "severity IN ('low', 'medium', 'high', 'critical')",
+            name="ck_security_events_severity",
+        ),
+        UniqueConstraint("tenant_id", "id", name="uq_security_events_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "agent_id", "source_event_id", name="uq_security_events_agent_event"
+        ),
+        Index(
+            "ix_security_events_tenant_occurred",
+            "tenant_id",
+            "occurred_at",
+            "id",
+        ),
+        Index(
+            "ix_security_events_tenant_severity_occurred",
+            "tenant_id",
+            "severity",
+            "occurred_at",
+        ),
+        tenant_foreign_key(
+            "agent_id",
+            "security_agents",
+            "fk_security_events_tenant_agent_id_agents",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    source_event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    rule_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    policy_version: Mapped[str | None] = mapped_column(String(64))
+    subject_pseudonym: Mapped[str | None] = mapped_column(String(128))
+    target_indicator: Mapped[str | None] = mapped_column(String(255))
+    evidence: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
+    evidence_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class SecurityPolicyVersion(TenantScopedMixin, Base):
+    """Immutable signed policy artifact; activation is represented by a newer version."""
+
+    __tablename__ = "security_policy_versions"
+    __table_args__ = (
+        CheckConstraint("agent_type IN ('moat', 'clutter')", name="ck_security_policies_type"),
+        UniqueConstraint("tenant_id", "id", name="uq_security_policies_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "agent_type", "version", name="uq_security_policies_tenant_version"
+        ),
+        Index(
+            "ix_security_policies_tenant_agent_published",
+            "tenant_id",
+            "agent_type",
+            "published_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    agent_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy: Mapped[dict] = mapped_column(json_type, nullable=False)
+    policy_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    signature: Mapped[str] = mapped_column(Text, nullable=False)
+    signing_key_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    published_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 @event.listens_for(AuditEvent, "before_update")
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
     raise ValueError("Audit events are append-only")
+
+
+@event.listens_for(SecurityAgent, "before_update")
+@event.listens_for(SecurityAgent, "before_delete")
+@event.listens_for(SecurityEvent, "before_update")
+@event.listens_for(SecurityEvent, "before_delete")
+@event.listens_for(SecurityPolicyVersion, "before_update")
+@event.listens_for(SecurityPolicyVersion, "before_delete")
+def prevent_security_evidence_mutation(*_: object) -> None:
+    raise ValueError("Security agent, event, and policy evidence is append-only")
 
 
 @event.listens_for(RequestReplay, "before_update")

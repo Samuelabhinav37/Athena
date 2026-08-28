@@ -1,0 +1,55 @@
+# Athena browser and mailbox security agents
+
+Athena models browser and mailbox protection as a bounded domain separate from IAM connectors and
+generic telemetry. Moat and Clutter are local-first agents: they protect the user before reporting
+privacy-minimized evidence, and Athena availability never participates in a block or quarantine.
+
+## Trust and authentication
+
+An Athena administrator enrolls an agent through `POST /v1/security/agents`. The enrollment secret
+is returned once; Athena stores only a salted scrypt verifier. The agent exchanges that secret at
+`POST /v1/security/agent-token` for a short-lived, audience-restricted token containing only
+`events:write` and `policies:read`. These credentials are separate from human OIDC and bind the
+agent to exactly one tenant and agent type.
+
+Enable the flow only after setting a random token secret of at least 32 characters and an Ed25519
+policy verification public key. Enrollment secrets and tokens must not be written to extension
+logs or persistent browser sync storage.
+
+## Event contract
+
+`POST /v1/security/events` accepts an idempotent `source_event_id`, action, severity, rule and policy
+references, pseudonymous subject, minimized domain or digest, and at most 16 KiB of bounded
+evidence. Full URLs, email addresses, message bodies, subjects, passwords, authorization values,
+and tokens are rejected. Events are tenant-scoped and append-only in both SQLAlchemy and PostgreSQL.
+
+The local-first sequence is non-negotiable:
+
+```text
+local deterministic rule acts -> event enters bounded local queue -> Athena receives evidence
+```
+
+## Signed policy distribution
+
+Administrators publish immutable policy versions through `POST /v1/security/policies`. Athena
+checks the canonical SHA-256 digest and verifies the supplied Ed25519 signature before accepting a
+version. An authenticated agent retrieves only the latest policy for its own type through
+`GET /v1/security/policies/latest`. Agents must independently verify the signature before applying
+the artifact and retain a last-known-good policy for rollback.
+
+The policy payload is intentionally opaque to Athena's transport layer. Organizational configuration
+such as tenant enrollment and reporting activation changes slowly through managed browser policy;
+fast threat rules use this signed pull channel.
+
+## Human and policy boundary
+
+The `athena.security.agent_actions` OPA package allows local block, warning, and quarantine actions.
+It rejects destructive actions and permits an override only with explicit human approval and a
+meaningful reason. Machine learning may recommend and an LLM may explain; neither can enact a block,
+override, deletion, or access change.
+
+## Analyst view
+
+The dashboard's **Email & web security** page shows enrolled agents, local blocks, critical events,
+overrides, rule identifiers, minimized indicators, and event time. It does not expose enrollment
+credentials, raw browsing history, or email content.

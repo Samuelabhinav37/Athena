@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from athena.models import (
     ExecutionStatus,
@@ -391,3 +391,107 @@ class RemediationExecutionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     events: list[RemediationExecutionEventResponse]
+
+
+class SecurityAgentEnrollRequest(BaseModel):
+    external_id: str = Field(min_length=3, max_length=255, pattern=r"^[A-Za-z0-9._:-]+$")
+    agent_type: str = Field(pattern=r"^(moat|clutter)$")
+    display_name: str = Field(min_length=1, max_length=255)
+
+
+class SecurityAgentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    external_id: str
+    agent_type: str
+    display_name: str
+    enrolled_by: str
+    enrolled_at: datetime
+
+
+class SecurityAgentEnrollmentResponse(SecurityAgentResponse):
+    enrollment_secret: str
+
+
+class SecurityAgentTokenRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{2,62}$")
+    agent_id: uuid.UUID
+    enrollment_secret: str = Field(min_length=32, max_length=255)
+
+
+class SecurityAgentTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+    expires_at: datetime
+
+
+class SecurityEventCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_event_id: str = Field(min_length=1, max_length=128)
+    occurred_at: datetime
+    action: str = Field(pattern=r"^(blocked|warned|quarantined|allowed_override)$")
+    severity: str = Field(pattern=r"^(low|medium|high|critical)$")
+    rule_id: str = Field(min_length=1, max_length=255)
+    policy_version: str | None = Field(default=None, max_length=64)
+    subject_pseudonym: str | None = Field(default=None, max_length=128)
+    target_indicator: str | None = Field(default=None, max_length=255)
+    evidence: dict = Field(default_factory=dict)
+
+    @field_validator("target_indicator")
+    @classmethod
+    def reject_full_urls_and_addresses(cls, value: str | None) -> str | None:
+        if value and ("://" in value or "@" in value or "/" in value):
+            raise ValueError("target_indicator must be a minimized domain or digest")
+        return value
+
+    @field_validator("evidence")
+    @classmethod
+    def require_minimized_evidence(cls, value: dict) -> dict:
+        import json
+
+        forbidden = {"body", "subject", "email_body", "authorization", "token", "password"}
+        if forbidden.intersection(key.lower() for key in value):
+            raise ValueError("evidence contains a forbidden sensitive field")
+        if len(json.dumps(value, separators=(",", ":")).encode()) > 16_384:
+            raise ValueError("evidence exceeds 16 KiB")
+        return value
+
+
+class SecurityEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    source_event_id: str
+    occurred_at: datetime
+    received_at: datetime
+    action: str
+    severity: str
+    rule_id: str
+    policy_version: str | None
+    subject_pseudonym: str | None
+    target_indicator: str | None
+    evidence: dict
+    evidence_digest: str
+
+
+class SecurityPolicyPublishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_type: str = Field(pattern=r"^(moat|clutter)$")
+    version: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
+    policy: dict
+    policy_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signature: str = Field(min_length=16, max_length=8192)
+    signing_key_id: str = Field(min_length=1, max_length=128)
+
+
+class SecurityPolicyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    agent_type: str
+    version: str
+    policy: dict
+    policy_digest: str
+    signature: str
+    signing_key_id: str
+    published_by: str
+    published_at: datetime

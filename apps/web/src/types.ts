@@ -135,3 +135,27 @@ export interface Execution {
   created_at: string;
   error: string | null;
 }
+
+export interface SecurityAgent {
+  id: string;
+  external_id: string;
+  agent_type: "moat" | "clutter";
+  display_name: string;
+  enrolled_by: string;
+  enrolled_at: string;
+}
+
+export interface SecurityEvent {
+  id: string;
+  agent_id: string;
+  source_event_id: string;
+  occurred_at: string;
+  received_at: string;
+  action: "blocked" | "warned" | "quarantined" | "allowed_override";
+  severity: "low" | "medium" | "high" | "critical";
+  rule_id: string;
+  policy_version: string | null;
+  subject_pseudonym: string | null;
+  target_indicator: string | null;
+  evidence_digest: string;
+}

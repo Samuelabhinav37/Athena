@@ -14,15 +14,18 @@ import type {
   MonitoringRun,
   Principal,
   ReviewCase,
-  RiskAssessment
+  RiskAssessment,
+  SecurityAgent,
+  SecurityEvent
 } from "./types";
 
-type Page = "overview" | "identities" | "machines" | "reviews" | "operations" | "setup";
+type Page = "overview" | "security" | "identities" | "machines" | "reviews" | "operations" | "setup";
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 const NAV: { id: Page; label: string; eyebrow: string }[] = [
   { id: "overview", label: "Command center", eyebrow: "⌂" },
   { id: "reviews", label: "Investigations", eyebrow: "◇" },
+  { id: "security", label: "Email & web security", eyebrow: "◈" },
   { id: "identities", label: "Identity evidence", eyebrow: "♙" },
   { id: "machines", label: "Machine identities", eyebrow: "▦" },
   { id: "operations", label: "Reports & operations", eyebrow: "▤" },
@@ -109,22 +112,27 @@ function Dashboard({ user }: { user: User }) {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [runs, setRuns] = useState<MonitoringRun[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
+  const [securityAgents, setSecurityAgents] = useState<SecurityAgent[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     async function load() {
       try {
-        const [me, identityData, reviewData, connectorData, runData] = await Promise.all([
+        const [me, identityData, reviewData, connectorData, runData, agentData, eventData] = await Promise.all([
           apiGet<Principal>(user, "/v1/auth/me", controller.signal),
           apiGet<Identity[]>(user, "/v1/identities", controller.signal),
           apiGet<ReviewCase[]>(user, "/v1/reviews", controller.signal),
           apiGet<Connector[]>(user, "/v1/connectors", controller.signal),
-          apiGet<MonitoringRun[]>(user, "/v1/monitoring/runs", controller.signal)
+          apiGet<MonitoringRun[]>(user, "/v1/monitoring/runs", controller.signal),
+          apiGet<SecurityAgent[]>(user, "/v1/security/agents", controller.signal),
+          apiGet<SecurityEvent[]>(user, "/v1/security/events", controller.signal)
         ]);
         if (!active) return;
         setPrincipal(me); setIdentities(identityData); setReviews(reviewData);
         setConnectors(connectorData); setRuns(runData);
+        setSecurityAgents(agentData); setSecurityEvents(eventData);
         if (me.roles.includes("athena-administrator")) {
           setExecutions(await apiGet<Execution[]>(user, "/v1/executions", controller.signal));
         }
@@ -166,6 +174,7 @@ function Dashboard({ user }: { user: User }) {
         {state === "error" && <WorkspaceUnavailable error={error} />}
         {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} connectors={connectors} onNavigate={setPage} />}
         {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
+        {state === "ready" && page === "security" && <EmailWebSecurity agents={securityAgents} events={securityEvents} />}
         {state === "ready" && page === "machines" && <MachineIdentities user={user} />}
         {state === "ready" && page === "reviews" && <Reviews user={user} principal={principal} reviews={reviews} identities={identities} onReviewsChanged={setReviews} onExecutionCreated={(execution) => setExecutions((current) => [execution, ...current])} />}
         {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
@@ -359,6 +368,19 @@ function Reviews({ user, principal, reviews, identities, onReviewsChanged, onExe
     {actionError && <div className="notice notice--error">{actionError}</div>}
     {canOpen && <section className="panel action-panel"><PanelTitle eyebrow="New evidence review" title="Open a case" /><div className="action-form"><select value={identityId} onChange={(event) => setIdentityId(event.target.value)}>{identities.map((identity) => <option value={identity.id} key={identity.id}>{identity.display_name}</option>)}</select><input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Optional owner" /><button className="button button--secondary" disabled={!identityId || actionState === "loading"} onClick={() => void act(() => apiPost(user, "/v1/reviews", { identity_id: identityId, owner: owner || null, due_days: 7 }))}>Open review</button></div></section>}
     <section className="panel table-panel"><div className="review-table table-header"><span>Case</span><span>Identity</span><span>Owner</span><span>Due</span><span>Status / actions</span></div>{reviews.length ? reviews.map((review) => <div className="review-table" key={review.id}><span><strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{nameFor(review.identity_id)}</span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><span><Badge value={review.status} />{canReview && review.status !== "resolved" && <div className="review-actions"><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Evidence-based reason" />{review.status === "open" && <button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/assign`, { owner: owner || principal?.username, reason }))}>Assign</button>}{review.status === "in_review" && <><select value={decision} onChange={(event) => setDecision(event.target.value)}><option value="retain">Retain</option><option value="revoke">Revoke</option><option value="extend">Extend</option><option value="exception">Exception</option></select><button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/decide`, { decision, reason }))}>Decide</button></>}</div>}{isAdmin && review.status === "resolved" && review.resolution === "revoke" && <button className="button button--secondary" onClick={() => void requestExecution(review)}>Request execution</button>}</span></div>) : <Empty>No review cases recorded.</Empty>}</section>
+  </div>;
+}
+
+function EmailWebSecurity({ agents, events }: { agents: SecurityAgent[]; events: SecurityEvent[] }) {
+  const critical = events.filter((event) => event.severity === "critical").length;
+  const blocked = events.filter((event) => event.action === "blocked").length;
+  const overrides = events.filter((event) => event.action === "allowed_override").length;
+  const agentName = (id: string) => agents.find((agent) => agent.id === id)?.display_name ?? id.slice(0, 8);
+  return <div className="page security-page"><section className="page-heading"><div><p className="kicker">Local protection evidence</p><h1>Email & web security</h1></div><p className="heading-note">Moat and Clutter act locally first, then report minimized evidence. Athena being unavailable never weakens browser protection.</p></section>
+    <section className="metric-grid"><Metric label="Enrolled agents" value={String(agents.length)} detail={`${agents.filter((agent) => agent.agent_type === "moat").length} Moat · ${agents.filter((agent) => agent.agent_type === "clutter").length} Clutter`} accent="blue" /><Metric label="Blocked locally" value={String(blocked)} detail="Protection did not wait for Athena" accent="mint" /><Metric label="Critical events" value={String(critical)} detail="Highest analyst priority" accent="coral" /><Metric label="User overrides" value={String(overrides)} detail="Human justification required" accent="amber" /></section>
+    <section className="split-grid security-layout"><article className="panel"><header className="command-panel-head"><div><h2>Protection activity</h2><p>Privacy-minimized, append-only agent evidence</p></div></header>{events.length ? <div className="security-table"><div className="security-row security-row--head"><span>Event</span><span>Agent</span><span>Indicator</span><span>Time</span></div>{events.map((event) => <div className="security-row" key={event.id}><span><Badge value={event.severity} /><strong>{event.action.replaceAll("_", " ")}</strong><small>{event.rule_id}</small></span><span>{agentName(event.agent_id)}</span><span>{event.target_indicator ?? "Minimized"}</span><time>{formatDate(event.occurred_at)}</time></div>)}</div> : <Empty>No browser or mailbox security evidence recorded.</Empty>}</article>
+      <aside className="panel"><header className="command-panel-head"><div><h2>Enrolled protection agents</h2><p>Machine credentials are separate from human OIDC</p></div></header>{agents.length ? <div className="stack-list">{agents.map((agent) => <div className="stack-row" key={agent.id}><div><strong>{agent.display_name}</strong><small>{agent.agent_type} · {agent.external_id}</small></div><Badge value="active" /></div>)}</div> : <Empty>No agents enrolled. An administrator must provision Moat or Clutter.</Empty>}</aside>
+    </section>
   </div>;
 }
 

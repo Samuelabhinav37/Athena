@@ -32,6 +32,11 @@ upstream verification.
 
 In version 0.1, all access removal requires a recorded human decision.
 
+Browser and mailbox protection is a separate bounded domain rather than an IAM connector. Moat and
+Clutter authenticate as tenant-bound machines, act locally using deterministic rules, report
+append-only minimized events, and retrieve externally signed policy artifacts. Human OIDC remains
+the only path for enrollment and policy publication.
+
 ## Initial data flow
 
 ```text

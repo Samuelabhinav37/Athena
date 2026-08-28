@@ -80,6 +80,10 @@ class Settings(BaseSettings):
         max_length=64,
         pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$",
     )
+    security_agents_enabled: bool = False
+    security_agent_token_secret: SecretStr = SecretStr("")
+    security_agent_token_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+    security_policy_public_key_pem: str = ""
 
     @field_validator("ollama_url")
     @classmethod
@@ -170,6 +174,12 @@ class Settings(BaseSettings):
             errors.append("OIDC signing key IDs must be required")
         if not self.shared_request_controls_enabled:
             errors.append("shared database request controls must be enabled")
+        if self.security_agents_enabled and len(
+            self.security_agent_token_secret.get_secret_value()
+        ) < 32:
+            errors.append("security agent token signing secret must be at least 32 characters")
+        if self.security_agents_enabled and not self.security_policy_public_key_pem:
+            errors.append("security policy signature verification key is required")
         if TENANT_ISOLATION_PLAN.status != "ready":
             errors.append("tenant isolation is not production-ready")
         if errors:

@@ -45,6 +45,9 @@ class TenantScopedReference(BaseModel):
         "connector_checkpoint",
         "audit_event",
         "report",
+        "security_agent",
+        "security_event",
+        "security_policy_version",
     ]
     object_id: str = Field(min_length=1, max_length=255)
 
@@ -92,6 +95,7 @@ TENANT_ISOLATION_PLAN = TenantIsolationPlan(
         "connector_checkpoints",
         "audit_events",
         "derived_graph_nodes_and_edges",
+        "security_agents_events_and_policy_versions",
         "report_and_export_artifacts",
     ),
     blockers=(),
