@@ -3,10 +3,9 @@ import json
 import random
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
 
-import sklearn
-from sklearn.ensemble import IsolationForest
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from athena.models import (
@@ -34,6 +33,17 @@ FEATURES = [
     "retained_ratio",
     "peer_deviation_ratio",
 ]
+
+
+@lru_cache(maxsize=8)
+def _fit_model(
+    tenant_id: str, matrix: tuple[tuple[float, ...], ...]
+):
+    from sklearn.ensemble import IsolationForest
+
+    return IsolationForest(
+        n_estimators=200, contamination=CONTAMINATION, random_state=RANDOM_SEED
+    ).fit(matrix)
 
 
 @dataclass(frozen=True)
@@ -101,22 +111,33 @@ class GovernedCohortSelector:
         self.minimum_size = minimum_size
 
     def select(self, target: Identity) -> CohortSelection:
+        latest = (
+            select(
+                RiskAssessment.id.label("assessment_id"),
+                func.row_number()
+                .over(
+                    partition_by=RiskAssessment.identity_id,
+                    order_by=(RiskAssessment.evaluated_at.desc(), RiskAssessment.id.desc()),
+                )
+                .label("position"),
+            )
+            .subquery()
+        )
         assessments = list(
             self.session.scalars(
                 select(RiskAssessment)
+                .join(latest, latest.c.assessment_id == RiskAssessment.id)
                 .options(
                     selectinload(RiskAssessment.findings),
                     selectinload(RiskAssessment.identity).selectinload(Identity.roles),
                 )
-                .order_by(RiskAssessment.evaluated_at.desc())
+                .where(latest.c.position == 1)
             )
         )
-        latest: dict[uuid.UUID, RiskAssessment] = {}
-        for assessment in assessments:
-            if assessment.identity_id != target.id and assessment.identity_id not in latest:
-                latest[assessment.identity_id] = assessment
         target_roles = {role.name for role in target.roles}
-        candidates = list(latest.values())
+        candidates = [
+            assessment for assessment in assessments if assessment.identity_id != target.id
+        ]
         hierarchy = [
             (
                 "department_and_role",
@@ -167,6 +188,8 @@ class PeerAnomalyService:
         self.session = session
 
     def run(self, identity: Identity) -> PeerAnomalyOutcome:
+        import sklearn
+
         assessment = self.session.scalar(
             select(RiskAssessment)
             .options(selectinload(RiskAssessment.findings))
@@ -180,10 +203,9 @@ class PeerAnomalyService:
         cohort = [entry.features for entry in selection.entries]
         canonical = json.dumps(cohort, sort_keys=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(canonical.encode()).hexdigest()
-        matrix = [[row[name] for name in FEATURES] for row in cohort]
-        model = IsolationForest(
-            n_estimators=200, contamination=CONTAMINATION, random_state=RANDOM_SEED
-        ).fit(matrix)
+        matrix = tuple(tuple(row[name] for name in FEATURES) for row in cohort)
+        tenant_id = str(self.session.info.get("tenant_id") or "unscoped")
+        model = _fit_model(tenant_id, matrix)
         all_rows = cohort + [live]
         all_matrix = [[row[name] for name in FEATURES] for row in all_rows]
         raw_scores = model.score_samples(all_matrix)
@@ -292,24 +314,34 @@ class PeerAnomalyService:
         }
 
     def _reviewed_false_positives(self) -> dict:
-        reviewed = list(
-            self.session.scalars(
-                select(ReviewCase).where(
-                    ReviewCase.status == ReviewStatus.RESOLVED,
-                    ReviewCase.anomaly_result_id.is_not(None),
-                )
+        reviewed, false_positives = self.session.execute(
+            select(
+                func.count(ReviewCase.id),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                ReviewCase.resolution.in_(
+                                    (ReviewDecision.RETAIN, ReviewDecision.EXCEPTION)
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+            ).where(
+                ReviewCase.status == ReviewStatus.RESOLVED,
+                ReviewCase.anomaly_result_id.is_not(None),
             )
-        )
-        false_positives = sum(
-            case.resolution in (ReviewDecision.RETAIN, ReviewDecision.EXCEPTION)
-            for case in reviewed
-        )
+        ).one()
         return {
-            "reviewed_anomalies": len(reviewed),
+            "reviewed_anomalies": reviewed,
             "false_positive_labels": false_positives,
             "false_positive_rate": None
             if not reviewed
-            else round(false_positives / len(reviewed), 4),
+            else round(false_positives / reviewed, 4),
             "label_definition": "retain_or_exception",
         }
 
@@ -318,12 +350,22 @@ def _feature_means(rows: list[dict[str, float]]) -> dict[str, float]:
     return {name: round(sum(row[name] for row in rows) / len(rows), 6) for name in FEATURES}
 
 
-def load_anomaly_results(session: Session, identity_id: uuid.UUID) -> list[AnomalyResult]:
+def load_anomaly_results(
+    session: Session,
+    identity_id: uuid.UUID,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[AnomalyResult]:
+    statement = (
+        select(AnomalyResult)
+        .options(selectinload(AnomalyResult.run))
+        .where(AnomalyResult.identity_id == identity_id)
+        .order_by(AnomalyResult.id.desc())
+        .offset(offset)
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(
-        session.scalars(
-            select(AnomalyResult)
-            .options(selectinload(AnomalyResult.run))
-            .where(AnomalyResult.identity_id == identity_id)
-            .order_by(AnomalyResult.id.desc())
-        )
+        session.scalars(statement)
     )

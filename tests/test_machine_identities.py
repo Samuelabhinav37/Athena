@@ -7,7 +7,7 @@ from athena.main import app
 from athena.models import Base, Identity, IdentityType
 from athena.services.machine_identities import load_machine_identity_posture
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -99,6 +99,35 @@ def test_machine_identity_api_rejects_unbounded_limit(machine_session: Session) 
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_machine_identity_query_count_is_constant_for_a_page(machine_session: Session) -> None:
+    for index in range(20):
+        machine_session.add(
+            Identity(
+                source="internal",
+                external_id=f"service-{index}",
+                username=f"service-{index}",
+                identity_type=IdentityType.SERVICE_ACCOUNT,
+                display_name=f"Service {index}",
+                active=True,
+            )
+        )
+    machine_session.commit()
+    statements = 0
+
+    def count_statement(*_: object) -> None:
+        nonlocal statements
+        statements += 1
+
+    event.listen(machine_session.bind, "before_cursor_execute", count_statement)
+    try:
+        posture = load_machine_identity_posture(machine_session, limit=20)
+    finally:
+        event.remove(machine_session.bind, "before_cursor_execute", count_statement)
+
+    assert len(posture) == 20
+    assert statements <= 8
 
 
 def test_machine_identity_api_excludes_another_tenant_posture(

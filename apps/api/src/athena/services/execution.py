@@ -280,10 +280,15 @@ def load_execution(session: Session, execution_id: uuid.UUID) -> RemediationExec
     return session.scalar(statement)
 
 
-def load_executions(session: Session) -> list[RemediationExecution]:
+def load_executions(
+    session: Session, *, limit: int | None = None, offset: int = 0
+) -> list[RemediationExecution]:
     statement = (
         tenant_select(session, RemediationExecution)
         .options(selectinload(RemediationExecution.events))
         .order_by(RemediationExecution.created_at.desc())
+        .offset(offset)
     )
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(session.scalars(statement))

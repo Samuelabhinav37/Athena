@@ -21,6 +21,5 @@ def list_machine_identities(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[MachineIdentityPostureResponse]:
-    posture = load_machine_identity_posture(session)
-    page = posture[offset : offset + limit]
-    return [MachineIdentityPostureResponse.model_validate(item) for item in page]
+    posture = load_machine_identity_posture(session, limit=limit, offset=offset)
+    return [MachineIdentityPostureResponse.model_validate(item) for item in posture]

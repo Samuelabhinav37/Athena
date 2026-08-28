@@ -80,9 +80,11 @@ def test_collector_uses_versioned_read_only_requests_and_etag_cache() -> None:
             return httpx.Response(
                 200, headers={"ETag": '"team-members-v1"'}, json=[{"id": 101, "login": "octocat"}]
             )
-        if path.endswith("/repos/acme/athena/collaborators/octocat/permission"):
+        if path.endswith("/repos/acme/athena/collaborators"):
             return httpx.Response(
-                200, headers={"ETag": '"permission-v1"'}, json={"permission": "admin"}
+                200,
+                headers={"ETag": '"collaborators-v1"'},
+                json=[{"id": 101, "login": "octocat", "role_name": "admin"}],
             )
         raise AssertionError(f"Unexpected request {request.url}")
 
@@ -98,6 +100,36 @@ def test_collector_uses_versioned_read_only_requests_and_etag_cache() -> None:
     assert first.team_memberships == [{"team_id": 301, "team_slug": "security", "login": "octocat"}]
     assert len(calls) == 10
     assert sum(request.headers.get("If-None-Match") is not None for request in calls) == 5
+
+
+def test_collection_requests_collaborators_once_per_repository() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(path)
+        if path.endswith("/members") and "/teams/" not in path:
+            return httpx.Response(200, json=[{"login": f"user-{index}"} for index in range(3)])
+        if path.endswith("/repos"):
+            return httpx.Response(200, json=[{"name": "one"}, {"name": "two"}])
+        if path.endswith("/teams"):
+            return httpx.Response(200, json=[])
+        if path.endswith("/collaborators"):
+            return httpx.Response(
+                200,
+                json=[
+                    {"login": f"user-{index}", "permissions": {"push": True}}
+                    for index in range(3)
+                ],
+            )
+        raise AssertionError(f"Unexpected request {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        snapshot = GitHubCollector(settings(), client).collect()
+
+    assert len(snapshot.permissions) == 6
+    assert sum(path.endswith("/collaborators") for path in calls) == 2
+    assert not any(path.endswith("/permission") for path in calls)
 
 
 def test_multi_page_endpoints_are_refetched_to_avoid_stale_later_pages() -> None:

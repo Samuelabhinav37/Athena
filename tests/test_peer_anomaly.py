@@ -11,6 +11,7 @@ from athena.services.peer_anomaly import (
     FEATURES,
     GovernedCohortSelector,
     PeerAnomalyService,
+    _fit_model,
 )
 from athena.services.remediation import RemediationService, load_case
 from athena.services.risk_analytics import RiskAnalyticsService
@@ -31,12 +32,16 @@ def _run(session: Session):
 def test_peer_anomaly_is_reproducible_and_advisory(  # noqa: F811
     risk_session: Session,  # noqa: F811
 ) -> None:
+    _fit_model.cache_clear()
     alice, first = _run(risk_session)
+    first_cache = _fit_model.cache_info()
     second = PeerAnomalyService(risk_session).run(alice)
+    second_cache = _fit_model.cache_info()
     assert first.training_fingerprint == second.training_fingerprint
     assert first.is_anomaly is True
     assert second.is_anomaly is True
     assert first.decision_score == pytest.approx(second.decision_score)
+    assert second_cache.hits == first_cache.hits + 1
     assert first.peer_anomaly_count <= 5
     assert not ({"age", "gender", "race", "ethnicity", "disability"} & set(FEATURES))
     run = risk_session.get(AnomalyModelRun, first.run_id)

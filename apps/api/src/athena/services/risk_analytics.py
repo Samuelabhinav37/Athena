@@ -241,12 +241,22 @@ class RiskAnalyticsService:
         )
 
 
-def load_risk_assessments(session: Session, identity_id: uuid.UUID) -> list[RiskAssessment]:
+def load_risk_assessments(
+    session: Session,
+    identity_id: uuid.UUID,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[RiskAssessment]:
+    statement = (
+        select(RiskAssessment)
+        .options(selectinload(RiskAssessment.findings))
+        .where(RiskAssessment.identity_id == identity_id)
+        .order_by(RiskAssessment.evaluated_at.desc(), RiskAssessment.id)
+        .offset(offset)
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(
-        session.scalars(
-            select(RiskAssessment)
-            .options(selectinload(RiskAssessment.findings))
-            .where(RiskAssessment.identity_id == identity_id)
-            .order_by(RiskAssessment.evaluated_at.desc(), RiskAssessment.id)
-        ).unique()
+        session.scalars(statement).unique()
     )

@@ -189,11 +189,19 @@ class PolicyEvaluationService:
 
 
 def load_policy_evaluations(
-    session: Session, identity_id: object
+    session: Session,
+    identity_id: object,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> Iterable[PolicyEvaluation]:
-    return session.scalars(
+    statement = (
         select(PolicyEvaluation)
         .join(PolicyEvaluation.entitlement)
         .where(EffectiveEntitlement.identity_id == identity_id)
         .order_by(PolicyEvaluation.evaluated_at.desc(), PolicyEvaluation.id)
+        .offset(offset)
     )
+    if limit is not None:
+        statement = statement.limit(limit)
+    return session.scalars(statement)

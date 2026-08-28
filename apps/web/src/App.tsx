@@ -112,20 +112,21 @@ function Dashboard({ user }: { user: User }) {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     async function load() {
       try {
         const [me, identityData, reviewData, connectorData, runData] = await Promise.all([
-          apiGet<Principal>(user, "/v1/auth/me"),
-          apiGet<Identity[]>(user, "/v1/identities"),
-          apiGet<ReviewCase[]>(user, "/v1/reviews"),
-          apiGet<Connector[]>(user, "/v1/connectors"),
-          apiGet<MonitoringRun[]>(user, "/v1/monitoring/runs")
+          apiGet<Principal>(user, "/v1/auth/me", controller.signal),
+          apiGet<Identity[]>(user, "/v1/identities", controller.signal),
+          apiGet<ReviewCase[]>(user, "/v1/reviews", controller.signal),
+          apiGet<Connector[]>(user, "/v1/connectors", controller.signal),
+          apiGet<MonitoringRun[]>(user, "/v1/monitoring/runs", controller.signal)
         ]);
         if (!active) return;
         setPrincipal(me); setIdentities(identityData); setReviews(reviewData);
         setConnectors(connectorData); setRuns(runData);
         if (me.roles.includes("athena-administrator")) {
-          setExecutions(await apiGet<Execution[]>(user, "/v1/executions"));
+          setExecutions(await apiGet<Execution[]>(user, "/v1/executions", controller.signal));
         }
         setState("ready");
       } catch (caught) {
@@ -136,7 +137,7 @@ function Dashboard({ user }: { user: User }) {
       }
     }
     void load();
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [user]);
 
   const openReviews = reviews.filter((review) => !["closed", "resolved"].includes(review.status));
@@ -230,19 +231,20 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
 
   useEffect(() => {
     if (!selectedId) return;
+    const controller = new AbortController();
     let active = true; setLoading(true); setDetailError(""); setExplanation(null);
     setExplanationState("idle"); setExplanationError("");
     setGraphState("loading"); setGraphError(""); setAttackPaths([]);
     Promise.all([
-      apiGet<Entitlement[]>(user, `/v1/identities/${selectedId}/entitlements`),
-      apiGet<RiskAssessment[]>(user, `/v1/identities/${selectedId}/risk-assessments`),
-      apiGet<AnomalyAssessment[]>(user, `/v1/identities/${selectedId}/anomaly-assessments`)
+      apiGet<Entitlement[]>(user, `/v1/identities/${selectedId}/entitlements`, controller.signal),
+      apiGet<RiskAssessment[]>(user, `/v1/identities/${selectedId}/risk-assessments`, controller.signal),
+      apiGet<AnomalyAssessment[]>(user, `/v1/identities/${selectedId}/anomaly-assessments`, controller.signal)
     ]).then(([grants, riskData, anomalyData]) => {
       if (active) { setEntitlements(grants); setRisks(riskData); setAnomalies(anomalyData); }
     }).catch((caught: unknown) => {
       if (active) setDetailError(caught instanceof Error ? caught.message : "Unable to load identity evidence");
     }).finally(() => { if (active) setLoading(false); });
-    apiGet<AttackPath[]>(user, `/v1/attack-paths/identities/${selectedId}?max_depth=6&limit=25`)
+    apiGet<AttackPath[]>(user, `/v1/attack-paths/identities/${selectedId}?max_depth=6&limit=25`, controller.signal)
       .then((paths) => { if (active) { setAttackPaths(paths); setGraphState("ready"); } })
       .catch((caught: unknown) => {
         if (active) {
@@ -250,7 +252,7 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
           setGraphState("error");
         }
       });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [selectedId, user]);
 
   async function generateExplanation() {
@@ -289,7 +291,8 @@ function MachineIdentities({ user }: { user: User }) {
 
   useEffect(() => {
     let active = true;
-    apiGet<MachineIdentityPosture[]>(user, "/v1/machine-identities?limit=200")
+    const controller = new AbortController();
+    apiGet<MachineIdentityPosture[]>(user, "/v1/machine-identities?limit=200", controller.signal)
       .then((data) => {
         if (!active) return;
         setItems(data); setSelectedId(data[0]?.identity_id ?? ""); setState("ready");
@@ -299,7 +302,7 @@ function MachineIdentities({ user }: { user: User }) {
         setError(caught instanceof Error ? caught.message : "Machine identity posture unavailable");
         setState("error");
       });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [user]);
 
   const types = useMemo(() => [...new Set(items.map((item) => item.identity_type))].sort(), [items]);

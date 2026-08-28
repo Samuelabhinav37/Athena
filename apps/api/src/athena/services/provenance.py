@@ -198,17 +198,21 @@ class ProvenanceService:
 
 
 def load_identity_entitlements(
-    session: Session, identity_id: uuid.UUID
+    session: Session, identity_id: uuid.UUID, *, limit: int | None = None, offset: int = 0
 ) -> list[EffectiveEntitlement]:
+    statement = (
+        select(EffectiveEntitlement)
+        .options(
+            selectinload(EffectiveEntitlement.provenance_edges),
+            selectinload(EffectiveEntitlement.grant).selectinload(AccessGrant.approved_by),
+        )
+        .where(EffectiveEntitlement.identity_id == identity_id)
+        .where(EffectiveEntitlement.active.is_(True))
+        .order_by(EffectiveEntitlement.computed_at, EffectiveEntitlement.id)
+        .offset(offset)
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(
-        session.scalars(
-            select(EffectiveEntitlement)
-            .options(
-                selectinload(EffectiveEntitlement.provenance_edges),
-                selectinload(EffectiveEntitlement.grant).selectinload(AccessGrant.approved_by),
-            )
-            .where(EffectiveEntitlement.identity_id == identity_id)
-            .where(EffectiveEntitlement.active.is_(True))
-            .order_by(EffectiveEntitlement.computed_at, EffectiveEntitlement.id)
-        ).unique()
+        session.scalars(statement).unique()
     )

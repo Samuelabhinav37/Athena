@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from athena.auth import require_viewer
@@ -18,9 +18,14 @@ DatabaseSession = Annotated[Session, Depends(get_db_session)]
 @router.get("", response_model=list[ConnectorCheckpointResponse])
 def list_connector_checkpoints(
     session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ConnectorCheckpointResponse]:
-    statement = tenant_select(session, ConnectorCheckpoint).order_by(
-        ConnectorCheckpoint.connector, ConnectorCheckpoint.scope
+    statement = (
+        tenant_select(session, ConnectorCheckpoint)
+        .order_by(ConnectorCheckpoint.connector, ConnectorCheckpoint.scope)
+        .limit(limit)
+        .offset(offset)
     )
     checkpoints = session.scalars(statement)
     return [
@@ -37,12 +42,16 @@ def list_connector_checkpoints(
 
 
 @router.get("/scopes", response_model=list[ConnectorScopeResponse])
-def list_connector_scopes(session: DatabaseSession) -> list[ConnectorScopeResponse]:
+def list_connector_scopes(
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[ConnectorScopeResponse]:
     bindings = list(
         session.scalars(
             tenant_select(session, ConnectorScopeBinding).order_by(
                 ConnectorScopeBinding.connector, ConnectorScopeBinding.scope
-            )
+            ).limit(limit).offset(offset)
         )
     )
     revocations = {

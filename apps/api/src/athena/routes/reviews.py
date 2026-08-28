@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from athena.auth import AnalystPrincipal, ReviewerPrincipal, require_viewer
@@ -29,8 +29,12 @@ def _case_or_404(session: Session, case_id: uuid.UUID):
 
 
 @router.get("", response_model=list[ReviewCaseResponse])
-def list_reviews(session: DatabaseSession) -> list[ReviewCaseResponse]:
-    return list(load_cases(session))
+def list_reviews(
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[ReviewCaseResponse]:
+    return list(load_cases(session, limit=limit, offset=offset))
 
 
 @router.get("/{case_id}", response_model=ReviewCaseResponse)

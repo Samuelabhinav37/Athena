@@ -56,13 +56,18 @@ def get_identity(identity_id: uuid.UUID, session: DatabaseSession) -> IdentityRe
 
 @router.get("/{identity_id}/entitlements", response_model=list[EntitlementResponse])
 def list_identity_entitlements(
-    identity_id: uuid.UUID, session: DatabaseSession
+    identity_id: uuid.UUID,
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[EntitlementResponse]:
     if IdentityRepository(session).get(identity_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
 
     responses = []
-    for entitlement in load_identity_entitlements(session, identity_id):
+    for entitlement in load_identity_entitlements(
+        session, identity_id, limit=limit, offset=offset
+    ):
         grant = entitlement.grant
         gaps = governance_gaps(grant)
         responses.append(
@@ -96,11 +101,14 @@ def list_identity_entitlements(
     response_model=list[PolicyEvaluationResponse],
 )
 def list_identity_policy_evaluations(
-    identity_id: uuid.UUID, session: DatabaseSession
+    identity_id: uuid.UUID,
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[PolicyEvaluationResponse]:
     if IdentityRepository(session).get(identity_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
-    return list(load_policy_evaluations(session, identity_id))
+    return list(load_policy_evaluations(session, identity_id, limit=limit, offset=offset))
 
 
 @router.get(
@@ -108,12 +116,17 @@ def list_identity_policy_evaluations(
     response_model=list[RiskAssessmentResponse],
 )
 def list_identity_risk_assessments(
-    identity_id: uuid.UUID, session: DatabaseSession
+    identity_id: uuid.UUID,
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[RiskAssessmentResponse]:
     if IdentityRepository(session).get(identity_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     responses = []
-    for assessment in load_risk_assessments(session, identity_id):
+    for assessment in load_risk_assessments(
+        session, identity_id, limit=limit, offset=offset
+    ):
         responses.append(
             RiskAssessmentResponse(
                 id=assessment.id,
@@ -144,11 +157,14 @@ def list_identity_risk_assessments(
 
 @router.get("/{identity_id}/anomaly-assessments", response_model=list[AnomalyResultResponse])
 def list_identity_anomaly_assessments(
-    identity_id: uuid.UUID, session: DatabaseSession
+    identity_id: uuid.UUID,
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[AnomalyResultResponse]:
     if IdentityRepository(session).get(identity_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
-    return list(load_anomaly_results(session, identity_id))
+    return list(load_anomaly_results(session, identity_id, limit=limit, offset=offset))
 
 
 @router.post("/{identity_id}/explanation", response_model=IdentityExplanationResponse)

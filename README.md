@@ -47,7 +47,7 @@ until a separately authorized executor acts and verifies the upstream result.
 
 | Area | Current capability |
 |---|---|
-| Identity collection | Incremental Keycloak, GitHub organization, Microsoft Entra ID, and Azure RBAC connectors |
+| Identity collection | Keycloak plus snapshot-based GitHub organization, Microsoft Entra ID, and Azure RBAC connectors |
 | Authorization provenance | Ordered lineage from identities and groups to grants, resources, and effective permissions |
 | Governance | Approval, justification, expiration, incomplete-lineage, and retained-access findings |
 | Policy | Versioned OPA/Rego decisions with reproducible inputs and allow/deny fixtures |
@@ -271,6 +271,7 @@ adapters, durable telemetry ingestion, and additional report formats.
 | Production readiness | [Readiness](docs/readiness.md) |
 | Deployment and recovery | [Production deployment plan](docs/production-deployment-plan.md) |
 | Operations, backup, and restore | [Operations](docs/operations.md) |
+| Performance and capacity | [Performance](docs/performance.md) |
 | Connector contracts | [Connector SDK](docs/connector-sdk.md) |
 | Security telemetry | [Telemetry](docs/telemetry.md) |
 | Evidence and report formats | [Portable reports](docs/portable-reports.md) |

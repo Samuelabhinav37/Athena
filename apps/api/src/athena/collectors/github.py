@@ -131,20 +131,23 @@ class GitHubCollector:
                 for member in team_members
             )
         permissions = []
+        member_logins = {self._required(member, "login", "member") for member in members}
         for repository in repositories:
             repo = self._required(repository, "name", "repository")
-            for member in members:
-                login = self._required(member, "login", "member")
-                key = f"permission:{org}/{repo}:{login}"
-                payload = self._single(
-                    key, f"/repos/{org}/{repo}/collaborators/{login}/permission", cache
-                )
-                permission = self._required(payload, "permission", "permission")
+            collaborators = self._paged(
+                f"repo:{org}/{repo}:collaborators",
+                f"/repos/{org}/{repo}/collaborators",
+                cache,
+            )
+            for collaborator in collaborators:
+                login = self._required(collaborator, "login", "collaborator")
+                if login not in member_logins:
+                    continue
                 permissions.append(
                     {
                         "repository": repo,
                         "login": login,
-                        "permission": permission,
+                        "permission": self._collaborator_permission(collaborator),
                         "source": "calculated",
                     }
                 )
@@ -210,24 +213,18 @@ class GitHubCollector:
         except (httpx.HTTPError, ValueError) as error:
             raise GitHubCollectionError(f"GitHub request failed: GET {path}") from error
 
-    def _single(self, key: str, path: str, cache: dict) -> dict:
-        cached = cache.get(key, {})
-        try:
-            response = self.client.get(
-                f"{self.settings.github_api_url}{path}",
-                headers=self._headers(cached.get("etag")),
-            )
-            if response.status_code == 304:
-                payload = cached.get("payload")
-            else:
-                response.raise_for_status()
-                payload = response.json()
-                cache[key] = {"etag": response.headers.get("etag"), "payload": payload}
-            if not isinstance(payload, dict):
-                raise GitHubCollectionError(f"GitHub response was not an object for {path}")
-            return payload
-        except (httpx.HTTPError, ValueError) as error:
-            raise GitHubCollectionError(f"GitHub request failed: GET {path}") from error
+    @staticmethod
+    def _collaborator_permission(collaborator: dict[str, Any]) -> str:
+        role_name = collaborator.get("role_name")
+        if isinstance(role_name, str) and role_name:
+            return role_name
+        permissions = collaborator.get("permissions")
+        if not isinstance(permissions, dict):
+            raise GitHubCollectionError("GitHub collaborator is missing permission evidence")
+        for name in ("admin", "maintain", "push", "triage", "pull"):
+            if permissions.get(name) is True:
+                return name
+        raise GitHubCollectionError("GitHub collaborator has no recognized permission")
 
     def _headers(self, etag: str | None = None) -> dict[str, str]:
         headers = {

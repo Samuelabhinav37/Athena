@@ -164,10 +164,15 @@ def load_case(session: Session, case_id: uuid.UUID) -> ReviewCase | None:
     return session.scalar(statement)
 
 
-def load_cases(session: Session) -> list[ReviewCase]:
+def load_cases(
+    session: Session, *, limit: int | None = None, offset: int = 0
+) -> list[ReviewCase]:
     statement = (
         tenant_select(session, ReviewCase)
         .options(selectinload(ReviewCase.events))
         .order_by(ReviewCase.created_at.desc())
+        .offset(offset)
     )
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(session.scalars(statement))

@@ -43,39 +43,61 @@ class MachineIdentityPosture:
     findings: tuple[MachineIdentityFinding, ...]
 
 
-def load_machine_identity_posture(session: Session) -> list[MachineIdentityPosture]:
+def load_machine_identity_posture(
+    session: Session, *, limit: int | None = None, offset: int = 0
+) -> list[MachineIdentityPosture]:
     statement = (
         tenant_select(session, Identity, Identity.identity_type.in_(MACHINE_IDENTITY_TYPES))
         .order_by(Identity.source, Identity.username, Identity.id)
+        .offset(offset)
     )
+    if limit is not None:
+        statement = statement.limit(limit)
     identities = session.scalars(statement).all()
-    return [_posture(session, identity) for identity in identities]
+    if not identities:
+        return []
 
-
-def _posture(session: Session, identity: Identity) -> MachineIdentityPosture:
-    entitlement_statement = (
-        tenant_select(
-            session,
-            EffectiveEntitlement,
-            EffectiveEntitlement.identity_id == identity.id,
-            EffectiveEntitlement.active.is_(True),
-        )
-        .options(
-            selectinload(EffectiveEntitlement.provenance_edges),
-            selectinload(EffectiveEntitlement.grant),
-        )
+    identity_ids = [identity.id for identity in identities]
+    entitlement_statement = tenant_select(
+        session,
+        EffectiveEntitlement,
+        EffectiveEntitlement.identity_id.in_(identity_ids),
+        EffectiveEntitlement.active.is_(True),
+    ).options(
+        selectinload(EffectiveEntitlement.provenance_edges),
+        selectinload(EffectiveEntitlement.grant),
     )
     observation_statement = (
         tenant_select(session, AccessObservation)
+        .add_columns(EffectiveEntitlement.identity_id)
         .join(EffectiveEntitlement)
-        .where(EffectiveEntitlement.identity_id == identity.id)
+        .where(EffectiveEntitlement.identity_id.in_(identity_ids))
         .order_by(AccessObservation.last_used_at.desc())
     )
-    entitlements = session.scalars(entitlement_statement).unique().all()
-    observations = session.scalars(observation_statement).all()
-    last_used_at = next(
-        (observation.last_used_at for observation in observations if observation.last_used_at), None
-    )
+    entitlements_by_identity: dict[uuid.UUID, list[EffectiveEntitlement]] = {
+        identity_id: [] for identity_id in identity_ids
+    }
+    for entitlement in session.scalars(entitlement_statement).unique():
+        entitlements_by_identity[entitlement.identity_id].append(entitlement)
+    latest_use_by_identity: dict[uuid.UUID, datetime] = {}
+    for observation, identity_id in session.execute(observation_statement):
+        if observation.last_used_at is not None and identity_id not in latest_use_by_identity:
+            latest_use_by_identity[identity_id] = observation.last_used_at
+    return [
+        _posture(
+            identity,
+            entitlements_by_identity[identity.id],
+            latest_use_by_identity.get(identity.id),
+        )
+        for identity in identities
+    ]
+
+
+def _posture(
+    identity: Identity,
+    entitlements: list[EffectiveEntitlement],
+    last_used_at: datetime | None,
+) -> MachineIdentityPosture:
     metadata = identity.source_metadata if isinstance(identity.source_metadata, dict) else {}
     if last_used_at is None:
         last_used_at = _metadata_datetime(metadata.get("role_last_used_at"))

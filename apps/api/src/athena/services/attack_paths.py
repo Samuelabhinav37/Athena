@@ -2,8 +2,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from neo4j import GraphDatabase
-from neo4j.exceptions import Neo4jError
 from sqlalchemy.orm import Session, selectinload
 
 from athena.config import Settings
@@ -75,7 +73,11 @@ class Neo4jAttackPathAdapter:
     def __init__(self, settings: Settings) -> None:
         if not settings.neo4j_enabled or not settings.neo4j_password.get_secret_value():
             raise AttackPathError("Neo4j attack-path analysis is not configured")
+        from neo4j import GraphDatabase
+        from neo4j.exceptions import Neo4jError
+
         self.database = settings.neo4j_database
+        self._error_type = Neo4jError
         self.driver = GraphDatabase.driver(
             settings.neo4j_url,
             auth=(settings.neo4j_user, settings.neo4j_password.get_secret_value()),
@@ -92,7 +94,7 @@ class Neo4jAttackPathAdapter:
         try:
             with self.driver.session(database=self.database) as graph:
                 graph.execute_write(self._write_projection, projection)
-        except Neo4jError as error:
+        except self._error_type as error:
             raise AttackPathError("Neo4j projection failed") from error
         return {"nodes": len(projection.nodes), "edges": len(projection.edges)}
 
@@ -152,7 +154,7 @@ class Neo4jAttackPathAdapter:
                 database_=self.database,
                 routing_="r",
             )
-        except Neo4jError as error:
+        except self._error_type as error:
             raise AttackPathError("Neo4j attack-path query failed") from error
         return [
             AttackPath(

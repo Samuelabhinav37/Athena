@@ -1,4 +1,5 @@
 import hashlib
+import heapq
 import hmac
 import re
 import threading
@@ -46,6 +47,7 @@ class WebhookReplayCache:
         self.max_entries = max_entries
         self.clock = clock
         self._entries: OrderedDict[str, float] = OrderedDict()
+        self._expirations: list[tuple[float, str]] = []
         self._lock = threading.Lock()
 
     def check_and_mark(
@@ -53,14 +55,21 @@ class WebhookReplayCache:
     ) -> None:
         now = self.clock()
         with self._lock:
-            expired = [key for key, expiry in self._entries.items() if expiry <= now]
-            for key in expired:
-                del self._entries[key]
+            while self._expirations and self._expirations[0][0] <= now:
+                expiry, key = heapq.heappop(self._expirations)
+                if self._entries.get(key) == expiry:
+                    del self._entries[key]
             if delivery_id in self._entries:
                 raise WebhookReplayError("Webhook delivery was already processed")
             if len(self._entries) >= self.max_entries:
                 self._entries.popitem(last=False)
             self._entries[delivery_id] = expires_at
+            heapq.heappush(self._expirations, (expires_at, delivery_id))
+            if len(self._expirations) > self.max_entries * 2:
+                self._expirations = [
+                    (expiry, key) for key, expiry in self._entries.items()
+                ]
+                heapq.heapify(self._expirations)
 
 
 class SignedWebhookAdapter:

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from athena.auth import AdministratorPrincipal, require_administrator
@@ -24,8 +24,12 @@ DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 
 @router.get("", response_model=list[RemediationExecutionResponse])
-def list_execution_requests(session: DatabaseSession) -> list[RemediationExecutionResponse]:
-    return list(load_executions(session))
+def list_execution_requests(
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[RemediationExecutionResponse]:
+    return list(load_executions(session, limit=limit, offset=offset))
 
 
 @router.get("/{execution_id}", response_model=RemediationExecutionResponse)

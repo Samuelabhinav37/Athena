@@ -19,3 +19,9 @@ def test_metrics_are_bounded_and_prometheus_compatible() -> None:
     assert "athena_http_requests_total" in response.text
     assert 'method="GET",status_class="2xx"' in response.text
     assert "request_id" not in response.text
+
+
+def test_versioned_api_responses_are_not_cached() -> None:
+    response = TestClient(app).get("/v1/auth/me")
+
+    assert response.headers["cache-control"] == "no-store"

@@ -214,10 +214,15 @@ class MonitoringService:
         )
 
 
-def load_monitoring_runs(session: Session) -> list[MonitoringRun]:
+def load_monitoring_runs(
+    session: Session, *, limit: int | None = None, offset: int = 0
+) -> list[MonitoringRun]:
     statement = (
         tenant_select(session, MonitoringRun)
         .options(selectinload(MonitoringRun.steps))
         .order_by(MonitoringRun.started_at.desc())
+        .offset(offset)
     )
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(session.scalars(statement))

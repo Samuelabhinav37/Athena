@@ -81,6 +81,10 @@ class RequestObservabilityMiddleware:
                 status_code = message["status"]
                 response_headers = list(message.get("headers", []))
                 response_headers.append((b"x-request-id", request_id.encode()))
+                if str(scope.get("path", "")).startswith("/v1/") and not any(
+                    name.lower() == b"cache-control" for name, _ in response_headers
+                ):
+                    response_headers.append((b"cache-control", b"no-store"))
                 message["headers"] = response_headers
             await send(message)
 
