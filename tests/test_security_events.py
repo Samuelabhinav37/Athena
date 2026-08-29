@@ -14,9 +14,10 @@ from athena.models import (
     Tenant,
     prevent_security_evidence_mutation,
 )
+from athena.policy.opa import OpaDecision
 from athena.routes import security_events as security_routes
 from athena.schemas import SecurityEventCreate
-from athena.services.security_agents import canonical_digest
+from athena.services.security_agents import AgentActionPolicyError, canonical_digest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
@@ -282,3 +283,115 @@ def test_cross_product_correlation_respects_the_window(security_client) -> None:
     correlations = client.get("/v1/security/events/correlations", params={"window_days": 30})
     assert correlations.status_code == 200
     assert correlations.json() == []
+
+
+def test_override_event_denied_by_policy_is_rejected(
+    security_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _factory, _policy_key = security_client
+    headers = _enroll_and_authenticate(client, "moat", "moat-device-1")
+
+    def deny(_settings, _action, _reason):
+        raise AgentActionPolicyError(
+            "denied",
+            [{"code": "UNJUSTIFIED_OVERRIDE", "severity": "medium", "message": "too short"}],
+        )
+
+    monkeypatch.setattr(security_routes, "evaluate_agent_action", deny)
+    response = client.post(
+        "/v1/security/events",
+        headers=headers,
+        json={
+            "source_event_id": "override-1",
+            "occurred_at": "2026-08-28T12:00:00Z",
+            "action": "allowed_override",
+            "severity": "low",
+            "rule_id": "athena-policy:evil.example",
+            "target_indicator": "evil.example",
+            "evidence": {"override_reason": "no"},
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["violations"][0]["code"] == "UNJUSTIFIED_OVERRIDE"
+
+
+def test_override_event_allowed_by_policy_is_ingested(
+    security_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _factory, _policy_key = security_client
+    headers = _enroll_and_authenticate(client, "moat", "moat-device-1")
+
+    def allow(_settings, action, reason):
+        assert action == "allowed_override"
+        assert reason == "This vendor domain is a known false positive, verified with IT"
+        return OpaDecision(allow=True, violations=[])
+
+    monkeypatch.setattr(security_routes, "evaluate_agent_action", allow)
+    response = client.post(
+        "/v1/security/events",
+        headers=headers,
+        json={
+            "source_event_id": "override-2",
+            "occurred_at": "2026-08-28T12:00:00Z",
+            "action": "allowed_override",
+            "severity": "low",
+            "rule_id": "athena-policy:evil.example",
+            "target_indicator": "evil.example",
+            "evidence": {
+                "override_reason": "This vendor domain is a known false positive, verified with IT"
+            },
+        },
+    )
+    assert response.status_code == 201
+
+
+def test_override_event_with_opa_unreachable_returns_503(
+    security_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _factory, _policy_key = security_client
+    headers = _enroll_and_authenticate(client, "moat", "moat-device-1")
+
+    def unreachable(_settings, _action, _reason):
+        raise AgentActionPolicyError("OPA request failed")
+
+    monkeypatch.setattr(security_routes, "evaluate_agent_action", unreachable)
+    response = client.post(
+        "/v1/security/events",
+        headers=headers,
+        json={
+            "source_event_id": "override-3",
+            "occurred_at": "2026-08-28T12:00:00Z",
+            "action": "allowed_override",
+            "severity": "low",
+            "rule_id": "athena-policy:evil.example",
+            "target_indicator": "evil.example",
+            "evidence": {"override_reason": "long enough reason to pass validation"},
+        },
+    )
+    assert response.status_code == 503
+
+
+def test_non_override_events_never_reach_the_policy_engine(
+    security_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _factory, _policy_key = security_client
+    headers = _enroll_and_authenticate(client, "moat", "moat-device-1")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("evaluate_agent_action should not be called for a non-override action")
+
+    monkeypatch.setattr(security_routes, "evaluate_agent_action", fail_if_called)
+    response = client.post(
+        "/v1/security/events",
+        headers=headers,
+        json={
+            "source_event_id": "blocked-no-opa",
+            "occurred_at": "2026-08-28T12:00:00Z",
+            "action": "blocked",
+            "severity": "high",
+            "rule_id": "phishing-domain-42",
+            "target_indicator": "evil.example",
+            "evidence": {},
+        },
+    )
+    assert response.status_code == 201

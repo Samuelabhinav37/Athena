@@ -43,10 +43,16 @@ fast threat rules use this signed pull channel.
 
 ## Human and policy boundary
 
-The `athena.security.agent_actions` OPA package allows local block, warning, and quarantine actions.
-It rejects destructive actions and permits an override only with explicit human approval and a
-meaningful reason. Machine learning may recommend and an LLM may explain; neither can enact a block,
-override, deletion, or access change.
+The `athena.security.agent_actions` OPA package, evaluated by `POST /v1/security/events` before an
+`allowed_override` event is accepted, allows local block, warning, and quarantine actions, rejects
+destructive ones outright, and requires a real, meaningful stated reason for an override -- there is
+no shorter path. It deliberately does not require the override to already be pre-approved before
+it can be *recorded*: the event is itself the record of a human (the browser/mailbox user) clicking
+through a local warning and typing that reason, not something an agent can synthesize or approve on
+its own. The actual organizational approval boundary is `POST /v1/security/policies`, gated to
+administrators only -- republishing a signed policy without the domain is the one thing that
+actually lifts a block, and machine learning or an LLM can no more do that than they can enact a
+block, deletion, or access change directly.
 
 ## Analyst view
 

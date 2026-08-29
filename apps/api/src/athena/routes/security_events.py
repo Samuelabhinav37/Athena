@@ -25,10 +25,12 @@ from athena.schemas import (
 )
 from athena.services.request_controls import RequestControls
 from athena.services.security_agents import (
+    AgentActionPolicyError,
     AgentAuthenticationError,
     AgentPrincipal,
     canonical_digest,
     create_enrollment_secret,
+    evaluate_agent_action,
     issue_agent_token,
     verify_agent_token,
     verify_enrollment_secret,
@@ -119,9 +121,33 @@ def exchange_agent_token(
 
 
 @router.post("/events", response_model=SecurityEventResponse, status_code=status.HTTP_201_CREATED)
-def ingest_event(request: SecurityEventCreate, agent: AgentIdentity) -> SecurityEventResponse:
+def ingest_event(
+    request: SecurityEventCreate,
+    agent: AgentIdentity,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SecurityEventResponse:
     if "events:write" not in agent.capabilities:
         raise HTTPException(status_code=403, detail="Agent token cannot write events")
+    # Only override events reach the policy engine -- every other action is
+    # already constrained to a fixed set by SecurityEventCreate's own
+    # validator, so this stays off the hot path for the common case. See
+    # evaluate_agent_action's own docstring for why an unapproved-override
+    # check isn't part of this (nothing in the real architecture produces
+    # that signal before ingestion).
+    if request.action == "allowed_override":
+        reason = str(request.evidence.get("override_reason", ""))
+        try:
+            evaluate_agent_action(settings, request.action, reason)
+        except AgentActionPolicyError as error:
+            if error.violations:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "Security event denied by policy",
+                        "violations": error.violations,
+                    },
+                ) from error
+            raise HTTPException(status_code=503, detail="Policy engine unavailable") from error
     with get_session_factory(agent.tenant_id)() as session:
         admission = RequestControls(session).admit(
             namespace="security-events",

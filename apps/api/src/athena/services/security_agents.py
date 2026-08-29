@@ -15,6 +15,7 @@ from jwt.exceptions import InvalidTokenError
 
 from athena.config import Settings
 from athena.models import SecurityAgent
+from athena.policy.opa import OpaClient, OpaDecision, OpaEvaluationError
 
 
 class AgentAuthenticationError(ValueError):
@@ -120,4 +121,44 @@ def verify_agent_token(token: str, settings: Settings) -> AgentPrincipal:
         )
     except (InvalidTokenError, ValueError) as error:
         raise AgentAuthenticationError("Invalid or expired agent token") from error
+
+
+class AgentActionPolicyError(RuntimeError):
+    """Raised when the athena.security.agent_actions policy denies an event,
+    or can't be evaluated at all. Carries `violations` so the route can
+    return them; `violations` is empty for the OPA-unreachable case."""
+
+    def __init__(self, message: str, violations: list[dict] | None = None) -> None:
+        super().__init__(message)
+        self.violations = violations or []
+
+
+def evaluate_agent_action(settings: Settings, action: str, reason: str = "") -> OpaDecision:
+    """Evaluates athena.security.agent_actions before an event is accepted.
+
+    Only called for "allowed_override" by the route (see ingest_event) --
+    every other action is already constrained to a fixed set by
+    SecurityEventCreate's own Pydantic validator, so evaluating this policy
+    for the common case (blocked/warned/quarantined) would just be a slower,
+    redundant version of a check that already happened. `reason` is read
+    from the agent's own evidence.override_reason convention by the caller
+    -- there's no dedicated schema field for it today, only that informal
+    convention (see SecurityEventCreate.evidence in schemas.py).
+
+    Raises AgentActionPolicyError on either a real denial (violations
+    populated) or an OPA-unreachable/malformed-response failure (violations
+    empty) -- the route maps both to an HTTP error, just different codes.
+    """
+    client = OpaClient(settings.opa_url)
+    client.policy_path = "athena/security/agent_actions/evaluate"
+    try:
+        with client:
+            decision = client.evaluate({"action": action, "reason": reason})
+    except OpaEvaluationError as error:
+        raise AgentActionPolicyError(str(error)) from error
+    if not decision.allow:
+        raise AgentActionPolicyError(
+            "Security event denied by agent_actions policy", decision.violations
+        )
+    return decision
 
