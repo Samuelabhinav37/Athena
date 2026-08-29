@@ -17,6 +17,7 @@ from athena.schemas import (
     SecurityAgentResponse,
     SecurityAgentTokenRequest,
     SecurityAgentTokenResponse,
+    SecurityCorrelationResponse,
     SecurityEventCreate,
     SecurityEventResponse,
     SecurityPolicyPublishRequest,
@@ -33,6 +34,7 @@ from athena.services.security_agents import (
     verify_enrollment_secret,
     verify_policy_signature,
 )
+from athena.services.security_correlation import find_cross_product_correlations
 
 router = APIRouter(prefix="/v1/security", tags=["browser and email security"])
 agent_bearer = HTTPBearer(auto_error=False)
@@ -193,6 +195,23 @@ def list_events(
             .offset(offset)
         )
     )
+
+
+@router.get(
+    "/events/correlations",
+    response_model=list[SecurityCorrelationResponse],
+    dependencies=[Depends(require_viewer)],
+)
+def list_cross_product_correlations(
+    session: DatabaseSession,
+    window_days: Annotated[int, Query(ge=1, le=180)] = 30,
+) -> list[SecurityCorrelationResponse]:
+    """Domains/indicators reported by more than one agent_type (moat and
+    clutter) within the window -- a much higher-confidence signal than
+    either product's own detection alone, over evidence that's already
+    ingested. See services/security_correlation.py."""
+    correlations = find_cross_product_correlations(session, timedelta(days=window_days))
+    return [SecurityCorrelationResponse(**vars(c)) for c in correlations]
 
 
 @router.get(

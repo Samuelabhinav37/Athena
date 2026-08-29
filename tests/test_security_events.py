@@ -172,3 +172,113 @@ def test_security_event_rejects_sensitive_or_full_url_evidence(security_client) 
 def test_security_domain_models_are_append_only(model_type) -> None:
     assert event.contains(model_type, "before_update", prevent_security_evidence_mutation)
     assert event.contains(model_type, "before_delete", prevent_security_evidence_mutation)
+
+
+def _enroll_and_authenticate(
+    client: TestClient, agent_type: str, external_id: str
+) -> dict[str, str]:
+    enrollment = client.post(
+        "/v1/security/agents",
+        json={"external_id": external_id, "agent_type": agent_type, "display_name": external_id},
+    )
+    assert enrollment.status_code == 201
+    body = enrollment.json()
+    exchange = client.post(
+        "/v1/security/agent-token",
+        json={
+            "tenant_id": "test-tenant",
+            "agent_id": body["id"],
+            "enrollment_secret": body["enrollment_secret"],
+        },
+    )
+    assert exchange.status_code == 200
+    return {"Authorization": f"Bearer {exchange.json()['access_token']}"}
+
+
+def test_cross_product_correlation_surfaces_an_indicator_seen_by_both_agent_types(
+    security_client,
+) -> None:
+    client, _factory, _policy_key = security_client
+    moat_headers = _enroll_and_authenticate(client, "moat", "moat-device-1")
+    clutter_headers = _enroll_and_authenticate(client, "clutter", "clutter-mailbox-1")
+
+    moat_event = {
+        "source_event_id": "moat-evt-1",
+        "occurred_at": "2026-08-28T12:00:00Z",
+        "action": "blocked",
+        "severity": "high",
+        "rule_id": "phishing-domain-42",
+        "target_indicator": "shared-evil.example",
+        "evidence": {},
+    }
+    clutter_event = {
+        "source_event_id": "clutter-evt-1",
+        "occurred_at": "2026-08-28T13:00:00Z",
+        "action": "warned",
+        "severity": "critical",
+        "rule_id": "threat-signal:lookalike-domain",
+        "target_indicator": "shared-evil.example",
+        "evidence": {"brand": "example"},
+    }
+    moat_response = client.post("/v1/security/events", headers=moat_headers, json=moat_event)
+    assert moat_response.status_code == 201
+    clutter_response = client.post(
+        "/v1/security/events", headers=clutter_headers, json=clutter_event
+    )
+    assert clutter_response.status_code == 201
+
+    # A single-agent-type indicator should never appear in the correlation
+    # list -- the overwhelmingly common case, and the negative case this
+    # feature exists to filter out.
+    moat_only_event = {
+        **moat_event,
+        "source_event_id": "moat-evt-2",
+        "target_indicator": "moat-only.example",
+    }
+    moat_only_response = client.post(
+        "/v1/security/events", headers=moat_headers, json=moat_only_event
+    )
+    assert moat_only_response.status_code == 201
+
+    correlations = client.get("/v1/security/events/correlations")
+    assert correlations.status_code == 200
+    body = correlations.json()
+    assert len(body) == 1
+    entry = body[0]
+    assert entry["target_indicator"] == "shared-evil.example"
+    assert sorted(entry["agent_types"]) == ["clutter", "moat"]
+    assert entry["event_count"] == 2
+    # critical (clutter) outranks high (moat) -- the whole reason severity
+    # is ranked explicitly rather than sorted as a plain string.
+    assert entry["highest_severity"] == "critical"
+    assert sorted(entry["rule_ids"]) == ["phishing-domain-42", "threat-signal:lookalike-domain"]
+
+
+def test_cross_product_correlation_respects_the_window(security_client) -> None:
+    client, _factory, _policy_key = security_client
+    moat_headers = _enroll_and_authenticate(client, "moat", "moat-device-1")
+    clutter_headers = _enroll_and_authenticate(client, "clutter", "clutter-mailbox-1")
+
+    old_shared = {
+        "source_event_id": "old-1",
+        "occurred_at": "2020-01-01T00:00:00Z",
+        "action": "blocked",
+        "severity": "high",
+        "rule_id": "r1",
+        "target_indicator": "stale-shared.example",
+        "evidence": {},
+    }
+    old_shared_response = client.post("/v1/security/events", headers=moat_headers, json=old_shared)
+    assert old_shared_response.status_code == 201
+    assert (
+        client.post(
+            "/v1/security/events",
+            headers=clutter_headers,
+            json={**old_shared, "source_event_id": "old-2", "action": "warned"},
+        ).status_code
+        == 201
+    )
+
+    correlations = client.get("/v1/security/events/correlations", params={"window_days": 30})
+    assert correlations.status_code == 200
+    assert correlations.json() == []

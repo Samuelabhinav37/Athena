@@ -495,3 +495,18 @@ class SecurityPolicyResponse(BaseModel):
     signing_key_id: str
     published_by: str
     published_at: datetime
+
+
+class SecurityCorrelationResponse(BaseModel):
+    """One target_indicator reported by more than one agent_type within the
+    query window -- see services/security_correlation.py. Read-only; never
+    constructed from a database row via from_attributes, always built
+    explicitly from a CrossProductCorrelation dataclass in the route."""
+
+    target_indicator: str
+    agent_types: list[str]
+    event_count: int
+    highest_severity: str
+    first_seen: datetime
+    last_seen: datetime
+    rule_ids: list[str]
