@@ -7,9 +7,11 @@ from athena.config import Settings
 from athena.database import get_db_session
 from athena.main import app
 from athena.models import Base, Group, Identity, IdentityType, Role
+from athena.services import explanations as explanation_service
 from athena.services.explanations import (
     AIProviderResult,
     AzureAIProvider,
+    EvidenceSnapshotBuilder,
     ExplanationService,
     ExplanationUnavailable,
     InvalidExplanation,
@@ -138,6 +140,44 @@ def test_explanation_uses_bounded_structured_output_and_treats_evidence_as_data(
     assert captured.get("tools") is None
 
 
+def test_evidence_snapshot_applies_query_limits_before_materializing_rows(
+    session_factory: sessionmaker[Session], alice: Identity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed_limits: dict[str, int | None] = {}
+
+    def bounded_loader(name: str):
+        def load(_session: Session, _identity_id: object, *, limit: int | None = None):
+            observed_limits[name] = limit
+            return []
+
+        return load
+
+    monkeypatch.setattr(
+        explanation_service, "load_identity_entitlements", bounded_loader("entitlements")
+    )
+    monkeypatch.setattr(
+        explanation_service, "load_policy_evaluations", bounded_loader("policies")
+    )
+    monkeypatch.setattr(
+        explanation_service, "load_risk_assessments", bounded_loader("risks")
+    )
+    monkeypatch.setattr(
+        explanation_service, "load_anomaly_results", bounded_loader("anomalies")
+    )
+
+    with session_factory() as session:
+        identity = session.get(Identity, alice.id)
+        assert identity is not None
+        EvidenceSnapshotBuilder(session).build(identity)
+
+    assert observed_limits == {
+        "entitlements": 50,
+        "policies": 50,
+        "risks": 5,
+        "anomalies": 5,
+    }
+
+
 def test_settings_reject_non_local_ollama_endpoint() -> None:
     with pytest.raises(ValidationError, match="local loopback HTTP endpoint"):
         Settings(ollama_url="https://example.com")
@@ -209,8 +249,26 @@ def test_azure_ai_uses_managed_auth_redacts_identifiers_and_returns_audit_metada
     result = provider.generate(
         json.dumps(
             {
-                "identity": {"username": "alice", "display_name": "Alice", "id": "stable-id"},
-                "entitlements": [{"business_reason": "private reason", "action": "read"}],
+                "identity": {
+                    "username": "alice",
+                    "display_name": "Alice",
+                    "id": "stable-id",
+                    "department": "secret-research",
+                    "job_title": "Acquisition Target Lead",
+                    "roles": ["payroll-admin"],
+                    "groups": ["/mergers/project-codename"],
+                    "active": True,
+                },
+                "entitlements": [
+                    {
+                        "business_reason": "private reason",
+                        "action": "read",
+                        "resource": "acquisition-target",
+                        "privileged": True,
+                        "sensitivity": "restricted",
+                        "unreviewed_metadata": {"customer_name": "private-customer"},
+                    }
+                ],
             }
         ),
         {"type": "object"},
@@ -222,7 +280,19 @@ def test_azure_ai_uses_managed_auth_redacts_identifiers_and_returns_audit_metada
     assert "alice" not in user_prompt
     assert "Alice" not in user_prompt
     assert "private reason" not in user_prompt
-    assert "stable-id" in user_prompt
+    for sensitive_value in (
+        "stable-id",
+        "secret-research",
+        "Acquisition Target Lead",
+        "payroll-admin",
+        "project-codename",
+        "acquisition-target",
+        "private-customer",
+    ):
+        assert sensitive_value not in user_prompt
+    assert '"active":true' in user_prompt
+    assert '"privileged":true' in user_prompt
+    assert '"sensitivity":"restricted"' in user_prompt
     assert captured["body"]["temperature"] == 0
     assert captured["body"]["response_format"]["json_schema"]["strict"] is True
     assert "api-version=2024-10-21" in captured["url"]

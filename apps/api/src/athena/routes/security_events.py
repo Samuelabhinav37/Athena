@@ -37,6 +37,7 @@ from athena.services.security_agents import (
     verify_policy_signature,
 )
 from athena.services.security_correlation import find_cross_product_correlations
+from athena.tenant_queries import tenant_select
 
 router = APIRouter(prefix="/v1/security", tags=["browser and email security"])
 agent_bearer = HTTPBearer(auto_error=False)
@@ -172,7 +173,9 @@ def ingest_event(
         if enrolled is None:
             raise HTTPException(status_code=401, detail="Security agent is not enrolled")
         existing = session.scalar(
-            select(SecurityEvent).where(
+            tenant_select(
+                session,
+                SecurityEvent,
                 SecurityEvent.agent_id == agent.agent_id,
                 SecurityEvent.source_event_id == request.source_event_id,
             )
@@ -192,7 +195,9 @@ def ingest_event(
         except IntegrityError:
             session.rollback()
             concurrent = session.scalar(
-                select(SecurityEvent).where(
+                tenant_select(
+                    session,
+                    SecurityEvent,
                     SecurityEvent.agent_id == agent.agent_id,
                     SecurityEvent.source_event_id == request.source_event_id,
                 )
@@ -215,7 +220,7 @@ def list_events(
 ) -> list[SecurityEventResponse]:
     return list(
         session.scalars(
-            select(SecurityEvent)
+            tenant_select(session, SecurityEvent)
             .order_by(SecurityEvent.occurred_at.desc(), SecurityEvent.id.desc())
             .limit(limit)
             .offset(offset)
@@ -244,7 +249,11 @@ def list_cross_product_correlations(
     "/agents", response_model=list[SecurityAgentResponse], dependencies=[Depends(require_viewer)]
 )
 def list_agents(session: DatabaseSession) -> list[SecurityAgentResponse]:
-    return list(session.scalars(select(SecurityAgent).order_by(SecurityAgent.enrolled_at.desc())))
+    return list(
+        session.scalars(
+            tenant_select(session, SecurityAgent).order_by(SecurityAgent.enrolled_at.desc())
+        )
+    )
 
 
 @router.post(
@@ -282,8 +291,11 @@ def latest_policy(agent: AgentIdentity) -> SecurityPolicyResponse:
         raise HTTPException(status_code=403, detail="Agent token cannot read policies")
     with get_session_factory(agent.tenant_id)() as session:
         policy = session.scalar(
-            select(SecurityPolicyVersion)
-            .where(SecurityPolicyVersion.agent_type == agent.agent_type)
+            tenant_select(
+                session,
+                SecurityPolicyVersion,
+                SecurityPolicyVersion.agent_type == agent.agent_type,
+            )
             .order_by(SecurityPolicyVersion.published_at.desc(), SecurityPolicyVersion.id.desc())
             .limit(1)
         )

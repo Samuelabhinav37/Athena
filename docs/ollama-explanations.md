@@ -53,10 +53,13 @@ ATHENA_AZURE_AI_TIMEOUT_SECONDS=60
 
 Azure AI uses `DefaultAzureCredential` and never accepts an API key in Athena configuration. The
 endpoint must use HTTPS on an Azure AI hostname and must not contain credentials. Before hosted
-inference, Athena redacts usernames, display names, business reasons, and human-readable provenance
-endpoints. Stable evidence identifiers remain available for traceability. Authentication failures,
-safety refusals that omit valid structured content, transport failures, and malformed output all
-fail closed.
+inference, Athena constructs an allowlisted summary containing only identity active state,
+entitlement privilege and sensitivity classifications, policy decisions, risk score and level, and
+anomaly score and status. Identity identifiers, organizational attributes, roles, groups,
+permission and resource names, business reasons, free-text findings, provenance labels, and unknown
+metadata never enter the hosted-provider request. Stable evidence identifiers remain local for
+traceability. Authentication failures, safety refusals that omit valid structured content,
+transport failures, and malformed output all fail closed.
 
 ## Request
 

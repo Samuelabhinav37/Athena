@@ -21,52 +21,66 @@ from sqlalchemy.orm import sessionmaker
 )
 def test_transactional_backfill_preserves_and_restores_immutable_controls() -> None:
     engine = create_engine(os.environ["ATHENA_TEST_DATABASE_URL"])
-    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    with factory.begin() as session:
-        # Recreate the pre-tenant state this transition test is specifically validating.
-        session.execute(text("SET LOCAL session_replication_role = replica"))
-        session.execute(text("ALTER TABLE audit_events ALTER COLUMN tenant_id DROP NOT NULL"))
-        session.execute(
-            text(
-                """
-                INSERT INTO audit_events (
-                    id, occurred_at, actor_type, actor_id, action, entity_type, entity_id,
-                    tenant_id
-                ) VALUES (
-                    :id, now(), 'test', 'operator', 'seed', 'test', 'evidence-1', NULL
-                )
-                """
-            ),
-            {"id": uuid.uuid4()},
-        )
-        session.execute(text("SET LOCAL session_replication_role = origin"))
-    with factory() as session:
-        counts = capture_tenant_inventory(session).table_counts
-    approval = BootstrapTenantApproval(
-        tenant_id="athena-test",
-        display_name="Athena disposable test",
-        approval_reference="DISPOSABLE-TEST-2026-001",
-        authorized_by="test-suite",
-        approved_at=datetime(2026, 8, 21, 4, 0, tzinfo=UTC),
-        expected_preexisting_rows=counts,
-        inventory_sha256=tenant_inventory_digest(counts),
+    connection = engine.connect()
+    outer_transaction = connection.begin()
+    factory = sessionmaker(
+        bind=connection,
+        autoflush=False,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
     )
-    with factory.begin() as session:
-        plan = build_bootstrap_backfill_plan(session, approval)
-        result = execute_bootstrap_backfill(
-            session,
-            approval,
-            confirmed_plan_sha256=plan.plan_sha256,
+    try:
+        tenant_id = f"athena-test-{uuid.uuid4().hex}"
+        with factory.begin() as session:
+            # Recreate the pre-tenant state this transition test is specifically validating.
+            session.execute(text("SET LOCAL session_replication_role = replica"))
+            session.execute(text("ALTER TABLE audit_events ALTER COLUMN tenant_id DROP NOT NULL"))
+            session.execute(
+                text(
+                    """
+                    INSERT INTO audit_events (
+                        id, occurred_at, actor_type, actor_id, action, entity_type, entity_id,
+                        tenant_id
+                    ) VALUES (
+                        :id, now(), 'test', 'operator', 'seed', 'test', 'evidence-1', NULL
+                    )
+                    """
+                ),
+                {"id": uuid.uuid4()},
+            )
+            session.execute(text("SET LOCAL session_replication_role = origin"))
+        with factory() as session:
+            counts = capture_tenant_inventory(session).table_counts
+        approval = BootstrapTenantApproval(
+            tenant_id=tenant_id,
+            display_name="Athena disposable test",
+            approval_reference="DISPOSABLE-TEST-2026-001",
+            authorized_by="test-suite",
+            approved_at=datetime(2026, 8, 21, 4, 0, tzinfo=UTC),
+            expected_preexisting_rows=counts,
+            inventory_sha256=tenant_inventory_digest(counts),
         )
-        session.execute(text("ALTER TABLE audit_events ALTER COLUMN tenant_id SET NOT NULL"))
+        with factory.begin() as session:
+            plan = build_bootstrap_backfill_plan(session, approval)
+            result = execute_bootstrap_backfill(
+                session,
+                approval,
+                confirmed_plan_sha256=plan.plan_sha256,
+            )
+            session.execute(text("ALTER TABLE audit_events ALTER COLUMN tenant_id SET NOT NULL"))
 
-    assert result.assigned_rows == 1
-    assert result.assigned_table_counts["audit_events"] == 1
-    with factory() as session:
-        event = session.scalar(select(AuditEvent))
-        assert event is not None and event.tenant_id == "athena-test"
-        assert session.get(Tenant, "athena-test") is not None
-        with pytest.raises(DBAPIError, match="append-only"):
-            session.execute(update(Base.metadata.tables["audit_events"]).values(action="changed"))
-        session.rollback()
-    engine.dispose()
+        assert result.assigned_rows == 1
+        assert result.assigned_table_counts["audit_events"] == 1
+        with factory() as session:
+            event = session.scalar(select(AuditEvent))
+            assert event is not None and event.tenant_id == tenant_id
+            assert session.get(Tenant, tenant_id) is not None
+            with pytest.raises(DBAPIError, match="append-only"):
+                session.execute(
+                    update(Base.metadata.tables["audit_events"]).values(action="changed")
+                )
+            session.rollback()
+    finally:
+        outer_transaction.rollback()
+        connection.close()
+        engine.dispose()

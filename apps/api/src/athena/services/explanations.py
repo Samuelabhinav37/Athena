@@ -75,10 +75,10 @@ class EvidenceSnapshotBuilder:
         self.session = session
 
     def build(self, identity: Identity) -> tuple[dict[str, Any], list[str]]:
-        entitlements = list(load_identity_entitlements(self.session, identity.id))[:50]
-        policies = list(load_policy_evaluations(self.session, identity.id))[:50]
-        risks = list(load_risk_assessments(self.session, identity.id))[:5]
-        anomalies = list(load_anomaly_results(self.session, identity.id))[:5]
+        entitlements = list(load_identity_entitlements(self.session, identity.id, limit=50))
+        policies = list(load_policy_evaluations(self.session, identity.id, limit=50))
+        risks = list(load_risk_assessments(self.session, identity.id, limit=5))
+        anomalies = list(load_anomaly_results(self.session, identity.id, limit=5))
         references = [f"identity:{identity.id}"]
         references.extend(f"entitlement:{item.id}" for item in entitlements)
         references.extend(f"policy_evaluation:{item.id}" for item in policies)
@@ -221,7 +221,6 @@ class AzureAIProvider:
     name = "azure_ai"
     contract_version = "1.0"
     _SCOPE = "https://cognitiveservices.azure.com/.default"
-    _REDACTED_KEYS = {"username", "display_name", "business_reason", "from", "to"}
 
     def __init__(
         self,
@@ -237,18 +236,52 @@ class AzureAIProvider:
         )
 
     @classmethod
-    def _redact(cls, value: Any) -> Any:
-        if isinstance(value, dict):
-            return {
-                key: "[REDACTED]" if key in cls._REDACTED_KEYS else cls._redact(item)
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [cls._redact(item) for item in value]
-        return value
+    def _minimize_external_evidence(cls, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            raise ValueError("Evidence snapshot must be an object")
+
+        identity = value.get("identity")
+        entitlements = value.get("entitlements")
+        policies = value.get("policy_evaluations")
+        risks = value.get("risk_assessments")
+        anomalies = value.get("anomaly_assessments")
+        return {
+            "schema_version": value.get("schema_version"),
+            "identity": {
+                "active": identity.get("active") if isinstance(identity, dict) else None,
+            },
+            "entitlements": [
+                {
+                    "privileged": item.get("privileged"),
+                    "sensitivity": item.get("sensitivity"),
+                }
+                for item in entitlements or []
+                if isinstance(item, dict)
+            ],
+            "policy_evaluations": [
+                {"decision": item.get("decision")}
+                for item in policies or []
+                if isinstance(item, dict)
+            ],
+            "risk_assessments": [
+                {"score": item.get("score"), "level": item.get("level")}
+                for item in risks or []
+                if isinstance(item, dict)
+            ],
+            "anomaly_assessments": [
+                {
+                    "decision_score": item.get("decision_score"),
+                    "is_anomaly": item.get("is_anomaly"),
+                }
+                for item in anomalies or []
+                if isinstance(item, dict)
+            ],
+        }
 
     def generate(self, evidence_json: str, schema: dict[str, Any]) -> AIProviderResult:
-        redacted_evidence = _canonical_json(self._redact(json.loads(evidence_json)))
+        redacted_evidence = _canonical_json(
+            self._minimize_external_evidence(json.loads(evidence_json))
+        )
         endpoint = (
             f"{self.settings.azure_ai_endpoint}/openai/deployments/{self.model}"
             f"/chat/completions?api-version={self.settings.azure_ai_api_version}"

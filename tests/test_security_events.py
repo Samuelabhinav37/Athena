@@ -1,5 +1,6 @@
 import base64
 import json
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -140,6 +141,52 @@ def test_agent_enrollment_token_event_and_policy_flow(security_client) -> None:
     assert len(events.json()) == 1
     with factory() as session:
         assert session.scalar(select(SecurityAgent)) is not None
+
+
+def test_security_event_reads_are_tenant_scoped_without_database_rls(security_client) -> None:
+    client, factory, _policy_key = security_client
+    other_tenant_id = "other-tenant"
+    with factory.begin() as session:
+        session.add(
+            Tenant(
+                id=other_tenant_id,
+                display_name="Other Tenant",
+                approval_reference="approved-other-tenant",
+                authorized_by="security@example.com",
+                approved_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+                inventory_sha256="1" * 64,
+            )
+        )
+    other_factory = sessionmaker(
+        bind=factory.kw["bind"], expire_on_commit=False, info={"tenant_id": other_tenant_id}
+    )
+    with other_factory.begin() as session:
+        agent = SecurityAgent(
+            id=uuid.uuid4(),
+            external_id="foreign-agent",
+            agent_type="moat",
+            display_name="Foreign Agent",
+            credential_salt="salt",
+            credential_digest="digest",
+            enrolled_by="other-admin",
+        )
+        session.add(agent)
+        session.flush()
+        session.add(
+            SecurityEvent(
+                agent_id=agent.id,
+                source_event_id="foreign-event",
+                occurred_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+                action="blocked",
+                severity="high",
+                rule_id="foreign-rule",
+                evidence={},
+                evidence_digest="2" * 64,
+            )
+        )
+
+    assert client.get("/v1/security/events").json() == []
+    assert client.get("/v1/security/agents").json() == []
 
 
 def test_security_event_rejects_sensitive_or_full_url_evidence(security_client) -> None:

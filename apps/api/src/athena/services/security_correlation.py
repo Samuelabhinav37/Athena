@@ -16,15 +16,8 @@ Python rather than via SQL MAX() on the column, since the severity strings
 ("low" < "medium" < "high" < "critical") don't sort correctly as plain
 text.
 
-Deliberately takes no tenant_id parameter and never filters by it: like
-list_events/list_agents in routes/security_events.py, this runs against the
-require_viewer-gated DatabaseSession, whose tenant scope is already
-enforced by Postgres RLS via the athena.tenant_id session variable
-(database.py's get_db_session -> get_session_factory(context.tenant_id) ->
-set_config("athena.tenant_id", ...)) -- adding an application-level
-tenant_id filter here would be redundant at best, and at worst could mask
-an RLS misconfiguration behind a query that looks correctly scoped either
-way. Every row this function can see is already this request's own tenant.
+The query applies tenant scope in the application as defense in depth while
+PostgreSQL RLS remains the authoritative enforcement boundary.
 """
 
 from collections import defaultdict
@@ -35,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from athena.models import SecurityAgent, SecurityEvent
+from athena.tenant_queries import apply_tenant_scope
 
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -59,11 +53,10 @@ def find_cross_product_correlations(
     reported only by one product (the overwhelmingly common case -- most
     domains Moat blocks were never also seen in anyone's inbox) never
     appears here; this is specifically the cross-product overlap, not a
-    general event listing (see list_events for that). `session` must be a
-    require_viewer-gated DatabaseSession -- see this module's own docstring
-    for why tenant scoping is not this function's job."""
+    general event listing (see list_events for that). `session` must carry
+    validated tenant authority."""
     cutoff = datetime.now(UTC) - window
-    rows = session.execute(
+    statement = (
         select(
             SecurityEvent.target_indicator,
             SecurityAgent.agent_type,
@@ -71,12 +64,17 @@ def find_cross_product_correlations(
             SecurityEvent.rule_id,
             SecurityEvent.occurred_at,
         )
-        .join(SecurityAgent, SecurityEvent.agent_id == SecurityAgent.id)
+        .join(
+            SecurityAgent,
+            (SecurityEvent.agent_id == SecurityAgent.id)
+            & (SecurityEvent.tenant_id == SecurityAgent.tenant_id),
+        )
         .where(
             SecurityEvent.target_indicator.is_not(None),
             SecurityEvent.occurred_at >= cutoff,
         )
-    ).all()
+    )
+    rows = session.execute(apply_tenant_scope(session, statement, SecurityEvent)).all()
 
     by_indicator: dict[str, list[tuple[str, str, str, datetime]]] = defaultdict(list)
     for target_indicator, agent_type, severity, rule_id, occurred_at in rows:
