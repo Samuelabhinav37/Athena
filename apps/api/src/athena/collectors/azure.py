@@ -236,10 +236,16 @@ class AzureCollector:
         root = base_url.rstrip("/")
         url = f"{root}{path}"
         values: list[dict] = []
+        visited: set[str] = set()
         while url:
+            if url in visited or len(visited) >= 10000:
+                raise AzureCollectionError("Azure pagination repeated or exceeded its limit")
+            visited.add(url)
             response = self.client.get(url, headers=headers)
             response.raise_for_status()
             payload = response.json()
+            if not isinstance(payload, dict):
+                raise AzureCollectionError("Azure collection response was not an object")
             page = payload.get("value")
             if not isinstance(page, list) or not all(isinstance(item, dict) for item in page):
                 raise AzureCollectionError("Azure collection response value was not an object list")

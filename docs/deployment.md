@@ -107,3 +107,10 @@ multi-worker or multi-replica topology.
 The proposed Azure service mapping, approval boundaries, recovery rehearsal, and production
 acceptance sequence are maintained in the
 [production deployment and recovery plan](production-deployment-plan.md).
+
+## Optional review collection worker
+
+The opt-in [worker overlay and alert runbook](review-worker-operations.md) adds
+background verification using the existing API image, with no published ports or
+automatic migration. It must be configured for an approved tenant/provider scope.
+The overlay has been configuration-validated only; it has not been deployed.

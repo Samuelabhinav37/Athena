@@ -242,6 +242,10 @@ class ReviewCaseResponse(BaseModel):
     title: str
     status: ReviewStatus
     owner: str | None
+    owner_id: uuid.UUID | None
+    revision: int
+    policy_evaluation_id: uuid.UUID | None
+    target_snapshot: dict | None
     due_at: datetime
     resolution: ReviewDecision | None
     resolved_at: datetime | None
@@ -254,16 +258,55 @@ class OpenReviewRequest(BaseModel):
     identity_id: uuid.UUID
     owner: str | None = Field(default=None, min_length=1, max_length=255)
     due_days: int = Field(default=7, ge=1, le=90)
+    finding_id: uuid.UUID | None = None
+    policy_evaluation_id: uuid.UUID | None = None
+    proposed_action: ReviewDecision = ReviewDecision.RETAIN
+    closure_goal: str = "record_decision"
 
 
 class AssignReviewRequest(BaseModel):
-    owner: str = Field(min_length=1, max_length=255)
+    owner: str | None = Field(default=None, min_length=1, max_length=255)
+    owner_id: uuid.UUID | None = None
+    revision: int | None = Field(default=None, ge=1)
     reason: str = Field(min_length=1, max_length=2000)
 
 
 class DecideReviewRequest(BaseModel):
     decision: ReviewDecision
     reason: str = Field(min_length=10, max_length=2000)
+    revision: int | None = Field(default=None, ge=1)
+
+
+class ReviewerResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    identity_id: uuid.UUID
+    issuer: str
+    subject: str
+    display_name: str
+    active: bool
+
+
+class RegisterReviewerRequest(BaseModel):
+    identity_id: uuid.UUID
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class ReviewerEligibilityRequest(BaseModel):
+    active: bool
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class FulfillmentRequest(BaseModel):
+    revision: int = Field(ge=1)
+    operator_id: uuid.UUID | None = None
+    complete: bool = False
+    due_days: int = Field(default=7, ge=1, le=90)
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class VerifyReviewRequest(BaseModel):
+    revision: int = Field(ge=1)
 
 
 class MonitoringStepResponse(BaseModel):

@@ -185,22 +185,38 @@ class GitHubCollector:
             )
             if response.status_code == 304:
                 payload = cached.get("payload")
-                if not isinstance(payload, list):
+                if not etag or not isinstance(payload, list) or not all(
+                    isinstance(item, dict) for item in payload
+                ):
                     raise GitHubCollectionError(
                         f"GitHub returned 304 without cached payload for {path}"
                     )
                 return payload
             response.raise_for_status()
             payload = response.json()
-            if not isinstance(payload, list):
+            if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
                 raise GitHubCollectionError(f"GitHub response was not a list for {path}")
             first_page_etag = response.headers.get("etag")
             page = 2
+            visited = {str(response.request.url)}
             while "next" in response.links:
-                response = self.client.get(response.links["next"]["url"], headers=self._headers())
+                next_url = httpx.URL(response.links["next"]["url"])
+                initial = httpx.URL(f"{self.settings.github_api_url}{path}")
+                if (
+                    (next_url.scheme, next_url.host, next_url.port, next_url.path)
+                    != (initial.scheme, initial.host, initial.port, initial.path)
+                    or next_url.userinfo or next_url.fragment
+                ):
+                    raise GitHubCollectionError("GitHub pagination left its trusted endpoint")
+                if str(next_url) in visited or len(visited) >= 10000:
+                    raise GitHubCollectionError("GitHub pagination repeated or exceeded its limit")
+                visited.add(str(next_url))
+                response = self.client.get(next_url, headers=self._headers())
                 response.raise_for_status()
                 next_payload = response.json()
-                if not isinstance(next_payload, list):
+                if not isinstance(next_payload, list) or not all(
+                    isinstance(item, dict) for item in next_payload
+                ):
                     raise GitHubCollectionError(f"GitHub page was not a list for {path}")
                 payload.extend(next_payload)
                 page += 1

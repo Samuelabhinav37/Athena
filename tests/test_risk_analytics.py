@@ -13,6 +13,7 @@ from athena.models import (
     IdentityType,
     PolicyDecision,
     PolicyEvaluation,
+    ReviewCase,
     ReviewDecision,
     ReviewEvent,
     ReviewStatus,
@@ -327,42 +328,32 @@ def test_only_assigned_owner_can_decide_review(risk_session: Session) -> None:
                        reason="Unauthorized reviewer tried to retain access")
 
 
-def test_review_api_supports_open_assign_and_decide(risk_session: Session) -> None:
+def test_review_api_rejects_implicit_targets_and_username_only_assignment(
+    risk_session: Session,
+) -> None:
     DriftScenarioService(risk_session).apply()
     alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
-    assert alice is not None
     RiskAnalyticsService(risk_session).assess(alice)
-
-    def override_session() -> Generator[Session]:
-        yield risk_session
-
-    app.dependency_overrides[get_db_session] = override_session
+    legacy = RemediationService(risk_session).open_for_latest_evidence(alice, actor="fixture")
+    app.dependency_overrides[get_db_session] = lambda: risk_session
     app.dependency_overrides[get_current_principal] = lambda: Principal(
         "user-charlie", "charlie", frozenset({"athena-reviewer"}), {}
     )
-    client = TestClient(app)
     try:
-        opened = client.post("/v1/reviews", json={
-            "identity_id": str(alice.id), "due_days": 5,
-        })
-        assert opened.status_code == 201
-        case_id = opened.json()["id"]
-        assigned = client.post(f"/v1/reviews/{case_id}/assign", json={
+        client = TestClient(app)
+        opened = client.post("/v1/reviews", json={"identity_id": str(alice.id)})
+        assigned = client.post(f"/v1/reviews/{legacy.case_id}/assign", json={
             "owner": "charlie", "reason": "Assign analyst",
         })
-        assert assigned.status_code == 200
-        decided = client.post(f"/v1/reviews/{case_id}/decide", json={
-            "decision": "exception",
-            "reason": "Approved temporary exception with compensating monitoring",
+        decided = client.post(f"/v1/reviews/{legacy.case_id}/decide", json={
+            "decision": "exception", "reason": "Attempt username-only approval",
         })
     finally:
         app.dependency_overrides.clear()
-    assert decided.status_code == 200
-    payload = decided.json()
-    assert payload["status"] == "resolved"
-    assert payload["resolution"] == "exception"
-    assert len(payload["events"]) == 3
-    assert {event["actor"] for event in payload["events"]} == {"charlie"}
+    assert opened.status_code == assigned.status_code == decided.status_code == 409
+    assert "exactly one" in opened.json()["detail"]
+    assert "owner_id" in assigned.json()["detail"]
+    assert risk_session.get(ReviewCase, legacy.case_id).status == ReviewStatus.OPEN
 
 
 def test_review_detail_returns_not_found_for_another_tenant_case_id(

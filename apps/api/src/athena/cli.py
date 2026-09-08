@@ -33,7 +33,8 @@ from athena.services.monitoring import MonitoringError, MonitoringService
 from athena.services.peer_anomaly import PeerAnomalyService
 from athena.services.policy_evaluation import PolicyEvaluationService
 from athena.services.provenance import ProvenanceService
-from athena.services.remediation import RemediationService, load_case
+from athena.services.remediation import RemediationService
+from athena.services.review_worker import ReviewRetryWorker
 from athena.services.risk_analytics import RiskAnalyticsService
 from athena.services.security_gate import SecurityGateError, SecurityGateService
 from athena.services.tenant_backfill import (
@@ -268,18 +269,8 @@ def open_review(
 def assign_review(
     tenant_id: str, case_id: uuid.UUID, owner: str, actor: str, reason: str
 ) -> int:
-    try:
-        with get_session_factory(tenant_id)() as session:
-            case = load_case(session, case_id)
-            if case is None:
-                raise ValueError(f"review {case_id} was not found")
-            result = RemediationService(session).assign(case, owner, actor, reason)
-    except (SQLAlchemyError, ValueError) as error:
-        print(f"Assign review failed: {error}", file=sys.stderr)
-        return 1
-    payload = {"case_id": str(result.case_id), "status": result.status.value}
-    print(json.dumps(payload, sort_keys=True))
-    return 0
+    print("Assign review requires the authenticated bound-review API", file=sys.stderr)
+    return 1
 
 
 def decide_review(
@@ -289,24 +280,8 @@ def decide_review(
     actor: str,
     reason: str,
 ) -> int:
-    try:
-        with get_session_factory(tenant_id)() as session:
-            case = load_case(session, case_id)
-            if case is None:
-                raise ValueError(f"review {case_id} was not found")
-            result = RemediationService(session).decide(case, decision, actor, reason)
-    except (SQLAlchemyError, ValueError) as error:
-        print(f"Decide review failed: {error}", file=sys.stderr)
-        return 1
-    destructive = decision in (ReviewDecision.REVOKE, ReviewDecision.EXTEND)
-    payload = {
-        "case_id": str(result.case_id),
-        "status": result.status.value,
-        "resolution": result.resolution.value if result.resolution else None,
-        "execution_status": "pending" if destructive else "not_required",
-    }
-    print(json.dumps(payload, sort_keys=True))
-    return 0
+    print("Decide review requires the authenticated bound-review API", file=sys.stderr)
+    return 1
 
 
 def run_monitoring_slot(
@@ -426,6 +401,51 @@ def monitoring_loop(
         if result != 0:
             return result
         time.sleep(interval_seconds)
+
+
+def retry_review_collection(tenant_id: str, limit: int, heartbeat_file: Path | None = None) -> int:
+    try:
+        with get_session_factory(tenant_id)() as session:
+            result = ReviewRetryWorker(session, get_settings()).run_once(limit=limit)
+    except (SQLAlchemyError, ValueError):
+        print(json.dumps({
+            "event": "review_worker_error", "tenant_id": tenant_id,
+            "at": datetime.now(UTC).isoformat(), "code": "service_unavailable",
+        }), flush=True)
+        return 1
+    alerts = []
+    if result["failed"]:
+        alerts.append("collection_failed")
+    if result["exhausted"]:
+        alerts.append("retry_exhausted")
+    print(json.dumps({
+        "event": "review_worker_sweep", "tenant_id": tenant_id,
+        "at": datetime.now(UTC).isoformat(), "alerts": alerts, **result,
+    }, sort_keys=True), flush=True)
+    if heartbeat_file is not None:
+        try:
+            heartbeat_file.touch()
+        except OSError:
+            print(json.dumps({
+                "event": "review_worker_error", "tenant_id": tenant_id,
+                "at": datetime.now(UTC).isoformat(), "code": "heartbeat_unavailable",
+            }), flush=True)
+            return 1
+    return 1 if result["failed"] else 0
+
+
+def review_collection_loop(
+    tenant_id: str, limit: int, interval_seconds: int, heartbeat_file: Path | None = None,
+) -> int:
+    if interval_seconds < 60 or not 1 <= limit <= 1000:
+        print("Worker interval must be at least 60 seconds; limit must be 1-1000", file=sys.stderr)
+        return 1
+    try:
+        while True:
+            retry_review_collection(tenant_id, limit, heartbeat_file)
+            time.sleep(interval_seconds)
+    except KeyboardInterrupt:
+        return 0
 
 
 def tenant_inventory() -> int:
@@ -627,6 +647,14 @@ def main() -> int:
     )
     decide_parser.add_argument("--actor", required=True)
     decide_parser.add_argument("--reason", required=True)
+    retry_parser = tenant_command(
+        "retry-review-collection", help="Retry pending read-only review verification"
+    )
+    retry_parser.add_argument("--limit", type=int, default=100)
+    retry_parser.add_argument("--heartbeat-file", type=Path,
+                              help="Touch this file after each completed database sweep")
+    retry_parser.add_argument("--interval-seconds", type=int, default=0,
+                              help="Repeat at this interval (minimum 60); 0 runs once")
     monitor_parser = tenant_command(
         "monitor-once", help="Run one idempotent continuous-monitoring slot"
     )
@@ -725,6 +753,15 @@ def main() -> int:
             arguments.decision,
             arguments.actor,
             arguments.reason,
+        )
+    if arguments.command == "retry-review-collection":
+        if arguments.interval_seconds:
+            return review_collection_loop(
+                arguments.tenant_id, arguments.limit, arguments.interval_seconds,
+                arguments.heartbeat_file,
+            )
+        return retry_review_collection(
+            arguments.tenant_id, arguments.limit, arguments.heartbeat_file,
         )
     if arguments.command == "monitor-once":
         schedule_key = arguments.schedule_key or datetime.now(UTC).strftime("manual:%Y%m%dT%H%M")

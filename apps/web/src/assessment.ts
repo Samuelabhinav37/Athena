@@ -15,9 +15,25 @@ export function reviewProgress(reviews: ReviewCase[]) {
 
 export function orderReviews(reviews: ReviewCase[]): ReviewCase[] {
   return [...reviews].sort((a, b) => {
-    const resolved = Number(a.status === "resolved") - Number(b.status === "resolved");
+    const resolved = Number(["resolved", "cancelled"].includes(a.status)) - Number(["resolved", "cancelled"].includes(b.status));
     return resolved || Date.parse(a.due_at) - Date.parse(b.due_at) || a.id.localeCompare(b.id);
   });
+}
+
+export function manualWork(review: ReviewCase, now = Date.now()) {
+  const events = [...review.events].sort((a, b) => Number(a.evidence_snapshot.revision ?? 0) - Number(b.evidence_snapshot.revision ?? 0));
+  events.reverse();
+  const assignment = events.find((event) => event.action === "fulfillment_assigned");
+  const completion = events.find((event) => event.action === "operator_completed");
+  const verification = events.find((event) => event.action === "verification_recorded");
+  const requested = events.find((event) => event.action === "verification_requested");
+  const revision = (event: typeof assignment) => Number(event?.evidence_snapshot.revision ?? 0);
+  if (!assignment) return { status: "not_assigned", due: "" };
+  const due = String(assignment.evidence_snapshot.due_at ?? "");
+  if (revision(assignment) > revision(completion)) return { status: Date.parse(due) < now ? "overdue" : "pending", due };
+  if (revision(requested) > Math.max(revision(verification), revision(completion))) return { status: "awaiting_verification", due };
+  if (revision(verification) > revision(completion)) return { status: String(verification?.evidence_snapshot.outcome ?? "unknown"), due };
+  return { status: "awaiting_verification", due };
 }
 
 type Reader = <T>(path: string) => Promise<T>;

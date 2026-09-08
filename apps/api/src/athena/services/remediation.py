@@ -84,6 +84,8 @@ class RemediationService:
         return CaseOutcome(case.id, case.status, case.resolution)
 
     def assign(self, case: ReviewCase, owner: str, actor: str, reason: str) -> CaseOutcome:
+        if case.target_snapshot:
+            raise ValueError("Bound reviews require the authenticated review service")
         if case.status not in (ReviewStatus.OPEN, ReviewStatus.IN_REVIEW):
             raise ValueError("Only active cases can be assigned")
         previous = case.status
@@ -106,6 +108,8 @@ class RemediationService:
     def decide(
         self, case: ReviewCase, decision: ReviewDecision, actor: str, reason: str
     ) -> CaseOutcome:
+        if case.target_snapshot:
+            raise ValueError("Bound reviews require the authenticated review service")
         if case.status != ReviewStatus.IN_REVIEW or not case.owner:
             raise ValueError("A case must be assigned and in review before a decision")
         if actor != case.owner:

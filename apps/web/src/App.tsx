@@ -148,7 +148,7 @@ function Dashboard({ user }: { user: User }) {
     return () => { active = false; controller.abort(); };
   }, [user]);
 
-  const openReviews = orderReviews(reviews.filter((review) => !["closed", "resolved"].includes(review.status)));
+  const openReviews = orderReviews(reviews.filter((review) => ["open", "in_review"].includes(review.status)));
   const staleConnectors = connectors.filter((connector) => freshness(connector.observed_at) !== "recent");
   const latestRun = runs[0];
   async function inspectIdentity(id: string) {

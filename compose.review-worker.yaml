@@ -1,0 +1,45 @@
+# Opt-in overlay: use together with compose.demo.yaml after schema/scope approval.
+services:
+  review-worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command:
+      - python
+      - -m
+      - athena.cli
+      - retry-review-collection
+      - --tenant-id
+      - ${ATHENA_REVIEW_WORKER_TENANT:?Set the approved worker tenant}
+      - --interval-seconds
+      - "60"
+      - --heartbeat-file
+      - /tmp/review-worker.heartbeat
+    environment:
+      ATHENA_ENV: demo
+      ATHENA_DATABASE_URL: postgresql+psycopg://athena_app:${ATHENA_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-athena}
+      ATHENA_AZURE_ENABLED: "true"
+      ATHENA_AZURE_TENANT_ID: ${ATHENA_AZURE_TENANT_ID:?Set the approved Entra tenant}
+      ATHENA_AZURE_SUBSCRIPTION_ID: ${ATHENA_AZURE_SUBSCRIPTION_ID:?Set the approved subscription}
+      AZURE_TENANT_ID: ${ATHENA_AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:?Set the read-only collector client}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:?Supply the read-only collector credential}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; age=time.time()-os.stat('/tmp/review-worker.heartbeat').st_mtime; raise SystemExit(0 if 0 <= age < 300 else 1)"]
+      interval: 60s
+      timeout: 5s
+      start_period: 60s
+      retries: 3

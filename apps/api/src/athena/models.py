@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
+    inspect,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -816,15 +817,45 @@ class AnomalyResult(TenantScopedMixin, Base):
     identity: Mapped[Identity | None] = relationship(overlaps="results,run")
 
 
+class Reviewer(TenantScopedMixin, Base):
+    __tablename__ = "reviewers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_reviewers_tenant_id"),
+        UniqueConstraint("tenant_id", "issuer", "subject", name="uq_reviewers_principal"),
+        tenant_foreign_key(
+            "identity_id", "identities", "fk_reviewers_identity", ondelete="RESTRICT"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    provenance: Mapped[dict] = mapped_column(json_type, nullable=False)
+
+
 class ReviewCase(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "review_cases"
     __table_args__ = (
         CheckConstraint(
-            "risk_assessment_id IS NOT NULL OR anomaly_result_id IS NOT NULL",
+            "risk_assessment_id IS NOT NULL OR anomaly_result_id IS NOT NULL "
+            "OR policy_evaluation_id IS NOT NULL",
             name="ck_review_case_has_evidence",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_review_cases_tenant_id"),
         Index("ix_review_cases_tenant_created", "tenant_id", "created_at"),
+        tenant_foreign_key("owner_id", "reviewers", "fk_review_cases_owner", ondelete="RESTRICT"),
+        tenant_foreign_key(
+            "policy_evaluation_id", "policy_evaluations", "fk_review_cases_policy",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "uq_review_cases_active_target", "tenant_id", "target_key", unique=True,
+            postgresql_where=text("target_key IS NOT NULL AND status IN ('open', 'in_review')"),
+            sqlite_where=text("target_key IS NOT NULL AND status IN ('open', 'in_review')"),
+        ),
         tenant_foreign_key(
             "identity_id",
             "identities",
@@ -868,6 +899,12 @@ class ReviewCase(TenantScopedMixin, TimestampMixin, Base):
         default=ReviewStatus.OPEN,
     )
     owner: Mapped[str | None] = mapped_column(String(255), index=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    policy_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    target_key: Mapped[str | None] = mapped_column(String(64))
+    target_snapshot: Mapped[dict | None] = mapped_column(json_type)
+    __mapper_args__ = {"version_id_col": revision}
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     resolution: Mapped[ReviewDecision | None] = mapped_column(
         Enum(
@@ -1332,6 +1369,27 @@ class SecurityPolicyVersion(TenantScopedMixin, Base):
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_mutation(*_: object) -> None:
     raise ValueError("Audit events are append-only")
+
+
+@event.listens_for(Reviewer, "before_update")
+def prevent_reviewer_rebinding(_mapper, _connection, target) -> None:
+    if any(inspect(target).attrs[name].history.has_changes()
+           for name in ("tenant_id", "issuer", "subject", "identity_id", "provenance")):
+        raise ValueError("Reviewer bindings and registration evidence are immutable")
+
+
+@event.listens_for(Reviewer, "before_delete")
+def prevent_reviewer_deletion(*_: object) -> None:
+    raise ValueError("Reviewer registrations cannot be deleted")
+
+
+@event.listens_for(ReviewCase, "before_update")
+def prevent_review_target_rebinding(_mapper, _connection, target) -> None:
+    fields = ["target_key", "target_snapshot", "policy_evaluation_id"]
+    if target.target_snapshot is not None:
+        fields.extend(["identity_id", "entitlement_id", "risk_assessment_id", "anomaly_result_id"])
+    if any(inspect(target).attrs[name].history.has_changes() for name in fields):
+        raise ValueError("Review target evidence is immutable")
 
 
 @event.listens_for(SecurityAgent, "before_update")

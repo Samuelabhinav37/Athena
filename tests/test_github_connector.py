@@ -208,6 +208,14 @@ def test_sync_materializes_effective_permission_and_revokes_missing_access() -> 
         assert sorted(group.name for group in identity.groups) == ["Security", "acme"]
 
         edge_ids = [edge.id for edge in entitlement.provenance_edges]
+        other_org = GitHubSnapshot(
+            organization="other-org", members=[], repositories=[], permissions=[],
+            endpoint_cache={}, fingerprint="d" * 64,
+        )
+        other_result = service.sync(other_org)
+        assert other_result.grants_revoked == 0
+        assert grant.revoked_at is None
+        assert entitlement.active is True
         refreshed = service.sync(replace(initial, fingerprint="b" * 64))
         session.refresh(entitlement, attribute_names=["provenance_edges"])
         assert refreshed.unchanged is False

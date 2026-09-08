@@ -242,7 +242,7 @@ def test_execution_events_are_immutable(risk_session: Session) -> None:
     assert stored is not None and stored.action == "requested"
 
 
-def test_execution_api_requires_administrator_and_uses_authenticated_actor(
+def test_execution_api_requires_administrator_and_rejects_legacy_approval(
     risk_session: Session,
 ) -> None:
     case = approved_case(risk_session)
@@ -267,11 +267,10 @@ def test_execution_api_requires_administrator_and_uses_authenticated_actor(
         app.dependency_overrides.clear()
 
     assert forbidden.status_code == 403
-    assert created.status_code == 201
-    assert created.json()["requested_by"] == "frank"
-    assert created.json()["status"] == "pending"
+    assert created.status_code == 409
+    assert "fresh bound review" in created.json()["detail"]
     assert listed.status_code == 200
-    assert [item["id"] for item in listed.json()] == [created.json()["id"]]
+    assert listed.json() == []
 
 
 def test_execution_detail_returns_not_found_for_another_tenant_execution_id(

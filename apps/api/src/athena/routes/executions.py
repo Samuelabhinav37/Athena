@@ -51,6 +51,8 @@ def create_execution_request(
     case = load_case(session, request.case_id)
     if case is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
+    if not case.target_snapshot:
+        raise HTTPException(status_code=409, detail="Legacy approval requires a fresh bound review")
     try:
         return ExecutionService(session).request(case, principal.actor, request.idempotency_key)
     except ExecutionError as error:

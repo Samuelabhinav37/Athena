@@ -53,6 +53,8 @@ class ExecutionService:
     def request(
         self, case: ReviewCase, requested_by: str, idempotency_key: str
     ) -> RemediationExecution:
+        if case.target_snapshot:
+            raise ExecutionError("Bound reviews require manual fulfillment until executor approval")
         key = idempotency_key.strip()
         if not key:
             raise ExecutionError("An idempotency key is required")

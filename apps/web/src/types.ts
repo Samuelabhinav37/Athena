@@ -101,6 +101,9 @@ export interface ReviewCase {
   title: string;
   status: string;
   owner: string | null;
+  owner_id: string | null;
+  revision: number;
+  target_snapshot: { proposed_action: string; closure_goal: string; target_digest: string } | null;
   due_at: string;
   resolution: string | null;
   created_at: string;

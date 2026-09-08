@@ -194,7 +194,11 @@ class GitHubSyncService:
                 AccessGrant.revoked_at.is_(None),
             )
         ):
-            if grant.external_id not in active_external_ids:
+            if (
+                grant.permission.resource.source_metadata.get("organization")
+                == snapshot.organization
+                and grant.external_id not in active_external_ids
+            ):
                 grant.revoked_at = datetime.now(UTC)
                 revoked += 1
         self.session.flush()

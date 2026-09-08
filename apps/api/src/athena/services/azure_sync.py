@@ -50,6 +50,7 @@ class AzureSyncService:
         return self.session.scalar(statement)
 
     def sync(self, snapshot: AzureSnapshot) -> AzureSyncResult:
+        self._validate_assignment_evidence(snapshot)
         checkpoint = self.checkpoint(snapshot.subscription_id)
         if checkpoint is not None and checkpoint.fingerprint == snapshot.fingerprint:
             checkpoint.observed_at = datetime.now(UTC)
@@ -204,6 +205,7 @@ class AzureSyncService:
                 grant.business_reason = "Observed Azure RBAC role assignment"
                 grant.policy_reference = role_id[:255]
                 grant.source_metadata = {
+                    "source_assignment_id": assignment["id"],
                     "subscription_id": snapshot.subscription_id,
                     "role_definition_name": role_properties.get("roleName"),
                     "assignment_scope": properties.get("scope"),
@@ -259,6 +261,35 @@ class AzureSyncService:
         )
         self.session.commit()
         return self._result(snapshot, created, updated, revoked, False)
+
+    @staticmethod
+    def _validate_assignment_evidence(snapshot: AzureSnapshot) -> None:
+        """Reject ambiguous snapshots before any identity or grant projection is written."""
+        definitions = {item["id"].lower(): item for item in snapshot.role_definitions}
+        principals = {
+            item["id"] for item in snapshot.users + snapshot.groups + snapshot.service_principals
+        }
+        for assignment in snapshot.role_assignments:
+            properties = assignment.get("properties", {})
+            definition = definitions.get(str(properties.get("roleDefinitionId", "")).lower())
+            if definition is None or properties.get("principalId") not in principals:
+                raise ValueError("Azure snapshot contains unresolved assignment references")
+            if properties.get("condition"):
+                raise ValueError("Azure assignment conditions require unsupported evaluation")
+            permissions = definition.get("properties", {}).get("permissions")
+            if not isinstance(permissions, list) or not permissions:
+                raise ValueError("Azure role permission evidence is missing")
+            for permission in permissions:
+                if not isinstance(permission, dict):
+                    raise ValueError("Azure role permission evidence is malformed")
+                if permission.get("notActions") or permission.get("notDataActions"):
+                    raise ValueError("Azure role exclusions require unsupported evaluation")
+                for key in ("actions", "dataActions"):
+                    values = permission.get(key, [])
+                    if not isinstance(values, list) or not all(
+                        isinstance(value, str) and value for value in values
+                    ):
+                        raise ValueError("Azure role actions are malformed")
 
     @staticmethod
     def _owner_metadata(owners: object) -> dict[str, object]:

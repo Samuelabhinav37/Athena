@@ -1,7 +1,9 @@
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import httpx
+import pytest
 from athena.collectors.azure import AzureCollectionError, AzureCollector, AzureSnapshot
 from athena.config import Settings
 from athena.models import (
@@ -193,6 +195,63 @@ def snapshot(fingerprint: str, assignments: bool = True) -> AzureSnapshot:
         endpoint_cache={"inventory": {"fingerprint": fingerprint}},
         fingerprint=fingerprint,
     )
+
+
+def test_removing_one_azure_assignment_preserves_an_overlapping_group_path() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with sessionmaker(bind=engine, expire_on_commit=False)() as session:
+        service = AzureSyncService(session)
+        initial = snapshot("a" * 64)
+        initial.role_assignments[0]["properties"]["principalId"] = "user-1"
+        alternate = deepcopy(initial.role_assignments[0])
+        alternate["id"] += "-group"
+        alternate["properties"]["principalId"] = "group-1"
+        initial.role_assignments.append(alternate)
+        service.sync(initial)
+        user = session.scalar(select(Identity).where(Identity.external_id == "user-1"))
+        before = list(session.scalars(select(EffectiveEntitlement).where(
+            EffectiveEntitlement.identity_id == user.id, EffectiveEntitlement.active.is_(True),
+        )))
+        assert len(before) == 2
+        remaining = snapshot("b" * 64)
+        remaining.role_assignments[:] = [alternate]
+        result = service.sync(remaining)
+        after = list(session.scalars(select(EffectiveEntitlement).where(
+            EffectiveEntitlement.identity_id == user.id, EffectiveEntitlement.active.is_(True),
+        )))
+        assert result.grants_revoked == 1
+        assert len(after) == 1
+        assert after[0].grant.subject_type == GrantSubjectType.GROUP
+    engine.dispose()
+
+
+@pytest.mark.parametrize("problem", ["definition", "principal", "condition", "exclusion"])
+def test_unsupported_snapshot_preserves_previous_projection(problem: str) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with sessionmaker(bind=engine, expire_on_commit=False)() as session:
+        service = AzureSyncService(session)
+        service.sync(snapshot("a" * 64))
+        checkpoint = session.scalar(select(ConnectorCheckpoint))
+        observed_at = checkpoint.observed_at
+        broken = snapshot("b" * 64)
+        if problem == "definition":
+            broken.role_definitions.clear()
+        elif problem == "principal":
+            broken.service_principals.clear()
+        elif problem == "condition":
+            broken.role_assignments[0]["properties"]["condition"] = "synthetic condition"
+        else:
+            broken.role_definitions[0]["properties"]["permissions"][0]["notActions"] = ["*/read"]
+        with pytest.raises(ValueError, match="Azure"):
+            service.sync(broken)
+        session.expire_all()
+        assert session.scalar(select(ConnectorCheckpoint)).fingerprint == "a" * 64
+        assert session.scalar(select(ConnectorCheckpoint)).observed_at == observed_at
+        assert all(item.revoked_at is None for item in session.scalars(select(AccessGrant)))
+        assert all(item.active for item in session.scalars(select(EffectiveEntitlement)))
+    engine.dispose()
 
 
 def test_sync_materializes_azure_lineage_is_idempotent_and_revokes_removed_access() -> None:

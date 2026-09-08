@@ -2,6 +2,93 @@
 
 Prepared 8 September 2026. Status: implementation started; P00–P03 locally validated, browser and infrastructure verification remain open. Basis: the current working tree, [security/product assessment](athena-security-product-research.md), [competitor mechanisms](athena-competitor-mechanisms-2026-09-08.md), and the canonical [readiness manifest](../governance/readiness.json).
 
+## Eighth slice: worker deployment configuration and operational signals
+
+Added an opt-in Compose worker overlay using the existing non-root API image,
+restricted runtime DB login, read-only filesystem, no published ports and heartbeat
+health checking. CLI sweep logs now expose retry exhaustion, collection failures,
+partial-scan semantics and sanitized service errors. The alert-routing runbook
+specifies deduplication and resolution conditions without configuring a receiver.
+Merged Compose configuration passed using synthetic values. Runtime deployment,
+external alert delivery, correlation and infrastructure release gates remain open.
+
+## Seventh slice: asynchronous collection and retry visibility
+
+Completion and verification requests now persist work and return HTTP 202 without
+provider calls. The worker consumes completion/request events. A tenant-scoped
+status endpoint exposes queue, lease, retry timing, exhausted budget and outcome;
+the workspace polls pending work and refreshes recorded results. Explicit retries
+append evidence and begin a new budget. No schema or dependency change was needed.
+Validation: 340 Python tests passed, 8 skipped; 12 frontend tests and build passed.
+Deployment/supervision, external alerts, correlation and release gates remain open.
+
+## Sixth slice: background recovery
+
+Added a tenant-scoped CLI recovery worker with optional continuous operation,
+durable backoff, five-attempt budget, existing lease recovery, and explicit service
+attribution. It scans persisted completion records and stops after a recorded
+provider outcome. Tests cover isolation, budgets, live leases and attribution.
+Worker deployment/supervision, exhaustion alerts and fully asynchronous initial
+collection remain open. See bound review operations for the command and limits.
+
+## Fifth slice: request-driven recollection
+
+Completion now triggers scope-approved Azure collection and verification. Failed
+collection preserves completion and records a sanitized monitoring failure.
+Existing schedule keys and leases support retry after interruption. The workspace
+verification button recollects before checking evidence. This is synchronous request
+processing; unattended recovery and background scheduling remain open. No new
+dependency or migration was added. Validation: 333 Python tests passed, 8 skipped;
+11 frontend tests, TypeScript/Vite build, Ruff and whitespace checks passed.
+Infrastructure and browser release gates remain open.
+
+## Fourth slice — Approved P05, P06 and initial P07 implementation
+
+Implemented immutable reviewer registry bindings, exact risk/policy target
+snapshots, revision/concurrency guards, eligibility checks, independent approval,
+legacy mutation rejection and cancellation for fresh evidence. Added manual
+operator assignment/completion, read-only verification from fresh recorded
+checkpoints, correction retries, due/overdue display and case evidence packets.
+Migration `20260908_24` is additive and forward-only; no existing database was
+migrated. Offline PostgreSQL SQL generation succeeds.
+
+Validation: **329 Python tests passed, 8 skipped**; **11 frontend tests passed**;
+Ruff and TypeScript/Vite build passed. Final target-immutability/migration tests
+also passed. No connected browser or Docker engine was available, so real
+PostgreSQL/RLS/concurrency, migration/drift, Rego/security gate and signed-in
+acceptance remain outstanding. These are release gates, not waived checks.
+
+See [bound review operations](bound-review-operations.md) for the exact implemented
+scope. P07 now triggers approved read-only Azure recollection and verification
+after completion, with durable monitoring attempts and explicit retry. A CLI worker provides unattended
+recovery and backoff when deployed; deployment remains outstanding. Cross-source
+self-review binding fails closed until correlation is implemented, and broader
+effective-access closure cannot be certified with incomplete provider semantics.
+Release A is therefore not yet complete. Later correlation, lifecycle/campaigns,
+controlled execution and production readiness remain work in the delivery map.
+This slice has not been committed or pushed.
+
+## Third slice — P04 conformance and P05 design
+
+Implemented trusted-endpoint and bounded pagination checks, GitHub organization-
+scoped removal detection, and Azure preflight rejection of unresolved assignments,
+conditions and exclusions. Azure records source assignment IDs for future target
+binding. Synthetic tests cover empty continuation pages, late failures, malformed
+responses, cycles, organization boundaries and overlapping direct/group paths.
+
+Full Python validation: **313 passed, 8 skipped**, with the existing deprecation
+warning; Ruff passed. No frontend code changed in this slice. Docker/runtime and
+signed-in browser acceptance remain open. See [P04 conformance](connector-conformance.md)
+for the supported subset and remaining phase-3 collection work; P04 does not mean
+all collection semantics or production readiness are complete.
+
+[P05 review-owner and target proposal](review-target-owner-design.md) is prepared
+for the plan's explicit auth/model/migration review gate. It specifies immutable
+reviewer bindings, legacy-owner handling, exact evidence targets, concurrency and
+the P07 fulfillment seam. P06/P07 implementation, broader lifecycle/correlation,
+controlled execution and operational readiness remain outstanding. No migration,
+authentication change, live access change, commit or push occurred in this slice.
+
 ## Second slice — P03 inventory navigation
 
 Implemented tenant-scoped server search and a paged identity response, preserving

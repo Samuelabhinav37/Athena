@@ -59,6 +59,7 @@ TENANT_TABLES = (
     "remediation_execution_events",
     "remediation_executions",
     "resources",
+    "reviewers",
     "review_cases",
     "review_events",
     "risk_assessments",
