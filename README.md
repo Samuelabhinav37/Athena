@@ -216,7 +216,7 @@ Install the development dependencies before running checks:
 python -m pip install -e ".[dev]"
 ruff check .
 pytest
-docker compose run --rm opa test /policies/iam /policies/system -v
+docker compose run --rm opa test /policies/iam /policies/system /policies/security -v
 alembic check
 python -m athena.cli security-gate --output-directory artifacts/security-gate
 ```

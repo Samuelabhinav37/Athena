@@ -37,8 +37,10 @@ services:
         python -m pip install --disable-pip-version-check -e '.[dev]' &&
         python -m alembic upgrade head &&
         python -m alembic check &&
+        python -m pytest -q tests/test_tenant_backfill_postgres.py &&
         python -m pytest -q tests/test_tenant_constraints_postgres.py &&
-        python -m pytest -q --ignore=tests/test_tenant_constraints_postgres.py
+        python -m pytest -q --ignore=tests/test_tenant_backfill_postgres.py
+        --ignore=tests/test_tenant_constraints_postgres.py
 
 volumes:
   postgres-test-data:

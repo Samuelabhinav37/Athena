@@ -51,7 +51,7 @@ services:
 
   opa:
     image: openpolicyagent/opa:1.4.2
-    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies/iam", "/policies/system"]
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies/iam", "/policies/system", "/policies/security"]
     volumes:
       - ./policies:/policies:ro
     healthcheck:

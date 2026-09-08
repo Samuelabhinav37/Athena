@@ -74,6 +74,9 @@ jobs:
           docker build --file apps/api/Dockerfile --tag athena-api:${{ github.sha }} .
           docker build --file apps/web/Dockerfile --tag athena-web:${{ github.sha }} .
 
+      - name: Smoke-test API image dependencies
+        run: docker run --rm athena-api:${{ github.sha }} python -m athena.cli --help
+
       - name: Apply and check migrations
         run: |
           alembic upgrade head
@@ -99,7 +102,7 @@ jobs:
           --ignore=tests/test_tenant_constraints_postgres.py
 
       - name: Test Rego policies
-        run: docker compose run --rm opa test /policies/iam /policies/system -v
+        run: docker compose run --rm opa test /policies/iam /policies/system /policies/security -v
 
       - name: Start OPA
         run: |
@@ -112,6 +115,9 @@ jobs:
           done
           docker compose logs opa
           exit 1
+
+      - name: Verify deployed agent-action policy
+        run: python scripts/check-policy-runtime.py
 
       - name: Run deterministic security gate
         run: python -m athena.cli security-gate --output-directory artifacts/security-gate

@@ -43,6 +43,7 @@ services:
       - --log-level=info
       - /policies/iam
       - /policies/system
+      - /policies/security
     ports:
       - "8181:8181"
     volumes:
