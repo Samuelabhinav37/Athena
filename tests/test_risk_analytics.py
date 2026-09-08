@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from athena.auth import Principal, get_current_principal
@@ -16,6 +17,7 @@ from athena.models import (
     ReviewEvent,
     ReviewStatus,
     RiskAssessment,
+    RiskFindingType,
     RiskLevel,
     Role,
     RoleTransition,
@@ -28,6 +30,72 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+
+@pytest.mark.parametrize(
+    ("used_days", "observed_days", "expected"),
+    [(None, 0, "unknown"), (10, 0, "recent"), (90, 0, "stale"),
+     (-1, 0, "invalid"), (10, -1, "invalid"), (1, 2, "invalid"),
+     (120, 2, "unknown")],
+)
+def test_activity_evidence_does_not_invent_inactivity(
+    risk_session: Session, used_days: int | None, observed_days: int, expected: str,
+) -> None:
+    now = datetime.now(UTC)
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    entitlement = risk_session.scalar(select(EffectiveEntitlement).where(
+        EffectiveEntitlement.identity_id == alice.id,
+    ))
+    risk_session.add(AccessObservation(
+        entitlement=entitlement, source="test", external_id="activity-contract",
+        last_used_at=None if used_days is None else now - timedelta(days=used_days),
+        observed_at=now - timedelta(days=observed_days),
+    ))
+    risk_session.commit()
+    result = RiskAnalyticsService(risk_session).assess(alice)
+    assessment = risk_session.get(RiskAssessment, result.assessment_id)
+    finding = next(f for f in assessment.findings if f.entitlement_id == entitlement.id)
+    activity = finding.factors["time_since_use"]
+    assert activity["status"] == expected
+    if expected in {"unknown", "invalid"}:
+        assert activity["value"] == 1.0
+        assert activity["treatment"] == "uncertainty_reserve"
+        assert finding.finding_type != RiskFindingType.STALE_ACCESS
+        assert "not evidence of inactivity" in finding.explanation
+    else:
+        assert activity["treatment"] == "observed_age"
+
+
+def test_missing_activity_and_previous_assessment_are_preserved(risk_session: Session) -> None:
+    alice = risk_session.scalar(select(Identity).where(Identity.username == "alice"))
+    legacy = RiskAssessment(
+        identity=alice, model_version="access-decay-v1", score=42,
+        level=RiskLevel.MEDIUM, peer_definition={}, summary={"historical": True},
+    )
+    risk_session.add(legacy)
+    risk_session.commit()
+    result = RiskAnalyticsService(risk_session).assess(alice)
+    current = risk_session.get(RiskAssessment, result.assessment_id)
+    assert result.model_version == "access-decay-v2"
+    assert all(f.factors["time_since_use"]["status"] == "unknown" for f in current.findings)
+    assert all(f.finding_type != RiskFindingType.STALE_ACCESS for f in current.findings)
+    app.dependency_overrides[get_db_session] = lambda: risk_session
+    try:
+        response = TestClient(app).get(f"/v1/identities/{alice.id}/risk-assessments")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    payload = next(item for item in response.json() if item["id"] == str(current.id))
+    assert payload["model_version"] == "access-decay-v2"
+    assert all(
+        finding["factors"]["time_since_use"]["treatment"] == "uncertainty_reserve"
+        and "not evidence of inactivity" in finding["explanation"]
+        for finding in payload["findings"]
+    )
+    risk_session.refresh(legacy)
+    assert (legacy.model_version, legacy.score, legacy.summary) == (
+        "access-decay-v1", 42, {"historical": True},
+    )
 
 
 @pytest.fixture

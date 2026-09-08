@@ -120,6 +120,53 @@ def test_list_identities_validates_pagination(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_inventory_search_and_pages_cover_more_than_200_identities(
+    client: TestClient, session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory.begin() as session:
+        session.add_all([
+            Identity(source="keycloak", external_id=f"user-{index}",
+                     username=f"user-{index:03}", display_name="Repeated Name",
+                     email=f"user{index}@acme.test", department="Engineering",
+                     identity_type=IdentityType.HUMAN)
+            for index in range(205)
+        ])
+    pages = [client.get(f"/v1/identities/inventory?limit=50&offset={offset}")
+             for offset in range(0, 250, 50)]
+    assert all(page.status_code == 200 for page in pages)
+    assert all(page.json()["total"] == 205 for page in pages)
+    items = [item for page in pages for item in page.json()["items"]]
+    assert len(items) == len({item["id"] for item in items}) == 205
+    assert [item["username"] for item in items] == [f"user-{i:03}" for i in range(205)]
+    found = client.get("/v1/identities/inventory", params={"q": " USER204@ACME.TEST "})
+    assert found.json()["total"] == 1
+    assert found.json()["items"][0]["username"] == "user-204"
+    assert client.get("/v1/identities/inventory?q=engineering").json()["total"] == 205
+    assert client.get("/v1/identities/inventory?q=no-match").json()["items"] == []
+    empty_page = client.get("/v1/identities/inventory?offset=250").json()
+    assert empty_page["total"] == 205 and empty_page["items"] == []
+
+
+def test_inventory_escapes_wildcards_and_stably_orders_duplicate_usernames(
+    client: TestClient, session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory.begin() as session:
+        session.add_all([
+            Identity(source=source, external_id="same", username="same",
+                     display_name=name, identity_type=IdentityType.HUMAN)
+            for source, name in [("github", "100%_literal"), ("azure", "100xxliteral")]
+        ])
+    first = client.get("/v1/identities/inventory?limit=1").json()["items"][0]
+    second = client.get("/v1/identities/inventory?limit=1&offset=1").json()["items"][0]
+    assert first["id"] < second["id"]
+    assert client.get("/v1/identities/inventory", params={"q": "%_"}).json()["total"] == 1
+
+
+@pytest.mark.parametrize("params", [{"limit": 201}, {"offset": -1}, {"q": "x" * 256}])
+def test_inventory_validates_bounds(client: TestClient, params: dict) -> None:
+    assert client.get("/v1/identities/inventory", params=params).status_code == 422
+
+
 def test_identity_detail_returns_not_found_for_another_tenant_object_id() -> None:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -143,6 +190,12 @@ def test_identity_detail_returns_not_found_for_another_tenant_object_id() -> Non
             active=True,
         )
         session.add(other_tenant_identity)
+        visible_identity = Identity(
+            tenant_id="tenant-a", source="keycloak", external_id="tenant-a-user",
+            username="tenant-b-search-match", display_name="Visible search match",
+            identity_type=IdentityType.HUMAN,
+        )
+        session.add(visible_identity)
 
     def override_session() -> Generator[Session]:
         with factory() as session:
@@ -151,9 +204,13 @@ def test_identity_detail_returns_not_found_for_another_tenant_object_id() -> Non
     app.dependency_overrides[get_db_session] = override_session
     try:
         response = TestClient(app).get(f"/v1/identities/{other_tenant_identity.id}")
+        inventory = TestClient(app).get("/v1/identities/inventory?q=tenant-b")
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Identity not found"}
+    assert inventory.status_code == 200
+    assert [item["id"] for item in inventory.json()["items"]] == [str(visible_identity.id)]
+    assert inventory.json()["total"] == 1

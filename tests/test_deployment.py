@@ -242,10 +242,13 @@ def test_dashboard_exposes_analyst_command_center_and_safe_setup_status() -> Non
     assert 'label: "System setup"' in application
     assert "Priority work queue" in application
     assert "Environment posture" in application
-    assert "Identity and application sources" in application
-    assert "Credentials stay outside the browser" in application
-    assert "No automatic access changes" in application
+    assert "Source coverage and setup" in application
+    assert "Keep credentials in deployment secret configuration" in application
+    assert "never paste them into review reasons or evidence" in application
+    assert "Run read-only synchronization and assessment" in application
+    assert "A review decision does not prove an upstream access change" in application
+    assert "<ConnectorCoverage manifests={manifests}" in application
     assert "Workspace needs attention" in application
     assert "Start required services" in application
     assert "Your first Athena workflow" in application
-    assert "Collect identity evidence" in application
+    assert "Receive source evidence" in application

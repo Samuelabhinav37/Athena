@@ -95,13 +95,24 @@ export interface MachineIdentityPosture {
 export interface ReviewCase {
   id: string;
   identity_id: string;
+  entitlement_id: string | null;
+  risk_assessment_id: string | null;
+  anomaly_result_id: string | null;
   title: string;
   status: string;
   owner: string | null;
   due_at: string;
   resolution: string | null;
   created_at: string;
-  events: { id: string; occurred_at: string; actor: string; action: string; reason: string }[];
+  events: { id: string; occurred_at: string; actor: string; action: string; reason: string; execution_status: string; evidence_snapshot: Record<string, unknown> }[];
+}
+
+export interface ConnectorManifest {
+  connector_id: string;
+  display_name: string;
+  contract_version: string;
+  read_only: true;
+  capabilities: Record<string, { support: "supported" | "partial" | "unsupported"; detail: string }>;
 }
 
 export interface Connector {

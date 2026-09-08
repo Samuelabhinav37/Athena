@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "oidc-client-ts";
 import { apiGet, apiPost, apiText, ApiError } from "./api";
 import { completeSignin, userManager } from "./auth";
+import { freshness, loadAssessment, orderReviews, reviewProgress } from "./assessment";
+import { ConnectorCoverage } from "./ConnectorCoverage";
+import { IdentityInventory } from "./IdentityInventory";
+import { ReviewWorkspace } from "./ReviewWorkspace";
 import type {
   AnomalyAssessment,
   AttackPath,
   Connector,
+  ConnectorManifest,
   Entitlement,
   Execution,
   Identity,
@@ -104,6 +109,11 @@ function Splash({ message }: { message: string }) {
 
 function Dashboard({ user }: { user: User }) {
   const [page, setPage] = useState<Page>("overview");
+  const [manifests, setManifests] = useState<ConnectorManifest[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [selectedIdentityId, setSelectedIdentityId] = useState("");
+  const [selectedReviewId, setSelectedReviewId] = useState("");
+  const [exportPrepared, setExportPrepared] = useState(false);
   const [state, setState] = useState<LoadState>("loading");
   const [error, setError] = useState("");
   const [principal, setPrincipal] = useState<Principal | null>(null);
@@ -120,22 +130,12 @@ function Dashboard({ user }: { user: User }) {
     const controller = new AbortController();
     async function load() {
       try {
-        const [me, identityData, reviewData, connectorData, runData, agentData, eventData] = await Promise.all([
-          apiGet<Principal>(user, "/v1/auth/me", controller.signal),
-          apiGet<Identity[]>(user, "/v1/identities", controller.signal),
-          apiGet<ReviewCase[]>(user, "/v1/reviews", controller.signal),
-          apiGet<Connector[]>(user, "/v1/connectors", controller.signal),
-          apiGet<MonitoringRun[]>(user, "/v1/monitoring/runs", controller.signal),
-          apiGet<SecurityAgent[]>(user, "/v1/security/agents", controller.signal),
-          apiGet<SecurityEvent[]>(user, "/v1/security/events", controller.signal)
-        ]);
+        const data = await loadAssessment(<T,>(path: string) => apiGet<T>(user, path, controller.signal));
         if (!active) return;
-        setPrincipal(me); setIdentities(identityData); setReviews(reviewData);
-        setConnectors(connectorData); setRuns(runData);
-        setSecurityAgents(agentData); setSecurityEvents(eventData);
-        if (me.roles.includes("athena-administrator")) {
-          setExecutions(await apiGet<Execution[]>(user, "/v1/executions", controller.signal));
-        }
+        setPrincipal(data.principal); setIdentities(data.identities); setReviews(data.reviews);
+        setConnectors(data.connectors); setManifests(data.manifests); setRuns(data.runs);
+        setSecurityAgents(data.agents); setSecurityEvents(data.events);
+        setExecutions(data.executions); setWarnings(data.warnings);
         setState("ready");
       } catch (caught) {
         if (!active) return;
@@ -148,9 +148,26 @@ function Dashboard({ user }: { user: User }) {
     return () => { active = false; controller.abort(); };
   }, [user]);
 
-  const openReviews = reviews.filter((review) => !["closed", "resolved"].includes(review.status));
-  const staleConnectors = connectors.filter((connector) => Date.now() - Date.parse(connector.observed_at) > 86_400_000);
+  const openReviews = orderReviews(reviews.filter((review) => !["closed", "resolved"].includes(review.status)));
+  const staleConnectors = connectors.filter((connector) => freshness(connector.observed_at) !== "recent");
   const latestRun = runs[0];
+  async function inspectIdentity(id: string) {
+    try {
+      if (!identities.some((item) => item.id === id)) {
+        const identity = await apiGet<Identity>(user, `/v1/identities/${id}`);
+        setIdentities((current) => [...current.filter((item) => item.id !== id), identity]);
+      }
+      setSelectedIdentityId(id); setPage("identities");
+    } catch {
+      setWarnings((current) => [...new Set([...current, "Requested identity evidence could not be loaded. Check permissions and retry."])]);
+    }
+  }
+  function startReview(identity: Identity) {
+    setIdentities((current) => [...current.filter((item) => item.id !== identity.id), identity]);
+    setSelectedIdentityId(identity.id);
+    setSelectedReviewId(reviews.find((item) => item.identity_id === identity.id && item.status !== "resolved")?.id ?? "");
+    setPage("reviews");
+  }
 
   return (
     <div className="app-shell">
@@ -163,7 +180,7 @@ function Dashboard({ user }: { user: User }) {
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot"><span className="status-dot" /> Policy engine connected<small>Deterministic decisions only</small></div>
+        <div className="sidebar-foot"><span className="status-dot" /> Policy decisions are deterministic<small>Runtime health is not inferred</small></div>
       </aside>
       <main className="workspace">
         <header className="topbar">
@@ -172,27 +189,29 @@ function Dashboard({ user }: { user: User }) {
         </header>
         {state === "loading" && <Splash message="Loading authorization evidence…" />}
         {state === "error" && <WorkspaceUnavailable error={error} />}
-        {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} connectors={connectors} onNavigate={setPage} />}
-        {state === "ready" && page === "identities" && <Identities user={user} identities={identities} />}
+        {state === "ready" && warnings.length > 0 && <div className="workspace-warnings" role="status">{warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
+        {state === "ready" && <p className="inventory-scope">Lists show the loaded API page, not tenant-wide totals. Empty results do not prove that access is safe or collection is complete.</p>}
+        {state === "ready" && page === "overview" && <Overview identities={identities} openReviews={openReviews} staleConnectors={staleConnectors} latestRun={latestRun} executions={executions} connectors={connectors} reviews={reviews} exportPrepared={exportPrepared} onNavigate={setPage} onReview={(id) => { setSelectedReviewId(id); setPage("reviews"); }} />}
+        {state === "ready" && page === "identities" && <Identities user={user} identities={identities} initialSelectedId={selectedIdentityId} manifests={manifests} connectors={connectors} onReview={startReview} />}
         {state === "ready" && page === "security" && <EmailWebSecurity agents={securityAgents} events={securityEvents} />}
         {state === "ready" && page === "machines" && <MachineIdentities user={user} />}
-        {state === "ready" && page === "reviews" && <Reviews user={user} principal={principal} reviews={reviews} identities={identities} onReviewsChanged={setReviews} onExecutionCreated={(execution) => setExecutions((current) => [execution, ...current])} />}
-        {state === "ready" && page === "operations" && <Operations user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
-        {state === "ready" && page === "setup" && <SystemSetup connectors={connectors} latestRun={latestRun} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
+        {state === "ready" && page === "reviews" && <ReviewWorkspace initialIdentityId={selectedIdentityId} initialReviewId={selectedReviewId} onInspect={(id) => void inspectIdentity(id)} onExport={() => setPage("operations")} user={user} principal={principal} reviews={reviews} identities={identities} onReviewsChanged={setReviews} onExecutionCreated={(execution) => setExecutions((current) => [execution, ...current.filter((item) => item.id !== execution.id)])} />}
+        {state === "ready" && page === "operations" && <Operations onExportPrepared={() => setExportPrepared(true)} user={user} connectors={connectors} runs={runs} executions={executions} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
+        {state === "ready" && page === "setup" && <SystemSetup manifests={manifests} identities={identities} connectors={connectors} latestRun={latestRun} isAdmin={principal?.roles.includes("athena-administrator") ?? false} />}
       </main>
     </div>
   );
 }
 
-function Overview({ identities, openReviews, staleConnectors, latestRun, executions, connectors, onNavigate }: { identities: Identity[]; openReviews: ReviewCase[]; staleConnectors: Connector[]; latestRun?: MonitoringRun; executions: Execution[]; connectors: Connector[]; onNavigate: (page: Page) => void }) {
+function Overview({ identities, openReviews, staleConnectors, latestRun, executions, connectors, reviews, exportPrepared, onNavigate, onReview }: { reviews: ReviewCase[]; exportPrepared: boolean; onReview: (id: string) => void; identities: Identity[]; openReviews: ReviewCase[]; staleConnectors: Connector[]; latestRun?: MonitoringRun; executions: Execution[]; connectors: Connector[]; onNavigate: (page: Page) => void }) {
   const active = identities.filter((identity) => identity.active).length;
   const pending = executions.filter((item) => item.status === "pending").length;
   const connectorNames = new Set(connectors.map((connector) => connector.connector));
   return <div className="page command-page"><section className="command-welcome"><div><p className="kicker">Authorization posture</p><h1>Good morning, analyst</h1><span>Here is what needs attention across your identity environment.</span></div><button className="button button--secondary" onClick={() => onNavigate("reviews")}>Open work queue →</button></section>
-    {(identities.length === 0 || connectors.length === 0 || !latestRun) && <FirstRunGuide identities={identities} connectors={connectors} latestRun={latestRun} openReviews={openReviews} onNavigate={onNavigate} />}
-    <section className="metric-grid command-metrics"><Metric label="Open investigations" value={String(openReviews.length)} detail={openReviews.length ? "Human attention required" : "Queue is clear"} accent="coral" /><Metric label="Pending executions" value={String(pending)} detail="Never auto-executed" accent="amber" /><Metric label="Observed identities" value={String(identities.length)} detail={`${active} currently active`} accent="blue" /><Metric label="Connected sources" value={String(connectorNames.size)} detail={staleConnectors.length ? `${staleConnectors.length} needs attention` : "All reporting fresh"} accent="mint" /></section>
-    <section className="command-grid"><article className="panel command-queue"><header className="command-panel-head"><div><h2>Priority work queue</h2><p>Open cases sorted by due date</p></div><button onClick={() => onNavigate("reviews")}>View all →</button></header>{openReviews.length ? <div className="command-table"><div className="command-table-head"><span>Investigation</span><span>Owner</span><span>Due</span><span>Status</span></div>{openReviews.slice(0, 6).map((review) => <button key={review.id} onClick={() => onNavigate("reviews")}><span><i /> <strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><Badge value={review.status} /></button>)}</div> : <Empty>No open review cases.</Empty>}</article>
-      <aside className="panel command-posture"><header className="command-panel-head"><div><h2>Environment posture</h2><p>Live control status</p></div></header><div className="posture-score"><strong>{staleConnectors.length ? "Needs attention" : "Healthy"}</strong><small>{connectorNames.size} connected sources</small></div><div className="setup-check"><span className="status-dot" /><p><strong>Tenant isolation</strong><small>Database-enforced scope</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Policy authority</strong><small>Deterministic OPA decisions</small></p></div><div className={staleConnectors.length ? "setup-check setup-check--warning" : "setup-check"}><span className="status-dot" /><p><strong>Connector freshness</strong><small>{staleConnectors.length ? `${staleConnectors.length} checkpoint overdue` : "All checkpoints current"}</small></p></div><button className="button button--secondary" onClick={() => onNavigate("setup")}>Open system setup</button></aside>
+    <FirstRunGuide identities={identities} connectors={connectors} reviews={reviews} exportPrepared={exportPrepared} onNavigate={onNavigate} />
+    <section className="metric-grid command-metrics"><Metric label="Open investigations" value={String(openReviews.length)} detail={openReviews.length ? "Human attention required" : "No open cases in loaded page"} accent="coral" /><Metric label="Pending executions" value={String(pending)} detail="Never auto-executed" accent="amber" /><Metric label="Observed identities" value={String(identities.length)} detail={`${active} currently active`} accent="blue" /><Metric label="Connected sources" value={String(connectorNames.size)} detail={staleConnectors.length ? `${staleConnectors.length} needs attention` : (connectors.length ? "Recorded checkpoints recent" : "No checkpoint evidence")} accent="mint" /></section>
+    <section className="command-grid"><article className="panel command-queue"><header className="command-panel-head"><div><h2>Priority work queue</h2><p>Open cases sorted by due date</p></div><button onClick={() => onNavigate("reviews")}>View all →</button></header>{openReviews.length ? <div className="command-table"><div className="command-table-head"><span>Investigation</span><span>Owner</span><span>Due</span><span>Status</span></div>{openReviews.slice(0, 6).map((review) => <button key={review.id} onClick={() => onReview(review.id)}><span><i /> <strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><Badge value={review.status} /></button>)}</div> : <Empty>No open review cases.</Empty>}</article>
+      <aside className="panel command-posture"><header className="command-panel-head"><div><h2>Environment posture</h2><p>Recorded evidence status</p></div></header><div className="posture-score"><strong>{staleConnectors.length ? "Needs attention" : connectors.length ? "Recent checkpoints" : "Coverage unknown"}</strong><small>{connectorNames.size} connected sources</small></div><div className="setup-check"><span className="status-dot" /><p><strong>Tenant isolation</strong><small>Database-enforced scope</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Policy authority</strong><small>Deterministic OPA decisions</small></p></div><div className={staleConnectors.length ? "setup-check setup-check--warning" : "setup-check"}><span className="status-dot" /><p><strong>Connector freshness</strong><small>{staleConnectors.length ? `${staleConnectors.length} checkpoint overdue` : (connectors.length ? "Recorded checkpoints within 24 hours" : "No checkpoints available")}</small></p></div><button className="button button--secondary" onClick={() => onNavigate("setup")}>Open system setup</button></aside>
       <article className="panel command-cycle"><header className="command-panel-head"><div><h2>Latest monitoring cycle</h2><p>Retryable, append-only pipeline evidence</p></div><button onClick={() => onNavigate("operations")}>History →</button></header>{latestRun ? <div className="command-run"><div className="run-ring"><span>{latestRun.steps.filter((step) => step.status === "completed").length}</span><small>steps</small></div><div><Badge value={latestRun.status} /><h3>{latestRun.schedule_key}</h3><p>Requested by {latestRun.requested_by}</p><small>{formatDate(latestRun.completed_at)}</small></div></div> : <Empty>No monitoring runs recorded.</Empty>}</article>
     </section>
   </div>;
@@ -211,18 +230,20 @@ function chromeStoreUrl(value: string | undefined): string | undefined {
 }
 
 function WorkspaceUnavailable({ error }: { error: string }) {
-  return <div className="recovery-page"><section className="recovery-card"><div className="recovery-icon">!</div><p className="kicker">Connection check</p><h1>Workspace needs attention</h1><p className="recovery-lede">The dashboard loaded, but it cannot reach Athena’s evidence API. Your account is not the problem.</p><div className="recovery-steps"><article><span>1</span><div><strong>Start required services</strong><small>Run PostgreSQL, Keycloak, and OPA through Docker Compose.</small><code>docker compose up -d postgres keycloak opa</code></div></article><article><span>2</span><div><strong>Start the Athena API</strong><small>Keep this command running in a separate PowerShell window.</small><code>.\.venv\Scripts\uvicorn.exe athena.main:app --app-dir apps/api/src</code></div></article><article><span>3</span><div><strong>Refresh this page</strong><small>Athena will automatically load your tenant-scoped evidence after the API responds.</small></div></article></div><details><summary>Technical detail</summary><p>{error}</p></details><button className="button button--primary" onClick={() => window.location.reload()}>Check connection again <span>↻</span></button></section></div>;
+  return <div className="recovery-page"><section className="recovery-card"><div className="recovery-icon">!</div><p className="kicker">Connection check</p><h1>Workspace needs attention</h1><p className="recovery-lede">The dashboard could not load required evidence. Check service availability and your account permissions, then retry.</p><div className="recovery-steps"><article><span>1</span><div><strong>Start required services</strong><small>Run PostgreSQL, Keycloak, and OPA through Docker Compose.</small><code>docker compose up -d postgres keycloak opa</code></div></article><article><span>2</span><div><strong>Start the Athena API</strong><small>Keep this command running in a separate PowerShell window.</small><code>.\.venv\Scripts\uvicorn.exe athena.main:app --app-dir apps/api/src</code></div></article><article><span>3</span><div><strong>Refresh this page</strong><small>Athena will automatically load your tenant-scoped evidence after the API responds.</small></div></article></div><details><summary>Technical detail</summary><p>{error}</p></details><button className="button button--primary" onClick={() => window.location.reload()}>Check connection again <span>↻</span></button></section></div>;
 }
 
-function FirstRunGuide({ identities, connectors, latestRun, openReviews, onNavigate }: { identities: Identity[]; connectors: Connector[]; latestRun?: MonitoringRun; openReviews: ReviewCase[]; onNavigate: (page: Page) => void }) {
+function FirstRunGuide({ identities, connectors, reviews, exportPrepared, onNavigate }: { identities: Identity[]; connectors: Connector[]; reviews: ReviewCase[]; exportPrepared: boolean; onNavigate: (page: Page) => void }) {
+  const progress = reviewProgress(reviews);
   const steps = [
-    { title: "Connect an identity source", detail: "Confirm Keycloak, GitHub, or Microsoft Azure is reporting.", done: connectors.length > 0, page: "setup" as Page },
-    { title: "Collect identity evidence", detail: "Synchronize users, groups, roles, and access assignments.", done: identities.length > 0, page: "identities" as Page },
-    { title: "Run the monitoring pipeline", detail: "Create policy, risk, and review evidence for analysts.", done: Boolean(latestRun), page: "operations" as Page },
-    { title: "Complete your first review", detail: "Inspect evidence and record a human access decision.", done: openReviews.length > 0, page: "reviews" as Page }
+    { title: "Receive source evidence", detail: "Check source scope, observation time, and coverage limitations.", done: connectors.length > 0 || identities.length > 0, page: "setup" as Page },
+    { title: "Assign an evidence review", detail: "Inspect an identity, open a case, and assign its owner.", done: progress.assigned, page: "reviews" as Page },
+    { title: "Record a review decision", detail: "An open case is not a completed review.", done: progress.completed, page: "reviews" as Page },
+    { title: "Prepare an evidence export", detail: "Administrator export; progress is recorded for this session only.", done: exportPrepared, page: "operations" as Page }
   ];
   const completed = steps.filter((step) => step.done).length;
-  return <section className="first-run"><header><div><p className="kicker">Getting started</p><h2>Your first Athena workflow</h2><span>Complete these steps in order. Athena will update this checklist from real evidence.</span></div><strong>{completed} / {steps.length}</strong></header><div className="first-run-progress"><span style={{ width: `${(completed / steps.length) * 100}%` }} /></div><div className="first-run-steps">{steps.map((step, index) => <button className={step.done ? "is-done" : index === completed ? "is-next" : ""} key={step.title} onClick={() => onNavigate(step.page)}><span>{step.done ? "✓" : index + 1}</span><p><strong>{step.title}</strong><small>{step.detail}</small></p><i>{step.done ? "Complete" : index === completed ? "Do this next →" : "Not started"}</i></button>)}</div></section>;
+  const nextIndex = steps.findIndex((step) => !step.done);
+  return <section className="first-run"><header><div><p className="kicker">Getting started</p><h2>Your first Athena workflow</h2><span>Progress from loaded evidence. A review decision does not prove an upstream access change.</span></div><strong>{completed} / {steps.length}</strong></header><div className="first-run-progress"><span style={{ width: `${(completed / steps.length) * 100}%` }} /></div><div className="first-run-steps">{steps.map((step, index) => <button className={step.done ? "is-done" : index === nextIndex ? "is-next" : ""} key={step.title} onClick={() => onNavigate(step.page)}><span>{step.done ? "✓" : index + 1}</span><p><strong>{step.title}</strong><small>{step.detail}</small></p><i>{step.done ? "Recorded" : index === nextIndex ? "Do this next →" : "Not recorded"}</i></button>)}</div></section>;
 }
 
 function Metric({ label, value, detail, accent }: { label: string; value: string; detail: string; accent: string }) {
@@ -233,9 +254,10 @@ function PanelTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
   return <header className="panel-title"><p>{eyebrow}</p><h2>{title}</h2></header>;
 }
 
-function Identities({ user, identities }: { user: User; identities: Identity[] }) {
-  const [selectedId, setSelectedId] = useState(identities[0]?.id ?? "");
-  const [query, setQuery] = useState("");
+function Identities({ user, identities, initialSelectedId, manifests, connectors, onReview }: { user: User; identities: Identity[]; initialSelectedId: string; manifests: ConnectorManifest[]; connectors: Connector[]; onReview: (identity: Identity) => void }) {
+  const [selected, setSelected] = useState<Identity | undefined>(() => identities.find((item) => item.id === initialSelectedId) ?? identities[0]);
+  const selectedId = selected?.id ?? "";
+  const selectionVersion = useRef(0);
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [risks, setRisks] = useState<RiskAssessment[]>([]);
   const [anomalies, setAnomalies] = useState<AnomalyAssessment[]>([]);
@@ -247,13 +269,21 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
   const [explanation, setExplanation] = useState<IdentityExplanation | null>(null);
   const [explanationState, setExplanationState] = useState<LoadState>("idle");
   const [explanationError, setExplanationError] = useState("");
-  const filtered = useMemo(() => identities.filter((identity) => `${identity.display_name} ${identity.username} ${identity.department}`.toLowerCase().includes(query.toLowerCase())), [identities, query]);
-  const selected = identities.find((identity) => identity.id === selectedId);
+  function selectIdentity(identity: Identity) {
+    if (identity.id !== selectedId) {
+      selectionVersion.current += 1;
+      setLoading(true); setExplanation(null); setDetailError("");
+    }
+    setSelected(identity);
+  }
+
+  useEffect(() => () => { selectionVersion.current += 1; }, []);
 
   useEffect(() => {
     if (!selectedId) return;
     const controller = new AbortController();
     let active = true; setLoading(true); setDetailError(""); setExplanation(null);
+    setEntitlements([]); setRisks([]); setAnomalies([]);
     setExplanationState("idle"); setExplanationError("");
     setGraphState("loading"); setGraphError(""); setAttackPaths([]);
     Promise.all([
@@ -278,23 +308,33 @@ function Identities({ user, identities }: { user: User; identities: Identity[] }
 
   async function generateExplanation() {
     if (!selectedId || explanationState === "loading") return;
+    const version = selectionVersion.current;
     setExplanationState("loading"); setExplanationError("");
     try {
       const generated = await apiPost<IdentityExplanation>(
         user,
         `/v1/identities/${selectedId}/explanation`
       );
+      if (version !== selectionVersion.current) return;
       setExplanation(generated); setExplanationState("ready");
     } catch (caught) {
+      if (version !== selectionVersion.current) return;
       setExplanationError(caught instanceof Error ? caught.message : "Explanation unavailable");
       setExplanationState("error");
     }
   }
 
-  return <div className="page"><section className="page-heading"><div><p className="kicker">Identity inventory</p><h1>Trace every permission<br /><em>to its origin.</em></h1></div><input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search identities" aria-label="Search identities" /></section>
-    <div className="identity-layout"><section className="identity-list" aria-label="Identities">{filtered.map((identity) => <button key={identity.id} className={identity.id === selectedId ? "identity-row selected" : "identity-row"} onClick={() => setSelectedId(identity.id)}><span className="avatar">{identity.display_name.slice(0, 1)}</span><span><strong>{identity.display_name}</strong><small>{identity.department ?? identity.source} · {identity.username}</small></span><span className={identity.active ? "live-dot" : "live-dot inactive"} /></button>)}</section>
+  return <div className="page"><section className="page-heading"><div><p className="kicker">Identity inventory</p><h1>Trace every permission<br /><em>to its origin.</em></h1></div></section>
+    <div className="identity-layout"><IdentityInventory user={user} selectedId={selectedId} onSelect={selectIdentity} />
       <section className="evidence-panel">{selected ? <><header className="identity-header"><div><p>{selected.source} / {selected.identity_type}</p><h2>{selected.display_name}</h2><span>{selected.job_title ?? "Title unavailable"} · {selected.email ?? "Email unavailable"}</span></div><Badge value={selected.active ? "active" : "inactive"} /></header>
+        <p className="identity-observation">Identity observed {formatDate(selected.observed_at)} · {freshness(selected.observed_at)}. An active account does not prove that every permission is currently usable.</p>
+        <ConnectorCoverage source={selected.source} manifests={manifests} checkpoints={connectors} identities={[selected]} />
         {loading ? <div className="inline-loader">Loading evidence…</div> : detailError ? <div className="notice notice--error">{detailError}</div> : <><div className="evidence-stats"><div><strong>{entitlements.length}</strong><small>Entitlements</small></div><div><strong>{risks[0]?.score.toFixed(2) ?? "—"}</strong><small>Risk score</small></div><div><strong>{anomalies.filter((item) => item.is_anomaly).length}</strong><small>Anomalies</small></div></div>
+          <section className="assessment-findings"><h3>Recorded findings</h3><p>Risk and anomaly findings are advisory evidence for human review.</p>
+            {risks[0] && <p>Latest risk assessment: {formatDate(risks[0].evaluated_at)} · {risks[0].level} · Model {risks[0].model_version}</p>}
+            {risks[0]?.findings.map((finding) => <article key={finding.id}><strong>{finding.finding_type.replaceAll("_", " ")}</strong><p>{finding.explanation}</p></article>)}
+            {!risks.length && !anomalies.length ? <p>No risk or anomaly assessment is recorded. An administrator must run assessment before a review can be opened.</p> : <button className="button button--primary" onClick={() => onReview(selected)}>Review this identity</button>}
+          </section>
           <div className="explanation-card"><div className="explanation-heading"><div><p className="kicker">AI explanation · advisory only</p><h3>Evidence explanation</h3></div><button className="button button--secondary" onClick={() => void generateExplanation()} disabled={explanationState === "loading"}>{explanationState === "loading" ? "Generating…" : explanation ? "Regenerate" : "Generate explanation"}</button></div>{explanationError && <div className="notice notice--error">{explanationError}</div>}{explanation && <div className="explanation-body"><p>{explanation.summary}</p>{explanation.findings.length > 0 && <ul>{explanation.findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}<div className="explanation-meta"><span>Provider {explanation.provider === "azure_ai" ? "Azure AI" : "Ollama"}</span><span>Model {explanation.model}</span><span>{explanation.evidence_references.length} evidence references</span><span>Digest {explanation.evidence_digest.slice(0, 12)}…</span></div><small>{explanation.disclaimer}</small>{explanation.limitations.length > 0 && <details><summary>Limitations</summary><ul>{explanation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></details>}</div>}</div>
           <div className="attack-card"><div className="attack-heading"><div><p className="kicker">Neo4j · derived index</p><h3>Privileged attack paths</h3></div><span>Advisory only</span></div>{graphState === "loading" && <div className="inline-loader">Querying bounded graph paths…</div>}{graphState === "error" && <div className="graph-unavailable"><strong>Graph unavailable</strong><small>{graphError}. PostgreSQL evidence remains available.</small></div>}{graphState === "ready" && (attackPaths.length ? <div className="attack-paths">{attackPaths.map((path, pathIndex) => <div className="attack-path" key={`${selectedId}-${pathIndex}`}>{path.nodes.map((node, nodeIndex) => <div className="attack-step" key={`${node.id}-${nodeIndex}`}><div className={`attack-node attack-node--${node.kind}`}><small>{node.kind}</small><strong>{node.label}</strong></div>{nodeIndex < path.relationships.length && <span className="attack-edge">{path.relationships[nodeIndex]} →</span>}</div>)}</div>)}</div> : <Empty>No privileged resource paths found within six hops.</Empty>)}</div>
           <div className="evidence-section"><h3>Authorization lineage</h3>{entitlements.length ? entitlements.map((item) => <article className="entitlement" key={item.id}><div className="entitlement-head"><div><strong>{item.permission.name}</strong><small>{item.permission.action} on {item.permission.resource.name}</small></div><Badge value={item.governance.status} /></div>{item.provenance.map((edge) => <div className="lineage" key={`${item.id}-${edge.sequence}`}><span>{edge.from_label}</span><i>{edge.relationship} →</i><span>{edge.to_label}</span></div>)}{item.governance.gaps.length > 0 && <p className="gap">Governance gaps: {item.governance.gaps.join(", ")}</p>}</article>) : <Empty>No entitlements materialized for this identity.</Empty>}</div></>}</> : <Empty>Select an identity to inspect evidence.</Empty>}</section></div>
@@ -351,38 +391,6 @@ function MachineIdentities({ user }: { user: User }) {
   </div>;
 }
 
-function Reviews({ user, principal, reviews, identities, onReviewsChanged, onExecutionCreated }: { user: User; principal: Principal | null; reviews: ReviewCase[]; identities: Identity[]; onReviewsChanged: (reviews: ReviewCase[]) => void; onExecutionCreated: (execution: Execution) => void }) {
-  const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
-  const [owner, setOwner] = useState("");
-  const [reason, setReason] = useState("");
-  const [decision, setDecision] = useState("retain");
-  const [actionState, setActionState] = useState<LoadState>("idle");
-  const [actionError, setActionError] = useState("");
-  const nameFor = (id: string) => identities.find((identity) => identity.id === id)?.display_name ?? id.slice(0, 8);
-  const roles = principal?.roles ?? [];
-  const canOpen = roles.some((role) => ["athena-analyst", "athena-reviewer", "athena-administrator"].includes(role));
-  const canReview = roles.some((role) => ["athena-reviewer", "athena-administrator"].includes(role));
-  const isAdmin = roles.includes("athena-administrator");
-  async function refresh() { onReviewsChanged(await apiGet<ReviewCase[]>(user, "/v1/reviews")); }
-  async function act(operation: () => Promise<unknown>) {
-    setActionState("loading"); setActionError("");
-    try { await operation(); await refresh(); setReason(""); setActionState("ready"); }
-    catch (caught) { setActionError(caught instanceof Error ? caught.message : "Review action failed"); setActionState("error"); }
-  }
-  async function requestExecution(review: ReviewCase) {
-    setActionState("loading"); setActionError("");
-    try {
-      const execution = await apiPost<Execution>(user, "/v1/executions", { case_id: review.id, idempotency_key: `ui-${review.id}-revoke` });
-      onExecutionCreated(execution); setActionState("ready");
-    } catch (caught) { setActionError(caught instanceof Error ? caught.message : "Execution request failed"); setActionState("error"); }
-  }
-  return <div className="page"><section className="page-heading"><div><p className="kicker">Human decision boundary</p><h1>Review with context.<br /><em>Act with proof.</em></h1></div><p className="heading-note">Athena records decisions as immutable evidence. Destructive access changes always remain separately authorized.</p></section>
-    {actionError && <div className="notice notice--error">{actionError}</div>}
-    {canOpen && <section className="panel action-panel"><PanelTitle eyebrow="New evidence review" title="Open a case" /><div className="action-form"><select value={identityId} onChange={(event) => setIdentityId(event.target.value)}>{identities.map((identity) => <option value={identity.id} key={identity.id}>{identity.display_name}</option>)}</select><input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Optional owner" /><button className="button button--secondary" disabled={!identityId || actionState === "loading"} onClick={() => void act(() => apiPost(user, "/v1/reviews", { identity_id: identityId, owner: owner || null, due_days: 7 }))}>Open review</button></div></section>}
-    <section className="panel table-panel"><div className="review-table table-header"><span>Case</span><span>Identity</span><span>Owner</span><span>Due</span><span>Status / actions</span></div>{reviews.length ? reviews.map((review) => <div className="review-table" key={review.id}><span><strong>{review.title}</strong><small>{review.id.slice(0, 8)}</small></span><span>{nameFor(review.identity_id)}</span><span>{review.owner ?? "Unassigned"}</span><span>{formatDate(review.due_at)}</span><span><Badge value={review.status} />{canReview && review.status !== "resolved" && <div className="review-actions"><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Evidence-based reason" />{review.status === "open" && <button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/assign`, { owner: owner || principal?.username, reason }))}>Assign</button>}{review.status === "in_review" && <><select value={decision} onChange={(event) => setDecision(event.target.value)}><option value="retain">Retain</option><option value="revoke">Revoke</option><option value="extend">Extend</option><option value="exception">Exception</option></select><button onClick={() => void act(() => apiPost(user, `/v1/reviews/${review.id}/decide`, { decision, reason }))}>Decide</button></>}</div>}{isAdmin && review.status === "resolved" && review.resolution === "revoke" && <button className="button button--secondary" onClick={() => void requestExecution(review)}>Request execution</button>}</span></div>) : <Empty>No review cases recorded.</Empty>}</section>
-  </div>;
-}
-
 function EmailWebSecurity({ agents, events }: { agents: SecurityAgent[]; events: SecurityEvent[] }) {
   const critical = events.filter((event) => event.severity === "critical").length;
   const blocked = events.filter((event) => event.action === "blocked").length;
@@ -401,43 +409,34 @@ function EmailWebSecurity({ agents, events }: { agents: SecurityAgent[]; events:
   </div>;
 }
 
-function SystemSetup({ connectors, latestRun, isAdmin }: { connectors: Connector[]; latestRun?: MonitoringRun; isAdmin: boolean }) {
-  const latestByConnector = new Map<string, Connector>();
-  connectors.forEach((connector) => {
-    const current = latestByConnector.get(connector.connector);
-    if (!current || Date.parse(connector.observed_at) > Date.parse(current.observed_at)) latestByConnector.set(connector.connector, connector);
-  });
-  const knownSources = [
-    { id: "keycloak", name: "Keycloak", detail: "Users, groups, roles, and service accounts" },
-    { id: "github", name: "GitHub", detail: "Organization members, teams, and repositories" },
-    { id: "azure", name: "Microsoft Azure", detail: "Entra identities and Azure RBAC assignments" }
-  ];
-  return <div className="page setup-page"><section className="page-heading"><div><p className="kicker">Administration</p><h1>System setup</h1></div><p className="heading-note">Review data-source readiness and operating boundaries. Credentials stay outside the browser and access-changing actions require separate authorization.</p></section>
-    {!isAdmin && <div className="notice setup-notice">Administrator role is required to change deployment configuration. This view remains read-only.</div>}
-    <section className="setup-summary"><article><small>Configured sources</small><strong>{latestByConnector.size} / {knownSources.length}</strong><span>Reporting connector evidence</span></article><article><small>Latest monitoring run</small><strong>{latestRun?.status ?? "Not run"}</strong><span>{latestRun ? formatDate(latestRun.completed_at) : "No schedule evidence"}</span></article><article><small>Safety boundary</small><strong>Human approval</strong><span>No automatic access changes</span></article></section>
-    <section className="setup-layout"><article className="panel setup-sources"><header className="command-panel-head"><div><h2>Identity and application sources</h2><p>Read-only connector status from recorded checkpoints</p></div></header>{knownSources.map((source) => { const checkpoint = latestByConnector.get(source.id); const fresh = checkpoint && Date.now() - Date.parse(checkpoint.observed_at) <= 86_400_000; return <div className="setup-source" key={source.id}><span className={fresh ? "source-icon source-icon--healthy" : "source-icon"}>{checkpoint ? "✓" : "+"}</span><div><strong>{source.name}</strong><small>{source.detail}</small></div><div className="source-status"><Badge value={checkpoint ? (fresh ? "active" : "stale") : "not_configured"} /><small>{checkpoint ? `Last evidence ${formatDate(checkpoint.observed_at)}` : "Use the deployment guide to connect"}</small></div></div>; })}</article>
-      <aside className="panel setup-boundaries"><header className="command-panel-head"><div><h2>Protected boundaries</h2><p>Non-negotiable platform controls</p></div></header><div className="setup-check"><span className="status-dot" /><p><strong>Read-only collection</strong><small>Connectors cannot grant or revoke access</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Tenant-scoped evidence</strong><small>PostgreSQL row-level isolation</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Deterministic policy</strong><small>OPA remains the decision authority</small></p></div><div className="setup-check"><span className="status-dot" /><p><strong>Human remediation approval</strong><small>Destructive requests remain pending</small></p></div></aside>
-    </section>
+function SystemSetup({ connectors, manifests, identities, latestRun, isAdmin }: { connectors: Connector[]; manifests: ConnectorManifest[]; identities: Identity[]; latestRun?: MonitoringRun; isAdmin: boolean }) {
+  return <div className="page setup-page"><section className="page-heading"><div><p className="kicker">Read-only assessment</p><h1>Source coverage and setup</h1></div><p className="heading-note">Capability declarations describe adapter support. Checkpoints describe observations. Neither proves complete access coverage.</p></section>
+    <section className="panel setup-instructions"><h2>Connect a source safely</h2><ol><li>Ask an administrator to configure the existing GitHub, Azure, or Keycloak collector in the deployment.</li><li>Have the tenant’s provider scope reviewed and approved before collection.</li><li>Run read-only synchronization and assessment, then refresh this workspace.</li><li>Inspect the source limitations and identity findings before opening a review.</li></ol><p>{isAdmin ? "Keep credentials in deployment secret configuration; never paste them into review reasons or evidence." : "Your current role can inspect evidence. An administrator manages source configuration."}</p><p>Latest monitoring status: {latestRun?.status ?? "No monitoring evidence loaded"}. Collection configuration cannot be determined from missing checkpoints.</p></section>
+    <ConnectorCoverage manifests={manifests} checkpoints={connectors} identities={identities} />
   </div>;
 }
 
-function Operations({ user, connectors, runs, executions, isAdmin }: { user: User; connectors: Connector[]; runs: MonitoringRun[]; executions: Execution[]; isAdmin: boolean }) {
+function Operations({ user, connectors, runs, executions, isAdmin, onExportPrepared }: { onExportPrepared: () => void; user: User; connectors: Connector[]; runs: MonitoringRun[]; executions: Execution[]; isAdmin: boolean }) {
   const [reportState, setReportState] = useState<LoadState>("idle");
   const [reportError, setReportError] = useState("");
+  const [reportFormat, setReportFormat] = useState<"md" | "json">("md");
   async function downloadReport() {
     setReportState("loading"); setReportError("");
     try {
-      const markdown = await apiText(user, "/v1/reports/evidence.md");
-      const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+      const report = await apiText(user, reportFormat === "md" ? "/v1/reports/evidence.md" : "/v1/reports/evidence");
+      const url = URL.createObjectURL(new Blob([report], { type: reportFormat === "md" ? "text/markdown" : "application/json" }));
       const link = document.createElement("a");
-      link.href = url; link.download = "athena-authorization-evidence.md"; link.click();
-      URL.revokeObjectURL(url); setReportState("ready");
+      link.href = url; link.download = `athena-authorization-evidence.${reportFormat}`; document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000); setReportState("ready"); onExportPrepared();
     } catch (caught) {
       setReportError(caught instanceof Error ? caught.message : "Report unavailable");
       setReportState("error");
     }
   }
-  return <div className="page"><section className="page-heading"><div><p className="kicker">Operational evidence</p><h1>Know what ran.<br /><em>Know what changed.</em></h1></div>{isAdmin && <button className="button button--secondary" disabled={reportState === "loading"} onClick={() => void downloadReport()}>{reportState === "loading" ? "Building report…" : "Download evidence report"}</button>}</section>{reportError && <div className="notice notice--error">{reportError}</div>}
+  return <div className="page"><section className="page-heading"><div><p className="kicker">Operational evidence</p><h1>Know what ran.<br /><em>Know what changed.</em></h1></div>{isAdmin && <label>Evidence format<select value={reportFormat} onChange={(event) => setReportFormat(event.target.value as "md" | "json")} disabled={reportState === "loading"}><option value="md">Markdown</option><option value="json">JSON</option></select></label>}{isAdmin && <button className="button button--secondary" disabled={reportState === "loading"} onClick={() => void downloadReport()}>{reportState === "loading" ? "Building report…" : "Export tenant evidence"}</button>}</section>{reportError && <div className="notice notice--error">{reportError}</div>}
+    <p>Exports contain tenant-wide evidence and review history, not only the selected case. The server verifies the evidence digest before rendering Markdown.</p>
+    {!isAdmin && <p role="status">An administrator must export the tenant evidence packet. Your review remains available in Investigations.</p>}
+    {reportState === "ready" && <p role="status">Evidence export prepared. Check your browser downloads. This does not verify that an access change was executed.</p>}
     <section className="split-grid"><article className="panel"><PanelTitle eyebrow="Source freshness" title="Connector checkpoints" />{connectors.length ? <div className="stack-list">{connectors.map((item) => <div className="stack-row" key={item.id}><div><strong>{item.connector}</strong><small>{item.scope} · {item.cached_endpoints} cached endpoints</small></div><time>{formatDate(item.observed_at)}</time></div>)}</div> : <Empty>No connector checkpoints recorded.</Empty>}</article>
       <article className="panel"><PanelTitle eyebrow="Idempotent pipeline" title="Monitoring history" />{runs.length ? <div className="stack-list">{runs.slice(0, 6).map((run) => <div className="stack-row" key={run.id}><div><strong>{run.schedule_key}</strong><small>{run.steps.length} steps · attempt {run.attempt_count}</small></div><Badge value={run.status} /></div>)}</div> : <Empty>No monitoring runs recorded.</Empty>}</article></section>
     <section className="panel executions"><PanelTitle eyebrow="Administrator evidence" title="Remediation requests" />{!isAdmin ? <Empty>Administrator role required to view execution evidence.</Empty> : executions.length ? <div className="stack-list">{executions.map((item) => <div className="stack-row" key={item.id}><div><strong>{item.action} · {item.source}</strong><small>Requested by {item.requested_by} · {formatDate(item.created_at)}</small></div><Badge value={item.status} /></div>)}</div> : <Empty>No remediation requests recorded.</Empty>}</section>

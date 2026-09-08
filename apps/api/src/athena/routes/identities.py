@@ -13,6 +13,7 @@ from athena.schemas import (
     EntitlementResponse,
     GrantGovernanceResponse,
     IdentityExplanationResponse,
+    IdentityPageResponse,
     IdentityResponse,
     PermissionSummary,
     PolicyEvaluationResponse,
@@ -44,6 +45,20 @@ def list_identities(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[IdentityResponse]:
     return IdentityRepository(session).list(limit=limit, offset=offset)
+
+
+@router.get("/inventory", response_model=IdentityPageResponse)
+def identity_inventory(
+    session: DatabaseSession,
+    q: Annotated[str, Query(max_length=255)] = "",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> IdentityPageResponse:
+    repository = IdentityRepository(session)
+    items, total = repository.page(limit=limit, offset=offset, query=q)
+    return IdentityPageResponse(
+        items=items, total=total, limit=limit, offset=offset,
+    )
 
 
 @router.get("/{identity_id}", response_model=IdentityResponse)

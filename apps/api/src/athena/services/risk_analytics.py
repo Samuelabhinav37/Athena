@@ -19,7 +19,7 @@ from athena.models import (
     Sensitivity,
 )
 
-MODEL_VERSION = "access-decay-v1"
+MODEL_VERSION = "access-decay-v2"
 SENSITIVITY_FACTORS = {
     Sensitivity.LOW: 0.1,
     Sensitivity.MODERATE: 0.4,
@@ -104,7 +104,7 @@ class RiskAnalyticsService:
         self.session.add(assessment)
         finding_scores = []
         for entitlement in entitlements:
-            factors = self._factors(
+            factors, activity = self._factors(
                 identity,
                 entitlement,
                 peer_permissions,
@@ -115,17 +115,19 @@ class RiskAnalyticsService:
                 sum(WEIGHTS[name] * value for name, value in factors.items()), 2
             )
             finding_scores.append(score)
-            finding_type = self._finding_type(factors)
+            finding_type = self._finding_type(factors, activity["status"])
+            recorded_factors = {
+                name: {"value": value, "weight": WEIGHTS[name]}
+                for name, value in factors.items()
+            }
+            recorded_factors["time_since_use"].update(activity)
             assessment.findings.append(
                 RiskFinding(
                     entitlement=entitlement,
                     finding_type=finding_type,
                     score=score,
-                    factors={
-                        name: {"value": value, "weight": WEIGHTS[name]}
-                        for name, value in factors.items()
-                    },
-                    explanation=self._explanation(entitlement, factors, score),
+                    factors=recorded_factors,
+                    explanation=self._explanation(entitlement, factors, score, activity),
                 )
             )
 
@@ -160,20 +162,14 @@ class RiskAnalyticsService:
         peer_permissions: set[uuid.UUID],
         transition: RoleTransition | None,
         now: datetime,
-    ) -> dict[str, float]:
+    ) -> tuple[dict[str, float], dict]:
         permission = entitlement.permission
         observation = self.session.scalar(
             select(AccessObservation)
             .where(AccessObservation.entitlement_id == entitlement.id)
-            .order_by(AccessObservation.observed_at.desc())
+            .order_by(AccessObservation.observed_at.desc(), AccessObservation.id.desc())
         )
-        if observation is None or observation.last_used_at is None:
-            time_factor = 1.0
-        else:
-            last_used = observation.last_used_at
-            if last_used.tzinfo is None:
-                last_used = last_used.replace(tzinfo=UTC)
-            time_factor = min(max((now - last_used).days / 90, 0.0), 1.0)
+        time_factor, activity = self._activity(observation, now)
         latest_policy = self.session.scalar(
             select(PolicyEvaluation)
             .where(PolicyEvaluation.entitlement_id == entitlement.id)
@@ -208,15 +204,45 @@ class RiskAnalyticsService:
             "peer_deviation": peer_factor,
             "policy_risk": policy_factor,
             "authentication_risk": authentication_factor,
+        }, activity
+
+    @staticmethod
+    def _activity(observation: AccessObservation | None, now: datetime) -> tuple[float, dict]:
+        def utc(value: datetime) -> datetime:
+            return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+        observed = utc(observation.observed_at) if observation is not None else None
+        used = (
+            utc(observation.last_used_at)
+            if observation is not None and observation.last_used_at is not None else None
+        )
+        status, reason, value = "unknown", "No last-use evidence recorded", 1.0
+        if observed is not None and (observed > now or (used is not None and used > observed)):
+            status, reason = "invalid", "Activity timestamps are future or inconsistent"
+        elif observed is not None and (now - observed).total_seconds() > 86400:
+            reason = "Activity observation is older than 24 hours"
+        elif used is not None:
+            age_days = (now - used).days
+            status = "stale" if age_days >= 90 else "recent"
+            reason = f"Last use recorded {age_days} days ago"
+            value = min(age_days / 90, 1.0)
+        return value, {
+            "status": status,
+            "reason": reason,
+            "treatment": "observed_age" if status in {"recent", "stale"}
+            else "uncertainty_reserve",
+            "observation_id": str(observation.id) if observation is not None else None,
+            "observed_at": observed.isoformat() if observed is not None else None,
+            "last_used_at": used.isoformat() if used is not None else None,
         }
 
     @staticmethod
-    def _finding_type(factors: dict[str, float]) -> RiskFindingType:
+    def _finding_type(factors: dict[str, float], activity_status: str) -> RiskFindingType:
         if factors["retained_access"] == 1.0:
             return RiskFindingType.RETAINED_ACCESS
         if factors["policy_risk"] > 0:
             return RiskFindingType.POLICY_VIOLATION
-        if factors["time_since_use"] >= 1.0:
+        if activity_status == "stale":
             return RiskFindingType.STALE_ACCESS
         return RiskFindingType.PEER_DEVIATION
 
@@ -232,12 +258,22 @@ class RiskAnalyticsService:
 
     @staticmethod
     def _explanation(
-        entitlement: EffectiveEntitlement, factors: dict[str, float], score: float
+        entitlement: EffectiveEntitlement, factors: dict[str, float], score: float, activity: dict
     ) -> str:
-        contributors = [name for name, value in factors.items() if value >= 0.75]
+        uncertain = activity["treatment"] == "uncertainty_reserve"
+        contributors = [
+            name for name, value in factors.items()
+            if value >= 0.75 and not (name == "time_since_use" and uncertain)
+        ]
+        activity_note = (
+            f" Activity {activity['status']}: {activity['reason']}; "
+            "15 points reserved for uncertainty, not evidence of inactivity."
+            if uncertain else f" Activity {activity['status']}: {activity['reason']}."
+        )
         return (
             f"{entitlement.permission.name} scored {score:.2f}/100; "
             f"primary factors: {', '.join(contributors) or 'none'}."
+            + activity_note
         )
 
 

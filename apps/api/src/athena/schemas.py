@@ -53,6 +53,13 @@ class IdentityResponse(BaseModel):
     roles: list[RoleSummary]
 
 
+class IdentityPageResponse(BaseModel):
+    items: list[IdentityResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class ResourceSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

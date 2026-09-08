@@ -4,6 +4,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from athena.auth import require_viewer
+from athena.collectors.azure import AzureCollector
+from athena.collectors.contracts import ConnectorManifest
+from athena.collectors.github import GitHubCollector
+from athena.collectors.keycloak import KeycloakCollector
 from athena.database import get_db_session
 from athena.models import ConnectorCheckpoint, ConnectorScopeBinding, ConnectorScopeRevocation
 from athena.schemas import ConnectorCheckpointResponse, ConnectorScopeResponse
@@ -13,6 +17,15 @@ router = APIRouter(
     prefix="/v1/connectors", tags=["connectors"], dependencies=[Depends(require_viewer)]
 )
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
+
+
+@router.get("/capabilities", response_model=list[ConnectorManifest])
+def connector_capabilities() -> list[ConnectorManifest]:
+    """Declare adapter coverage without accessing credentials or contacting providers."""
+    return [
+        collector.manifest()
+        for collector in (AzureCollector, GitHubCollector, KeycloakCollector)
+    ]
 
 
 @router.get("", response_model=list[ConnectorCheckpointResponse])
