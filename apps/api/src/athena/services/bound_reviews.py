@@ -23,6 +23,7 @@ from athena.models import (
     ReviewStatus,
     RiskFinding,
 )
+from athena.services.review_person_bindings import check_bindings, person_binding
 from athena.tenant_queries import tenant_select
 
 
@@ -197,7 +198,7 @@ class BoundReviewService:
         if existing:
             return existing
         snapshot = {
-            "contract": "bound-review-v1",
+            "contract": "bound-review-v2",
             "target": target,
             "target_digest": digest(target),
             "evidence_id": str(evidence.id),
@@ -209,6 +210,7 @@ class BoundReviewService:
             "opener": self.actor(principal),
             "proposed_action": decision.value,
             "closure_goal": goal,
+            "person_binding": person_binding(self.session, self.settings, identity),
         }
         case = ReviewCase(
             identity_id=identity.id,
@@ -261,13 +263,30 @@ class BoundReviewService:
         if case.status not in {ReviewStatus.OPEN, ReviewStatus.IN_REVIEW}:
             raise ValueError("Only active reviews can be assigned")
         reviewer = self.eligible(reviewer_id)
+        target_binding = person_binding(
+            self.session, self.settings, self.get(Identity, case.identity_id)
+        )
+        if target_binding != case.target_snapshot.get("person_binding"):
+            raise ValueError("Target person binding changed; open a fresh review")
+        reviewer_binding = person_binding(
+            self.session,
+            self.settings,
+            self.get(Identity, reviewer.identity_id),
+        )
+        check_bindings(target_binding, reviewer_binding)
         case.owner_id, case.owner = reviewer.id, reviewer.display_name
         self._event(
             case,
             principal,
             "assigned",
             reason,
-            {"owner_id": str(reviewer.id)},
+            {
+                "owner_id": str(reviewer.id),
+                "person_bindings": {
+                    "target": target_binding,
+                    "reviewer": reviewer_binding,
+                },
+            },
             status=ReviewStatus.IN_REVIEW,
         )
         self.session.commit()
@@ -297,6 +316,23 @@ class BoundReviewService:
             raise ValueError("Reviewed target changed; fresh approval is required")
         self._fresh(datetime.fromisoformat(snapshot["evaluated_at"]))
         identity = self.get(Identity, case.identity_id)
+        target_binding = person_binding(self.session, self.settings, identity)
+        reviewer_binding = person_binding(
+            self.session,
+            self.settings,
+            self.get(Identity, owner.identity_id),
+        )
+        assignment = self.latest(case, "assigned")
+        bindings = {"target": target_binding, "reviewer": reviewer_binding}
+        if (
+            target_binding != snapshot.get("person_binding")
+            or assignment is None
+            or bindings != assignment.evidence_snapshot.get("person_bindings")
+        ):
+            raise ValueError(
+                "Person binding changed since review or assignment; open a fresh review"
+            )
+        check_bindings(target_binding, reviewer_binding)
         if owner.identity_id == identity.id:
             raise ValueError("Self-review is prohibited")
         if decision != ReviewDecision.RETAIN:
@@ -311,7 +347,7 @@ class BoundReviewService:
             principal,
             "decided",
             reason,
-            {"decision": decision.value},
+            {"decision": decision.value, "person_bindings": bindings},
             status=ReviewStatus.RESOLVED,
             pending=decision != ReviewDecision.RETAIN,
         )

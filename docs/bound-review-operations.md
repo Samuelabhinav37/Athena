@@ -6,6 +6,14 @@ validation. This is not production activation or a claim that Release A is ready
 
 ## What changed
 
+- New `bound-review-v2` cases snapshot the target's person binding. Assignment
+  snapshots both target and reviewer bindings; decisions recheck and copy those
+  bindings into immutable evidence. Link confirmation, revocation, expiry or changed
+  account authority invalidates an earlier assignment. Two accounts linked to the
+  same person cannot be assigned to review each other. Older bound cases without
+  this evidence require cancellation and a fresh case; history is not backfilled.
+  The existing cross-source non-retain approval guard remains in place.
+
 - A tenant-scoped reviewer registry binds an active authoritative OIDC account to
   issuer and subject. Administrators register eligibility with a reason and can
   deactivate it. Actual reviewer role is checked again when acting. Names are labels.

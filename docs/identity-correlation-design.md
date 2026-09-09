@@ -96,8 +96,11 @@ contract and its migrations have passed review and validation.
 | Steward attempts to confirm their own proposal | Reject; retain proposal evidence |
 
 Next validation needs disposable PostgreSQL migration/drift/RLS/concurrency tests
-and signed-in browser acceptance. Next implementation must bind review snapshots
-to person-link versions before lifting the existing cross-source approval block.
+and signed-in browser acceptance. Review snapshots now bind target and reviewer
+person-link versions and fail closed on changes, expiry and same-person review.
+This binding is an additional restriction: it does not lift the existing
+cross-source approval block or enable the executor. Acceptance evidence and the
+future execution boundary remain prerequisites to broader authorization.
 No dependency was added.
 
 ## Candidate panel acceptance checklist

@@ -2,6 +2,17 @@
 
 Prepared 8 September 2026. Status: implementation started; P00–P03 locally validated, browser and infrastructure verification remain open. Basis: the current working tree, [security/product assessment](athena-security-product-research.md), [competitor mechanisms](athena-competitor-mechanisms-2026-09-08.md), and the canonical [readiness manifest](../governance/readiness.json).
 
+## Thirteenth slice: versioned person bindings in review evidence
+
+New bound-review-v2 cases capture target person attribution. Assignment records
+target and reviewer bindings, including exact link revisions; approval rechecks
+them and records the same evidence. Same-person assignment through different
+accounts is rejected. Confirmation/revocation, expiry and authority changes
+invalidate pending work. Existing cases without person bindings need fresh review.
+No new migration or dependency. Cross-source approval and executor blocks remain.
+Full suite: 371 passed, 8 skipped; lint passed. Final focused tests: 43 passed,
+including expiry and target changes added after that full run.
+
 ## Twelfth slice: approved Keycloak person-link pilot
 
 The user approved Keycloak anchors and two-steward documented confirmation.

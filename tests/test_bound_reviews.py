@@ -142,9 +142,11 @@ def test_approval_rejects_invalid_owner_or_target(bound, risk_session, problem):
         risk_session.commit()
     else:
         self_owner = service.register(alice.id, admin, "Synthetic self-review scenario")
-        service.assign(
-            case.id, case.revision, self_owner.id, admin, "Attempt self-review assignment"
-        )
+        with pytest.raises(ValueError, match="Self-review"):
+            service.assign(
+                case.id, case.revision, self_owner.id, admin, "Attempt self-review assignment"
+            )
+        assert case.owner_id == owner.id
         revision = case.revision
         principal = actor("alice")
     with pytest.raises(ValueError):
@@ -635,3 +637,152 @@ def test_new_request_supersedes_a_recorded_outcome(bound, risk_session):
     service.request_verification(case.id, case.revision, bound[5])
     assert worker.collection_status(case)["state"] == "queued"
     assert worker.collection_status(case)["outcome"] is None
+
+
+def confirmed_reviewer_link(bound, anchor=None):
+    from athena.models import IdentityType
+    from athena.services.person_links import PersonLinkService
+
+    service, _, _, owner, _, admin = bound
+    link_service = PersonLinkService(service.session, service.settings)
+    records = {}
+    for name in ("steward-one", "steward-two", "person-anchor"):
+        record = Identity(
+            source="keycloak",
+            external_id=f"user-{name}",
+            username=name,
+            display_name=name,
+            identity_type=IdentityType.HUMAN,
+            active=True,
+        )
+        service.session.add(record)
+        records[name] = record
+    service.session.commit()
+    for name in ("steward-one", "steward-two"):
+        service.register(records[name].id, admin, "Register independent pilot steward")
+    link = link_service.propose(
+        (anchor or records["person-anchor"]).id,
+        owner.identity_id,
+        "synthetic_fixture",
+        "fixture:reviewer-person-proof",
+        "Independent person evidence",
+        actor("steward-one", "athena-administrator"),
+    )
+    link_service.transition(
+        link.id,
+        link.revision,
+        "confirmed",
+        "Confirm independent person proof",
+        actor("steward-two", "athena-administrator"),
+    )
+    return link_service, link
+
+
+def test_person_link_revision_is_bound_into_assignment_and_decision(bound):
+    _, link = confirmed_reviewer_link(bound)
+    service = bound[0]
+    case = opened(bound)
+    assigned = service.latest(case, "assigned").evidence_snapshot["person_bindings"]
+    assert assigned["reviewer"]["link_id"] == str(link.id)
+    assert assigned["reviewer"]["link_revision"] == link.revision
+    service.decide(
+        case.id, case.revision, ReviewDecision.REVOKE, actor("charlie"), "Approve exact evidence"
+    )
+    decided = service.latest(case, "decided").evidence_snapshot["person_bindings"]
+    assert assigned == decided
+
+
+def test_revoked_reviewer_link_invalidates_pending_approval(bound):
+    link_service, link = confirmed_reviewer_link(bound)
+    service = bound[0]
+    case = opened(bound)
+    captured = dict(service.latest(case, "assigned").evidence_snapshot)
+    link_service.transition(
+        link.id,
+        link.revision,
+        "revoked",
+        "Correct reviewer person evidence",
+        actor("steward-one", "athena-administrator"),
+    )
+    with pytest.raises(ValueError, match="Person binding changed"):
+        service.decide(
+            case.id,
+            case.revision,
+            ReviewDecision.REVOKE,
+            actor("charlie"),
+            "Attempt stale approval",
+        )
+    assert case.status == ReviewStatus.IN_REVIEW
+    assert service.latest(case, "assigned").evidence_snapshot == captured
+
+
+def test_different_accounts_for_same_person_cannot_review_each_other(bound):
+    confirmed_reviewer_link(bound, anchor=bound[1])
+    with pytest.raises(ValueError, match="Self-review"):
+        opened(bound)
+
+
+def test_link_confirmed_after_assignment_requires_fresh_review(bound):
+    service = bound[0]
+    case = opened(bound)
+    confirmed_reviewer_link(bound)
+    with pytest.raises(ValueError, match="Person binding changed"):
+        service.decide(
+            case.id,
+            case.revision,
+            ReviewDecision.REVOKE,
+            actor("charlie"),
+            "Attempt changed binding",
+        )
+
+
+def test_person_link_expiry_invalidates_assignment_snapshot(bound, monkeypatch):
+    from types import SimpleNamespace
+
+    confirmed_reviewer_link(bound)
+    service = bound[0]
+    case = opened(bound)
+    future = datetime.now(UTC) + timedelta(days=31)
+    monkeypatch.setattr(
+        "athena.services.review_person_bindings.datetime", SimpleNamespace(now=lambda zone: future)
+    )
+    with pytest.raises(ValueError, match="Person binding changed"):
+        service.decide(
+            case.id,
+            case.revision,
+            ReviewDecision.REVOKE,
+            actor("charlie"),
+            "Attempt expired binding",
+        )
+    assert case.status == ReviewStatus.IN_REVIEW
+
+
+def test_target_person_change_after_open_requires_a_new_case(bound):
+    from athena.models import Person
+
+    service, alice, finding, owner, _, admin = bound
+    case = service.open(
+        alice.id, finding.id, None, ReviewDecision.REVOKE, "assignment_removed", 7, admin
+    )
+    original = dict(case.target_snapshot["person_binding"])
+    link_service, reviewer_link = confirmed_reviewer_link(bound)
+    person = service.session.get(Person, reviewer_link.person_id)
+    target_link = link_service.propose(
+        person.identity_id,
+        alice.id,
+        "synthetic_fixture",
+        "fixture:target-person-proof",
+        "Independently checked target mapping",
+        actor("steward-one", "athena-administrator"),
+    )
+    link_service.transition(
+        target_link.id,
+        target_link.revision,
+        "confirmed",
+        "Confirm target person proof",
+        actor("steward-two", "athena-administrator"),
+    )
+    with pytest.raises(ValueError, match="Target person binding changed"):
+        service.assign(case.id, case.revision, owner.id, admin, "Attempt changed target mapping")
+    assert case.target_snapshot["person_binding"] == original
+    assert case.status == ReviewStatus.OPEN

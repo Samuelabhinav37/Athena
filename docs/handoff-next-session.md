@@ -1,5 +1,14 @@
 # Athena handoff
 
+Latest: work through the person-link pilot was pushed as 7212fbc. The thirteenth
+slice is local: bound-review-v2 captures target person attribution and assignment
+captures target/reviewer link revisions. Approval rejects corrections, expiry and
+same-person reviews without rewriting history. Cross-source non-retain approval
+remains blocked. Next: PostgreSQL/browser acceptance and a separately verified
+authorization/execution boundary; do not remove guards on the strength of unit
+tests alone. Full suite: 371 passed, 8 skipped; final focused tests: 43 passed;
+Ruff passed. No frontend change or migration was added in this slice.
+
 9 September: the user approved Keycloak as the synthetic pilot's person anchor
 with two-steward confirmation. Person/link models, stewardship API/UI, immutable
 history and forward migration 20260909_25 are implemented locally. Production
