@@ -11,6 +11,7 @@ from athena.routes.executions import router as executions_router
 from athena.routes.identities import router as identities_router
 from athena.routes.machine_identities import router as machine_identities_router
 from athena.routes.monitoring import router as monitoring_router
+from athena.routes.person_links import router as person_links_router
 from athena.routes.reports import router as reports_router
 from athena.routes.reviewers import router as reviewers_router
 from athena.routes.reviews import router as reviews_router
@@ -31,6 +32,7 @@ app.include_router(auth_router)
 app.include_router(executions_router)
 app.include_router(connectors_router)
 app.include_router(monitoring_router)
+app.include_router(person_links_router)
 app.include_router(machine_identities_router)
 app.include_router(reviews_router)
 app.include_router(reviewers_router)

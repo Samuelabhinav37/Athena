@@ -36,6 +36,9 @@ LEGACY_BOOTSTRAP_TABLES = (
     "roles",
 )
 TENANT_TABLES = (
+    "persons",
+    "person_links",
+    "person_link_events",
     "access_grants",
     "access_observations",
     "anomaly_model_runs",

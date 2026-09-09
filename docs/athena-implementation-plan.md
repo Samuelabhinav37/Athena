@@ -2,6 +2,47 @@
 
 Prepared 8 September 2026. Status: implementation started; P00–P03 locally validated, browser and infrastructure verification remain open. Basis: the current working tree, [security/product assessment](athena-security-product-research.md), [competitor mechanisms](athena-competitor-mechanisms-2026-09-08.md), and the canonical [readiness manifest](../governance/readiness.json).
 
+## Twelfth slice: approved Keycloak person-link pilot
+
+The user approved Keycloak anchors and two-steward documented confirmation.
+Implemented person/link persistence, immutable event history, account-authority
+snapshots, independent registered administrators, proposal freshness, 30-day
+validity, rejection/revocation and account-link uniqueness. Added stewardship API
+and candidate-pair UI. Migration 20260909_25 is additive/forward-only with forced
+RLS and restricted runtime updates; only offline SQL generation has run.
+Production stewardship is blocked and confirmed links cannot authorize access.
+Full suite: 365 passed, 8 skipped; final focused tests: 14 passed; Ruff, frontend
+tests/build and offline SQL generation passed. PostgreSQL/browser release gates
+and person-link-version binding in access reviews remain next work.
+
+## Eleventh slice: account-authority preflight
+
+Azure ingestion now rejects duplicate account IDs and existing accounts with
+missing/conflicting directory authority before identity writes or checkpoint
+refresh. Regression tests preserve the previous projection for both changed and
+unchanged fingerprints. Targeted Azure/correlation tests: 25 passed; Ruff passed.
+Full regression suite: 357 passed, 8 skipped, one existing Starlette/httpx warning.
+This is a sequential preflight, not the future scoped database account model.
+The authoritative person directory remains a pending pilot decision.
+
+## Tenth slice: candidate inspection workspace
+
+Added the read-only candidate panel to identity evidence, with explicit ambiguity,
+inactive account labels, bounded result expansion, failure/retry and navigation
+to candidate account evidence. Abandoned requests are cancelled. No confirmation
+or merge action exists. Frontend: 12 existing tests and TypeScript/Vite build
+passed. Browser acceptance remains unavailable; see the correlation design checklist.
+
+## Ninth slice: read-only correlation candidates and proposed link design
+
+Work through slice eight was committed and pushed as 79f7a16. Added a tenant-scoped
+candidate inspection endpoint using contact hints only, explicit ambiguity and
+unsupported states, and bounded results. No link is confirmed and no source
+account/history or approval rule changes. See identity-correlation-design.md for
+the proposed persisted model and confirmation boundary; CONTEXT.md records terms.
+Full Python suite: 351 passed, 8 skipped; final correlation suite: 9 passed after
+adding the API tenant/limit test. Ruff passed. New correlation work remains local.
+
 ## Eighth slice: worker deployment configuration and operational signals
 
 Added an opt-in Compose worker overlay using the existing non-root API image,

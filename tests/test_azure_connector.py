@@ -409,3 +409,40 @@ def test_azure_sync_does_not_revoke_another_tenants_grant() -> None:
         assert grant.revoked_at is None
 
     engine.dispose()
+
+
+@pytest.mark.parametrize("fingerprint", ["a" * 64, "b" * 64])
+@pytest.mark.parametrize("authority", ["other-directory", None])
+def test_directory_conflict_is_rejected_before_any_projection_write(fingerprint, authority):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with sessionmaker(bind=engine, expire_on_commit=False)() as session:
+        service = AzureSyncService(session)
+        service.sync(snapshot("a" * 64))
+        account = session.scalar(select(Identity).where(Identity.external_id == "user-1"))
+        account.source_metadata = {"tenant_id": authority} if authority else {}
+        session.commit()
+        checkpoint = service.checkpoint("subscription-1")
+        before = (checkpoint.fingerprint, checkpoint.observed_at, account.display_name)
+        incoming = snapshot(fingerprint)
+        incoming.users[0]["displayName"] = "Must not overwrite account"
+        incoming.users.insert(0, {"id": "new-user", "displayName": "Must not insert account"})
+        with pytest.raises(ValueError, match="directory authority"):
+            service.sync(incoming)
+        assert not session.new and not session.dirty
+        assert (checkpoint.fingerprint, checkpoint.observed_at, account.display_name) == before
+        assert session.scalar(select(Identity).where(Identity.external_id == "new-user")) is None
+    engine.dispose()
+
+
+def test_duplicate_user_and_service_principal_id_is_rejected_before_sync():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with sessionmaker(bind=engine, expire_on_commit=False)() as session:
+        incoming = snapshot("a" * 64)
+        incoming.service_principals[0]["id"] = incoming.users[0]["id"]
+        with pytest.raises(ValueError, match="duplicate account"):
+            AzureSyncService(session).sync(incoming)
+        assert session.scalar(select(Identity)) is None
+        assert session.scalar(select(ConnectorCheckpoint)) is None
+    engine.dispose()

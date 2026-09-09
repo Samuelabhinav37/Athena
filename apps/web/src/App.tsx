@@ -5,6 +5,7 @@ import { completeSignin, userManager } from "./auth";
 import { freshness, loadAssessment, orderReviews, reviewProgress } from "./assessment";
 import { ConnectorCoverage } from "./ConnectorCoverage";
 import { IdentityInventory } from "./IdentityInventory";
+import { IdentityCorrelation } from "./IdentityCorrelation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import type {
   AnomalyAssessment,
@@ -329,6 +330,7 @@ function Identities({ user, identities, initialSelectedId, manifests, connectors
       <section className="evidence-panel">{selected ? <><header className="identity-header"><div><p>{selected.source} / {selected.identity_type}</p><h2>{selected.display_name}</h2><span>{selected.job_title ?? "Title unavailable"} · {selected.email ?? "Email unavailable"}</span></div><Badge value={selected.active ? "active" : "inactive"} /></header>
         <p className="identity-observation">Identity observed {formatDate(selected.observed_at)} · {freshness(selected.observed_at)}. An active account does not prove that every permission is currently usable.</p>
         <ConnectorCoverage source={selected.source} manifests={manifests} checkpoints={connectors} identities={[selected]} />
+        <IdentityCorrelation key={selected.id} user={user} identityId={selected.id} source={selected.source} onSelect={selectIdentity} />
         {loading ? <div className="inline-loader">Loading evidence…</div> : detailError ? <div className="notice notice--error">{detailError}</div> : <><div className="evidence-stats"><div><strong>{entitlements.length}</strong><small>Entitlements</small></div><div><strong>{risks[0]?.score.toFixed(2) ?? "—"}</strong><small>Risk score</small></div><div><strong>{anomalies.filter((item) => item.is_anomaly).length}</strong><small>Anomalies</small></div></div>
           <section className="assessment-findings"><h3>Recorded findings</h3><p>Risk and anomaly findings are advisory evidence for human review.</p>
             {risks[0] && <p>Latest risk assessment: {formatDate(risks[0].evaluated_at)} · {risks[0].level} · Model {risks[0].model_version}</p>}

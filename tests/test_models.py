@@ -7,6 +7,9 @@ def test_canonical_schema_contains_identity_backbone_tables() -> None:
     Base.metadata.create_all(engine)
 
     assert set(Base.metadata.tables) == {
+        "persons",
+        "person_links",
+        "person_link_events",
         "anomaly_model_runs",
         "anomaly_results",
         "access_grants",

@@ -26,6 +26,7 @@ from athena.services.explanations import (
     ExplanationService,
     build_ai_provider,
 )
+from athena.services.identity_correlation import inspect_candidates
 from athena.services.peer_anomaly import load_anomaly_results
 from athena.services.policy_evaluation import load_policy_evaluations
 from athena.services.provenance import governance_gaps, load_identity_entitlements
@@ -67,6 +68,17 @@ def get_identity(identity_id: uuid.UUID, session: DatabaseSession) -> IdentityRe
     if identity is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
     return identity
+
+
+@router.get("/{identity_id}/correlation-candidates")
+def correlation_candidates(
+    identity_id: uuid.UUID, session: DatabaseSession, settings: RuntimeSettings,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+):
+    identity = IdentityRepository(session).get(identity_id)
+    if identity is None:
+        raise HTTPException(status_code=404, detail="Identity not found")
+    return inspect_candidates(session, identity, settings.oidc_identity_source, limit=limit)
 
 
 @router.get("/{identity_id}/entitlements", response_model=list[EntitlementResponse])

@@ -1,6 +1,18 @@
 # Athena handoff
 
-Updated after the eighth implementation slice on 8 September 2026.
+9 September: the user approved Keycloak as the synthetic pilot's person anchor
+with two-steward confirmation. Person/link models, stewardship API/UI, immutable
+history and forward migration 20260909_25 are implemented locally. Production
+stewardship is blocked and links remain unusable for access approvals. The existing
+cross-source approval rejection remains intact.
+
+Full suite: 365 passed, 8 skipped. Final person-link/migration tests: 14 passed,
+including subsequently added expiry and anchor-separation tests. Ruff, 12 frontend
+tests, TypeScript/Vite build and offline PostgreSQL migration SQL generation passed.
+No existing database was migrated. Real PostgreSQL/RLS/concurrency, Rego/security
+gate and signed-in browser checks remain open.
+
+Updated after the twelfth implementation slice on 9 September 2026.
 
 ## Resume here
 
@@ -20,8 +32,9 @@ Read [conformance limits](connector-conformance.md) and the concrete
 [P05 design](review-target-owner-design.md). The user approved it; no repeated
 approval is needed for the approved implementation. P06 and the initial manual
 P07 workflow are implemented. See [operations and limits](bound-review-operations.md).
-Keep credentials read-only and use synthetic fixtures. P04 and this slice remain
-uncommitted; the previous push ended at f5be4fb.
+Keep credentials read-only and use synthetic fixtures. Work through the eighth
+slice was committed and pushed as 79f7a16 on feat/analyst-command-center.
+The ninth slice (candidate inspection and correlation design) remains local.
 
 Next: validate migration 20260908_24, drift, RLS/concurrency and security gate on
 disposable PostgreSQL when Docker is available; perform signed-in browser
@@ -33,8 +46,9 @@ Do not claim Release A complete or enable the existing executor for these cases.
 
 ## Last observed verification
 
-- Python: 343 passed, 8 skipped; one existing Starlette/httpx deprecation warning.
-- Frontend: 12 tests and TypeScript/Vite build passed.
+- Python: 351 passed, 8 skipped; one existing Starlette/httpx deprecation warning.
+- Final correlation suite: 9 passed, including the subsequently added API boundary test.
+- Frontend (unchanged this slice): 12 tests and TypeScript/Vite build passed.
 - Offline PostgreSQL SQL generation passed; final targeted migration/target tests passed.
 - Ruff and diff whitespace checks passed.
 - Docker Linux engine unavailable: real PostgreSQL/migration/schema-drift,
@@ -68,3 +82,24 @@ review-worker-operations.md before deployment. Compose config --quiet passed wit
 synthetic values and no env file. No receiver is configured, no messages were sent,
 and no image build or deployment occurred. Runtime drills and real alert delivery
 remain open; code changes remain uncommitted.
+
+## Next correlation work
+
+The person-directory decision below is now resolved for the synthetic pilot.
+Next: validate migration 20260909_25 on disposable PostgreSQL, run the two-steward
+browser exercise, and design review snapshots that bind person-link revisions.
+Do not remove the cross-source approval guard merely because links can be confirmed.
+The manual account-pair selector for nonmatching contact hints remains a UI follow-up.
+
+Read identity-correlation-design.md and CONTEXT.md. The read-only candidate endpoint
+is implemented and tested; email hints never confirm links, merge accounts, or
+relax approval checks. Person/link persistence and confirmation remain proposed.
+Choose the authoritative person directory and independent confirmation evidence
+before implementing that model. The candidate UI is implemented; signed-in visual/keyboard acceptance is pending. No new
+migration, dependency, or live write was added in the ninth slice.
+
+The tenth slice adds IdentityCorrelation.tsx to identity evidence. It displays
+candidate reasons, inactive and ambiguous states, limits, retry, and account
+navigation. It cancels abandoned requests and offers no link-confirmation action.
+Frontend: 12 existing tests and production build passed. Browser list remains
+empty, so visual/keyboard validation was not performed. Changes remain local.

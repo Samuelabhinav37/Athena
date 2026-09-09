@@ -195,6 +195,66 @@ class Tenant(TimestampMixin, Base):
     inventory_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
+class Person(TenantScopedMixin, Base):
+    __tablename__ = "persons"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_persons_tenant_id"),
+        UniqueConstraint("tenant_id", "identity_id", name="uq_persons_anchor"),
+        tenant_foreign_key("identity_id", "identities", "fk_persons_anchor", ondelete="RESTRICT"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class PersonLink(TenantScopedMixin, Base):
+    __tablename__ = "person_links"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_person_links_tenant_id"),
+        tenant_foreign_key("person_id", "persons", "fk_person_links_person", ondelete="RESTRICT"),
+        tenant_foreign_key(
+            "account_id", "identities", "fk_person_links_account", ondelete="RESTRICT",
+        ),
+        CheckConstraint("status IN ('proposed', 'confirmed', 'rejected', 'revoked')",
+                        name="ck_person_links_status"),
+        Index("uq_person_links_current_account", "tenant_id", "account_id", unique=True,
+              postgresql_where=text("status IN ('proposed', 'confirmed')"),
+              sqlite_where=text("status IN ('proposed', 'confirmed')")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    person_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="proposed", nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(json_type, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    __mapper_args__ = {"version_id_col": revision}
+    events: Mapped[list["PersonLinkEvent"]] = relationship(
+        lazy="selectin", order_by="PersonLinkEvent.revision",
+    )
+
+
+class PersonLinkEvent(TenantScopedMixin, Base):
+    __tablename__ = "person_link_events"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_person_link_events_tenant_id"),
+        UniqueConstraint("tenant_id", "link_id", "revision", name="uq_person_link_events_revision"),
+        tenant_foreign_key(
+            "link_id", "person_links", "fk_person_link_events_link", ondelete="RESTRICT",
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    link_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor: Mapped[dict] = mapped_column(json_type, nullable=False)
+    reason: Mapped[str] = mapped_column(String(2000), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class Identity(TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "identities"
     __table_args__ = (
@@ -1376,6 +1436,23 @@ def prevent_reviewer_rebinding(_mapper, _connection, target) -> None:
     if any(inspect(target).attrs[name].history.has_changes()
            for name in ("tenant_id", "issuer", "subject", "identity_id", "provenance")):
         raise ValueError("Reviewer bindings and registration evidence are immutable")
+
+
+@event.listens_for(Person, "before_update")
+@event.listens_for(Person, "before_delete")
+@event.listens_for(PersonLinkEvent, "before_update")
+@event.listens_for(PersonLinkEvent, "before_delete")
+@event.listens_for(PersonLink, "before_delete")
+def prevent_person_evidence_mutation(*_: object) -> None:
+    raise ValueError("Person anchors and link evidence are immutable")
+
+
+@event.listens_for(PersonLink, "before_update")
+def prevent_person_link_rebinding(_mapper, _connection, target) -> None:
+    if any(inspect(target).attrs[name].history.has_changes() for name in (
+        "tenant_id", "person_id", "account_id", "snapshot", "created_at", "expires_at",
+    )):
+        raise ValueError("Person link target and evidence are immutable")
 
 
 @event.listens_for(Reviewer, "before_delete")

@@ -49,7 +49,33 @@ class AzureSyncService:
         )
         return self.session.scalar(statement)
 
+    def _validate_identity_authority(self, snapshot: AzureSnapshot) -> None:
+        if not snapshot.tenant_id or not snapshot.tenant_id.strip():
+            raise ValueError("Azure directory authority is required")
+        incoming = snapshot.users + snapshot.service_principals
+        identifiers = [item.get("id") for item in incoming]
+        if any(not isinstance(value, str) or not value.strip() for value in identifiers):
+            raise ValueError("Azure account identifiers are required")
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("Azure snapshot contains duplicate account identifiers")
+        # Inspect the whole input before IdentitySyncService can commit any row.
+        # The existing account key cannot represent the same source ID in two
+        # directories. Reject uncertain/conflicting ownership rather than rebind it.
+        for start in range(0, len(identifiers), 500):
+            accounts = self.session.scalars(
+                tenant_select(
+                    self.session,
+                    Identity,
+                    Identity.source == "azure_entra",
+                    Identity.external_id.in_(identifiers[start : start + 500]),
+                )
+            )
+            for account in accounts:
+                if account.source_metadata.get("tenant_id") != snapshot.tenant_id:
+                    raise ValueError("Azure account directory authority is missing or conflicting")
+
     def sync(self, snapshot: AzureSnapshot) -> AzureSyncResult:
+        self._validate_identity_authority(snapshot)
         self._validate_assignment_evidence(snapshot)
         checkpoint = self.checkpoint(snapshot.subscription_id)
         if checkpoint is not None and checkpoint.fingerprint == snapshot.fingerprint:
@@ -134,9 +160,7 @@ class AzureSyncService:
                     )
                 )
         active_identity_ids = {record.external_id for record in records}
-        identity_statement = tenant_select(
-            self.session, Identity, Identity.source == "azure_entra"
-        )
+        identity_statement = tenant_select(self.session, Identity, Identity.source == "azure_entra")
         for identity in self.session.scalars(identity_statement):
             if (
                 identity.source_metadata.get("tenant_id") == snapshot.tenant_id
@@ -145,14 +169,10 @@ class AzureSyncService:
                 identity.active = False
         self.session.flush()
         identities = {
-            identity.external_id: identity
-            for identity in self.session.scalars(identity_statement)
+            identity.external_id: identity for identity in self.session.scalars(identity_statement)
         }
         group_statement = tenant_select(self.session, Group, Group.source == "azure_entra")
-        groups = {
-            group.external_id: group
-            for group in self.session.scalars(group_statement)
-        }
+        groups = {group.external_id: group for group in self.session.scalars(group_statement)}
         definitions = {item["id"].lower(): item for item in snapshot.role_definitions}
         active_grant_ids: set[str] = set()
         created = updated = 0
@@ -220,7 +240,8 @@ class AzureSyncService:
         active_grants_statement = tenant_select(
             self.session,
             AccessGrant,
-            AccessGrant.source == "azure_rbac", AccessGrant.revoked_at.is_(None)
+            AccessGrant.source == "azure_rbac",
+            AccessGrant.revoked_at.is_(None),
         )
         for grant in self.session.scalars(active_grants_statement):
             if (
@@ -359,7 +380,8 @@ class AzureSyncService:
         statement = tenant_select(
             self.session,
             Resource,
-            Resource.source == "azure_rbac", Resource.external_id == external_id
+            Resource.source == "azure_rbac",
+            Resource.external_id == external_id,
         )
         resource = self.session.scalar(statement)
         if resource is None:
@@ -379,7 +401,8 @@ class AzureSyncService:
         statement = tenant_select(
             self.session,
             Permission,
-            Permission.resource_id == resource.id, Permission.action == action
+            Permission.resource_id == resource.id,
+            Permission.action == action,
         )
         permission = self.session.scalar(statement)
         if permission is None:
@@ -387,10 +410,7 @@ class AzureSyncService:
                 resource=resource,
                 action=action,
                 name=f"Azure {role_name}: {action}"[:255],
-                privileged=(
-                    action == "*"
-                    or action.lower().startswith("microsoft.authorization/")
-                ),
+                privileged=(action == "*" or action.lower().startswith("microsoft.authorization/")),
             )
             self.session.add(permission)
             self.session.flush()
