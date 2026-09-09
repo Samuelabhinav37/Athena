@@ -3,6 +3,7 @@ import type { User } from "oidc-client-ts";
 import { apiGet } from "./api";
 import type { Identity } from "./types";
 import { PersonLinkPanel } from "./PersonLinkPanel";
+import { ManualPersonPair } from "./ManualPersonPair";
 
 type Candidate = {
   identity_id: string; source: string; external_id: string;
@@ -30,6 +31,7 @@ export function IdentityCorrelation({ user, identityId, source, onSelect }: {
   const [limit, setLimit] = useState(50);
   const [attempt, setAttempt] = useState(0);
   const [opening, setOpening] = useState(false);
+  const [manual, setManual] = useState(false);
   const [pair, setPair] = useState<{ anchorId: string; accountId: string } | null>(null);
   const selection = useRef<AbortController | null>(null);
   useEffect(() => () => selection.current?.abort(), []);
@@ -62,6 +64,8 @@ export function IdentityCorrelation({ user, identityId, source, onSelect }: {
   return <section className="panel" aria-label="Possible related accounts">
     <h3>Possible related accounts</h3>
     <p>Contact hints only. No confirmed person links or changes to access.</p>
+    <button onClick={() => setManual((value) => !value)} aria-expanded={manual}>{manual ? "Close manual account selection" : "Select accounts without matching contact hints"}</button>
+    {manual && <ManualPersonPair user={user} />}
     {error && <p role="alert">{error} <button onClick={() => setAttempt((value) => value + 1)}>Retry inspection</button></p>}
     {!inspection && !error && <p role="status">Loading candidate accounts…</p>}
     {inspection && <>

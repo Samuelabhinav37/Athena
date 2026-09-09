@@ -136,8 +136,16 @@ account_id and supports limit/offset. Its validity-window flag describes dates o
 not continuing person proof or authority to change access.
 
 The workspace opens stewardship for candidate pairs and shows up to 200 history
-records. The API also supports exact proposals where email hints do not match;
-that manual account-picker UI remains follow-up work. Keycloak authority uses the
+records. Manual selection now provides two independent paginated inventories for
+the Keycloak anchor and provider account, including accounts with different contact
+details. Unsupported and inactive records are disabled; counts still include all
+matching inventory records. Pair changes reset stewardship form state. Keycloak authority uses the
 configured pilot issuer, while Entra account authority uses collected directory ID.
 Real person-directory selection, shared-account classification, changed-authority
 recovery and concurrent PostgreSQL validation remain outside the synthetic proof.
+
+Manual selector acceptance: verify keyboard navigation in all three inventory
+instances, unique search labels, pagination beyond the first page, no-match/error
+states, rapid pair changes, and server rejection when an account changes after
+selection. Frontend tests cover pair eligibility and distinctness; the build passes.
+Signed-in browser validation remains pending.

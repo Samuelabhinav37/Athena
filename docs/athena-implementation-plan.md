@@ -2,6 +2,15 @@
 
 Prepared 8 September 2026. Status: implementation started; P00–P03 locally validated, browser and infrastructure verification remain open. Basis: the current working tree, [security/product assessment](athena-security-product-research.md), [competitor mechanisms](athena-competitor-mechanisms-2026-09-08.md), and the canonical [readiness manifest](../governance/readiness.json).
 
+## Fourteenth slice: manual account-pair selection
+
+Pushed review-binding work as 3aafc17. Added two paginated account pickers so
+stewards can propose exact account pairs without matching email hints. The pilot
+requires an active human Keycloak anchor and a separate supported human account.
+Existing evidence and two-steward requirements remain. Shared inventory instances
+now have unique input IDs and contextual labels. Frontend: 15 tests and build
+passed; signed-in browser acceptance is still pending. New work remains local.
+
 ## Thirteenth slice: versioned person bindings in review evidence
 
 New bound-review-v2 cases capture target person attribution. Assignment records

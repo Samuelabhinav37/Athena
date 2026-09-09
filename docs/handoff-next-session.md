@@ -1,5 +1,11 @@
 # Athena handoff
 
+Latest commit/push: 3aafc17 includes versioned person bindings in reviews. The
+fourteenth slice is local: manual person/account selection uses two paginated
+inventories and the existing two-steward form, allowing nonmatching contact hints.
+Frontend validation: 15 tests and production build passed. No backend or migration
+change. Browser acceptance and infrastructure release checks remain open.
+
 Latest: work through the person-link pilot was pushed as 7212fbc. The thirteenth
 slice is local: bound-review-v2 captures target person attribution and assignment
 captures target/reviewer link revisions. Approval rejects corrections, expiry and
