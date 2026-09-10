@@ -1,5 +1,27 @@
 # Athena handoff
 
+## 10 September validation follow-up
+
+Continued the existing uncommitted person-link PostgreSQL acceptance tests and
+tenant-transition preservation update. The preservation list now includes persons
+and person_link_events. Database tests cover tenant visibility, immutable evidence
+updates/deletes, allowed projection updates, unique current links and row locking.
+Connection preflight requires PostgreSQL, the same database endpoint, and separate
+owner/athena_app roles. Rejection assertions check specific PostgreSQL error codes
+and the current-account unique constraint to avoid passing on unrelated errors.
+
+Observed: backend suite 373 passed, 16 skipped; frontend 15 passed and production
+build passed. Changed Python files pass Ruff. After tightening database error
+assertions, focused tests reported 3 passed, 8 skipped. PostgreSQL tests remain
+unexecuted: Docker's Linux engine pipe is unavailable. No database was migrated.
+Security-gate execution failed because local OPA at 127.0.0.1:8181 was unreachable;
+Rego runtime tests and schema-drift checks remain pending, as does signed-in browser
+acceptance. These results do not establish release readiness. Changes are uncommitted.
+
+The historical notes below include superseded next steps: commit 39804a3 already
+contains manual person/account selection, and 3aafc17 contains review bindings.
+Resume with disposable PostgreSQL and browser validation, not reimplementation.
+
 Latest commit/push: 3aafc17 includes versioned person bindings in reviews. The
 fourteenth slice is local: manual person/account selection uses two paginated
 inventories and the existing two-steward form, allowing nonmatching contact hints.

@@ -74,6 +74,8 @@ TENANT_TABLES = (
     "security_policy_versions",
 )
 IMMUTABLE_EVIDENCE_TABLES = (
+    "persons",
+    "person_link_events",
     "access_observations",
     "anomaly_model_runs",
     "anomaly_results",
